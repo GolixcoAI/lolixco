@@ -7,7 +7,9 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --import ./tests/register-ts.mjs --test tests/*.test.mjs",
+    "test": "./scripts/run-isolated-tests.sh",
+    "test:raw": "node --import ./tests/register-ts.mjs --test tests/*.test.mjs",
+    "test:offline": "./scripts/run-isolated-tests.sh",
     "check:assets": "node scripts/check-assets.mjs",
     "check:content": "node scripts/validate-content.mjs"
   },

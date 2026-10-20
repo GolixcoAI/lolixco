@@ -5,6 +5,19 @@ import path from 'node:path';
 
 export async function resolve(specifier, context, nextResolve) {
   const { parentURL } = context;
+
+  // Intercept child process spawning to enforce allowlisted environment and test isolation
+  const ISOLATED_CP_URL = new URL("./isolated-child-process.mjs", import.meta.url).href;
+  if (
+    (specifier === "node:child_process" || specifier === "child_process") &&
+    parentURL !== ISOLATED_CP_URL
+  ) {
+    return {
+      url: ISOLATED_CP_URL,
+      shortCircuit: true,
+    };
+  }
+
   if (parentURL && (specifier.startsWith('./') || specifier.startsWith('../'))) {
     try {
       const parentPath = fileURLToPath(parentURL);

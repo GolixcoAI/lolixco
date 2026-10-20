@@ -100,7 +100,7 @@ test("V2 FIX 2: Failure without API credentials (fail-closed, actionable error)"
       ],
       {
         cwd: projectRoot,
-        env: { ...process.env, YOUTUBE_API_KEY: "" },
+        env: { ...process.env, YOUTUBE_API_KEY: "", YOUTUBE_DATA_API_KEY: "" },
         encoding: "utf-8",
       }
     );

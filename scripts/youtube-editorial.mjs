@@ -124,7 +124,17 @@ export function evaluateEditorialClassification(options) {
     if (registeredSlugs.has(fId)) {
       validFandomIds.push(fId);
     } else {
-      warnings.push(`Unregistered fandom ID '${fId}'. Must be registered in FANDOM_REGISTRY or left empty.`);
+      // Resolve case-insensitively by slug or title from registry
+      const matched = registeredFandoms.find(
+        (reg) =>
+          reg.id.toLowerCase() === fId.toLowerCase() ||
+          (reg.title && reg.title.toLowerCase() === fId.toLowerCase())
+      );
+      if (matched) {
+        validFandomIds.push(matched.id);
+      } else {
+        warnings.push(`Unregistered fandom ID '${fId}'. Must be registered in FANDOM_REGISTRY or left empty.`);
+      }
     }
   }
 
@@ -143,8 +153,8 @@ export function evaluateEditorialClassification(options) {
   // 4. Format determination (YouTube Shorts support up to 3 minutes / 180 seconds)
   let determinedFormat = "unknown";
   const durationSec = metadata.durationSec ?? 0;
-  const isConfirmedShort = options.confirmedFormat === "short" || options.ownerFormat === "short";
-  const isConfirmedVideo = options.confirmedFormat === "video" || options.ownerFormat === "video";
+  const isConfirmedShort = options.confirmedFormat === "short" || options.ownerFormat === "short" || options.confirmedFormat === "portrait" || options.ownerFormat === "portrait";
+  const isConfirmedVideo = options.confirmedFormat === "video" || options.ownerFormat === "video" || options.confirmedFormat === "landscape" || options.ownerFormat === "landscape";
 
   if (isConfirmedVideo) {
     determinedFormat = "video";

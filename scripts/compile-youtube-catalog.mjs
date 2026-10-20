@@ -33,10 +33,27 @@ try {
 }
 
 import { allocateStableId, CANONICAL_CATEGORIES } from "./youtube-editorial.mjs";
-import { loadEnvConfig } from "./youtube-api.mjs";
-import { safeAtomicWriteFileSync, validateAuditDocument, createAuditBackup } from "./youtube-importer.mjs";
+import { loadEnvConfig, isTestIsolationActive } from "./youtube-api.mjs";
+import {
+  safeAtomicWriteFileSync,
+  validateAuditDocument,
+  createAuditBackup,
+  isProtectedProductionPath,
+  isProtectedAuditPath,
+  getCanonicalPath,
+} from "./youtube-importer.mjs";
 export const CANONICAL_AUDIT_PATH = resolve(projectRoot, "content/audit/youtube-intake-audit.json");
 export const CANONICAL_OUTPUT_PATH = resolve(projectRoot, "src/data/edits.ts");
+
+export function isCanonicalProductionCatalog(targetPath) {
+  if (!targetPath) return false;
+  return getCanonicalPath(targetPath) === getCanonicalPath(CANONICAL_OUTPUT_PATH);
+}
+
+export function isCanonicalProductionAudit(targetPath) {
+  if (!targetPath) return false;
+  return getCanonicalPath(targetPath) === getCanonicalPath(CANONICAL_AUDIT_PATH);
+}
 
 /**
  * Loads registered fandoms dynamically.
@@ -282,6 +299,38 @@ export async function compileYouTubeCatalog(options = {}) {
     };
   }
 
+  // TEST ISOLATION GUARDS:
+  // Reject access to protected canonical audit or production catalog destinations during test execution
+  if (isTestIsolationActive()) {
+    // 1. Audit read & write guard: reading or writing canonical audit files is strictly prohibited under test isolation
+    if (isProtectedAuditPath(auditFilePath) || isProtectedProductionPath(auditFilePath)) {
+      return {
+        success: false,
+        errors: [
+          `Production catalog compilation blocked: Audit source '${auditFilePath}' resolves to a protected production path under active test isolation. Accessing canonical audit files is strictly prohibited in test mode.`,
+        ],
+        warnings: [],
+        compiledCount: 0,
+        compiledEdits: baseCatalog || [],
+        dryRun,
+      };
+    }
+
+    // 2. Production catalog write guard: mutating src/data/edits.ts is strictly prohibited
+    if (!dryRun && (isProtectedProductionPath(outputPath) || isCanonicalProductionCatalog(outputPath))) {
+      return {
+        success: false,
+        errors: [
+          `Production catalog compilation blocked: Destination '${outputPath}' resolves to a protected production path under active test isolation. Writes to production catalog are strictly prohibited in test mode.`,
+        ],
+        warnings: [],
+        compiledCount: 0,
+        compiledEdits: baseCatalog || [],
+        dryRun,
+      };
+    }
+  }
+
   // 1. Load base catalog
   let currentBaseCatalog = baseCatalog;
   if (!currentBaseCatalog) {
@@ -444,7 +493,7 @@ export async function compileYouTubeCatalog(options = {}) {
       Boolean(item.syntheticOrigin) ||
       Boolean(item.metadata?.syntheticOrigin);
 
-    if (isTargetingProduction || !dryRun) {
+    if ((isTargetingProduction || !dryRun) && !allowDraft) {
       if (isMock) {
         errors.push(
           `Item '${videoId}': synthetic mock metadata is prohibited from production catalog publication. Real YouTube API metadata is required.`
@@ -636,6 +685,21 @@ export async function compileYouTubeCatalog(options = {}) {
   // 4. Write to output if not dryRun (FIX F: atomic writes with transactional rollback & backup visibility)
   let writtenTo = null;
   if (!dryRun) {
+    if (isTestIsolationActive()) {
+      if (isProtectedProductionPath(outputPath) || isProtectedAuditPath(auditFilePath)) {
+        return {
+          success: false,
+          errors: [
+            `Production catalog compilation blocked: Destination '${outputPath}' or audit source '${auditFilePath}' resolves to a protected production path under active test isolation. Writes to production catalog or canonical audit files are strictly prohibited in test mode.`,
+          ],
+          warnings,
+          compiledCount: 0,
+          compiledEdits: currentBaseCatalog,
+          dryRun,
+        };
+      }
+    }
+
     const catalogBackupPath = existsSync(outputPath) ? `${outputPath}.tmp.bak.${process.pid}.${Date.now()}` : null;
     const auditBackupPath = existsSync(auditFilePath) ? `${auditFilePath}.tmp.bak.${process.pid}.${Date.now()}` : null;
 
@@ -728,6 +792,7 @@ export async function compileYouTubeCatalog(options = {}) {
     warnings,
     baseCount: currentBaseCatalog.length,
     newCount: newEdits.length,
+    compiledCount: newEdits.length,
     totalCount: finalEdits.length,
     compiledEdits: finalEdits,
     dryRun,
@@ -820,6 +885,16 @@ Options:
     console.log("Mode: PREVIEW (pass --publish to write to production catalog)");
   } else {
     console.log("Mode: PUBLISH (writing approved edits to production catalog)");
+  }
+
+  if (isTestIsolationActive() && isProtectedAuditPath(options.auditFilePath)) {
+    console.error(`\n❌ Compilation aborted: Accessing canonical audit file '${options.auditFilePath}' is prohibited under active test isolation.`);
+    return 1;
+  }
+
+  if (options.publish && isTestIsolationActive() && isProtectedProductionPath(options.outputPath)) {
+    console.error(`\n❌ Compilation aborted: Production writes to '${options.outputPath}' are prohibited under active test isolation.`);
+    return 1;
   }
 
   const result = await compileYouTubeCatalog({

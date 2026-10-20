@@ -6,21 +6,43 @@ This runbook guides the owner through submitting batches of up to 10 curated You
 
 ## 2. Environment Configuration
 
-Ensure a valid Google YouTube Data API v3 key is configured in your local environment or `.env`:
+Ensure a valid Google Cloud YouTube Data API v3 key (Label: `Lolixco YouTube Metadata Importer`) is configured in your local environment or `.env.local` (or `.env`):
 
 ```bash
-# Copy template
-cp .env.example .env
+# 1. Copy the example configuration template
+cp .env.example .env.local
 
-# Set your API key in .env
-YOUTUBE_API_KEY=AIzaSy...your_real_key_here
+# 2. Paste your Google Cloud YouTube Data API v3 key into .env.local
+YOUTUBE_DATA_API_KEY=AIzaSy...your_real_key_here
 ```
 
-> **Security Note**: Never commit `.env` or paste the key into git-tracked files. Metadata retrieval occurs solely via Node.js CLI tools and is never bundled into client Vite code.
+> **Security Note**: Never commit `.env` or `.env.local` or paste secrets into git-tracked files. Metadata retrieval occurs solely via Node.js CLI tools and is never bundled into client Vite code. The importer checks `YOUTUBE_DATA_API_KEY` first (with fallback to `YOUTUBE_API_KEY`).
 
 ## 3. Preparing a Batch
 
 Batches are limited to **at most 10 URLs** per submission.
+
+### Active Batch: `jjk-landscape-batch-01`
+For the Jujutsu Kaisen landscape batch:
+- Text file: `content/batches/jjk-landscape-batch-01.txt`
+- Structured JSON: `content/batches/jjk-landscape-batch-01.json`
+
+Ingest using the text list:
+```bash
+node scripts/youtube-importer.mjs \
+  --batch jjk-landscape-batch-01 \
+  --category Anime \
+  --fandom jujutsu-kaisen \
+  --format landscape \
+  --input content/batches/jjk-landscape-batch-01.txt
+```
+
+Or using the structured JSON:
+```bash
+node scripts/youtube-importer.mjs \
+  --batch jjk-landscape-batch-01 \
+  --input content/batches/jjk-landscape-batch-01.json
+```
 
 ### Option A: Uniform Domain Batch (Text File)
 Create a text file, e.g., `batch-01.txt`:

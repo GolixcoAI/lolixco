@@ -373,7 +373,7 @@ test("V7 PATHWAY 3B: Injected options.apiClient direct function cannot bypass sy
   }
 });
 
-test("V7 GENUINE OFFICIAL API: Official API pathway remains functional and distinguishable from synthetic data", async () => {
+test("V7 PATHWAY 4: Replaced global fetch cannot launder provenance; simulated API data is marked synthetic and fails approval & publication", async () => {
   const tempDir = createTempDir();
   const testAuditPath = join(tempDir, "audit-genuine.json");
   const testCatalogPath = join(tempDir, "edits-genuine.ts");
@@ -433,43 +433,44 @@ test("V7 GENUINE OFFICIAL API: Official API pathway remains functional and disti
 
     assert.equal(importResult.success, true, importResult.errors.join("; "));
 
-    // 2. Inspect the stored audit record: genuine provenance must be established
+    // 2. Inspect the stored audit record: replaced global fetch MUST NOT launder provenance
     const auditDoc = JSON.parse(readFileSync(testAuditPath, "utf8"));
     const genuineItem = auditDoc.items.find((i) => i.canonicalVideoId === "genuVid0001");
-    assert.ok(genuineItem, "Genuine audit record must exist");
+    assert.ok(genuineItem, "Audit record must exist");
 
-    assert.equal(genuineItem.isMock, false, "Genuine record isMock must be false");
-    assert.equal(genuineItem.provenance, "youtube_data_api_v3", "Genuine record provenance must be youtube_data_api_v3");
-    assert.equal(genuineItem.syntheticOrigin, undefined, "Genuine record must not have syntheticOrigin");
+    assert.equal(genuineItem.isMock, true, "Replaced global fetch must be synthetic by construction");
+    assert.equal(genuineItem.provenance, "synthetic_mock", "Replaced global fetch must receive synthetic_mock provenance");
+    assert.equal(genuineItem.syntheticOrigin, "test_environment_mock", "Synthetic origin must be test_environment_mock");
     assert.equal(genuineItem.metadataFetchStatus, "fetched");
 
-    assert.equal(genuineItem.metadata.isMock, false);
-    assert.equal(genuineItem.metadata.provenance, "youtube_data_api_v3");
-    assert.equal(genuineItem.metadata.syntheticOrigin, undefined);
+    assert.equal(genuineItem.metadata.isMock, true);
+    assert.equal(genuineItem.metadata.provenance, "synthetic_mock");
+    assert.equal(genuineItem.metadata.syntheticOrigin, "test_environment_mock");
 
-    // 3. Attempt owner approval: genuine public embeddable record MUST succeed
+    // 3. Attempt owner approval: simulated synthetic data CANNOT pass owner approval
     const approveRes = await approveReviewItem("genuVid0001", {
       auditFilePath: testAuditPath,
       format: "video",
-      notes: "Genuine editorial approval",
+      notes: "Simulated editorial approval",
     });
-    assert.equal(approveRes.success, true, approveRes.errors ? approveRes.errors.join("; ") : "");
-    assert.equal(approveRes.newStatus, "approved");
+    assert.equal(approveRes.success, false, "Approval must fail closed for simulated mock data");
+    assert.ok(
+      approveRes.errors.some((e) => e.includes("synthetic mock metadata")),
+      "Approval error must cite synthetic mock metadata protection"
+    );
 
-    // 4. Attempt compilation with dryRun: false into isolated catalog path: MUST succeed and write catalog
+    // 4. Attempt compilation into catalog: simulated synthetic data CANNOT pass catalog compilation
     const compileRes = await compileYouTubeCatalog({
       auditFilePath: testAuditPath,
       outputPath: testCatalogPath,
       dryRun: false,
     });
-    assert.equal(compileRes.success, true, compileRes.errors.join("; "));
-    assert.equal(compileRes.newCount, 1, "Must compile 1 genuine approved edit");
-    assert.equal(existsSync(testCatalogPath), true, "Genuine catalog file must be written");
-
-    const writtenCatalog = readFileSync(testCatalogPath, "utf8");
-    assert.ok(writtenCatalog.includes("genuVid0001"), "Written catalog must include genuine video ID");
-    assert.ok(writtenCatalog.includes("Genuine High-Quality Edit"), "Written catalog must include genuine title");
-    assert.ok(writtenCatalog.includes("Genuine Studio"), "Written catalog must include genuine creator");
+    assert.equal(compileRes.success, false, "Compilation of synthetic data must fail-closed");
+    assert.ok(
+      compileRes.errors.some((e) => e.includes("synthetic") || e.includes("Mock")),
+      "Compilation must reject synthetic records"
+    );
+    assert.equal(existsSync(testCatalogPath), false, "Catalog file must not be written for synthetic data");
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) {

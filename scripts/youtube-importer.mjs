@@ -14,11 +14,11 @@
  * - Executable CLI entrypoint with exit codes
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync, copyFileSync } from "node:fs";
-import { resolve, dirname, basename } from "node:path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync, copyFileSync, realpathSync, lstatSync, readlinkSync } from "node:fs";
+import { resolve, dirname, basename, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { register } from "node:module";
-import { fetchYouTubeVideoMetadata, loadEnvConfig } from "./youtube-api.mjs";
+import { fetchYouTubeVideoMetadata, loadEnvConfig, isTestIsolationActive } from "./youtube-api.mjs";
 
 export const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 
@@ -30,9 +30,180 @@ try {
 }
 
 /**
+ * Resolves the canonical, symlink-free absolute filesystem path.
+ * Handles existing files, non-existent target files with existing parent directories,
+ * and symbolic link aliases.
+ */
+export function getCanonicalPath(targetPath) {
+  if (!targetPath) return "";
+  let resolved = resolve(targetPath);
+  try {
+    const stat = lstatSync(resolved);
+    if (stat.isSymbolicLink()) {
+      const linkTarget = readlinkSync(resolved);
+      resolved = resolve(dirname(resolved), linkTarget);
+    }
+  } catch {
+    // File may not exist yet
+  }
+  try {
+    return realpathSync(resolved);
+  } catch {
+    const parent = dirname(resolved);
+    try {
+      return resolve(realpathSync(parent), basename(resolved));
+    } catch {
+      return resolved;
+    }
+  }
+}
+
+export const IMMUTABLE_PROD_CATALOG = resolve(projectRoot, "src/data/edits.ts");
+export const IMMUTABLE_PROD_SRC_DATA_DIR = resolve(projectRoot, "src/data");
+export const IMMUTABLE_PROD_AUDIT = resolve(projectRoot, "content/audit/youtube-intake-audit.json");
+export const IMMUTABLE_PROD_AUDIT_DIR = resolve(projectRoot, "content/audit");
+
+function isPathInside(childPath, parentDir) {
+  const rel = relative(parentDir, childPath);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+let customProtectedRoots = [];
+let batchFileReader = readFileSync;
+
+/**
+ * Injects disposable protected roots for test isolation verification.
+ * Note: Injected roots expand protection for testing; canonical production paths
+ * (src/data, content/audit) are hardcoded and can never be weakened or cleared.
+ *
+ * @param {string[]} roots - Array of directory or file paths to treat as protected
+ * @returns {() => void} Cleanup function to reset injected roots
+ */
+export function setProtectedRootsForTest(roots) {
+  if (process.env.LOLIXCO_TEST_MODE !== "1") {
+    throw new Error("setProtectedRootsForTest is only permitted in test mode (LOLIXCO_TEST_MODE=1)");
+  }
+  customProtectedRoots = Array.isArray(roots)
+    ? roots.filter(Boolean).map((r) => resolve(r))
+    : [];
+  return () => {
+    customProtectedRoots = [];
+  };
+}
+
+export function getProtectedRootsForTest() {
+  return [...customProtectedRoots];
+}
+
+export function setBatchFileReaderForTest(reader) {
+  if (process.env.LOLIXCO_TEST_MODE !== "1") {
+    throw new Error("setBatchFileReaderForTest is only permitted in test mode (LOLIXCO_TEST_MODE=1)");
+  }
+  batchFileReader = reader || readFileSync;
+  return () => {
+    batchFileReader = readFileSync;
+  };
+}
+
+/**
+ * Checks whether a given path targets a protected canonical production resource:
+ * - The canonical catalog (src/data/edits.ts) or any file within src/data
+ * - The canonical intake audit (content/audit/youtube-intake-audit.json) or any file within content/audit
+ * - Symbolic link aliases to either
+ * - Any path within injected test-only protected roots
+ *
+ * Evaluates without accessing canonical workstation filesystem metadata during fixture tests.
+ */
+export function isProtectedProductionPath(targetPath) {
+  if (!targetPath) return false;
+
+  // 1. Injected test-only protected roots check (disposable fixtures)
+  if (customProtectedRoots.length > 0) {
+    const canonicalTarget = getCanonicalPath(targetPath);
+    for (const root of customProtectedRoots) {
+      if (canonicalTarget === root || isPathInside(canonicalTarget, root)) {
+        return true;
+      }
+    }
+  }
+
+  // 2. Lexical check against immutable production paths (zero filesystem metadata access)
+  const resolvedTarget = resolve(targetPath);
+  if (
+    resolvedTarget === IMMUTABLE_PROD_CATALOG ||
+    resolvedTarget === IMMUTABLE_PROD_AUDIT ||
+    isPathInside(resolvedTarget, IMMUTABLE_PROD_AUDIT_DIR) ||
+    isPathInside(resolvedTarget, IMMUTABLE_PROD_SRC_DATA_DIR)
+  ) {
+    return true;
+  }
+
+  // 3. Symlink alias resolution (only evaluates symlinks on targetPath)
+  const canonicalTarget = getCanonicalPath(targetPath);
+  if (
+    canonicalTarget === IMMUTABLE_PROD_CATALOG ||
+    canonicalTarget === IMMUTABLE_PROD_AUDIT ||
+    isPathInside(canonicalTarget, IMMUTABLE_PROD_AUDIT_DIR) ||
+    isPathInside(canonicalTarget, IMMUTABLE_PROD_SRC_DATA_DIR)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Checks whether a given path targets a protected canonical private audit resource:
+ * - The canonical intake audit (content/audit/youtube-intake-audit.json) or any file/directory within content/audit
+ * - Symbolic link aliases to either
+ * - Any path within injected test-only protected roots
+ *
+ * Evaluates without accessing canonical workstation filesystem metadata during fixture tests.
+ */
+export function isProtectedAuditPath(targetPath) {
+  if (!targetPath) return false;
+
+  // 1. Injected test-only protected roots check (disposable fixtures)
+  if (customProtectedRoots.length > 0) {
+    const canonicalTarget = getCanonicalPath(targetPath);
+    for (const root of customProtectedRoots) {
+      if (canonicalTarget === root || isPathInside(canonicalTarget, root)) {
+        return true;
+      }
+    }
+  }
+
+  // 2. Lexical check against immutable production audit paths (zero filesystem metadata access)
+  const resolvedTarget = resolve(targetPath);
+  if (
+    resolvedTarget === IMMUTABLE_PROD_AUDIT ||
+    isPathInside(resolvedTarget, IMMUTABLE_PROD_AUDIT_DIR)
+  ) {
+    return true;
+  }
+
+  // 3. Symlink alias resolution (only evaluates symlinks on targetPath)
+  const canonicalTarget = getCanonicalPath(targetPath);
+  if (
+    canonicalTarget === IMMUTABLE_PROD_AUDIT ||
+    isPathInside(canonicalTarget, IMMUTABLE_PROD_AUDIT_DIR)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Safely writes a file using a sibling temporary file and atomic rename.
+ * In test mode, strictly prohibits writes to protected production destinations.
  */
 export function safeAtomicWriteFileSync(filePath, content) {
+  if (isTestIsolationActive() && (isProtectedProductionPath(filePath) || isProtectedAuditPath(filePath))) {
+    throw new Error(
+      `Write operation blocked: Path '${filePath}' resolves to a protected production path under active test isolation. Test execution cannot modify production files.`
+    );
+  }
   const dir = dirname(filePath);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
@@ -130,6 +301,11 @@ export function validateAuditDocument(auditData, auditFilePath = "audit.json") {
  * Creates a timestamped local backup of an audit file in content/audit/backups/
  */
 export function createAuditBackup(auditFilePath) {
+  if (isTestIsolationActive() && (isProtectedProductionPath(auditFilePath) || isProtectedAuditPath(auditFilePath))) {
+    throw new Error(
+      `Backup operation blocked: Audit file '${auditFilePath}' resolves to a protected production path under active test isolation.`
+    );
+  }
   if (!existsSync(auditFilePath)) return null;
 
   const baseDir = dirname(auditFilePath);
@@ -154,8 +330,21 @@ export function createAuditBackup(auditFilePath) {
 
 /**
  * Restores an audit file from a local backup file.
+ * Validates source and destination paths separately under test isolation.
  */
 export function restoreAuditBackup(backupPath, targetAuditPath = CANONICAL_AUDIT_PATH) {
+  if (isTestIsolationActive()) {
+    if (isProtectedProductionPath(targetAuditPath) || isProtectedAuditPath(targetAuditPath)) {
+      throw new Error(
+        `Restore operation blocked: Destination '${targetAuditPath}' resolves to a protected production path under active test isolation.`
+      );
+    }
+    if (isProtectedProductionPath(backupPath) || isProtectedAuditPath(backupPath)) {
+      throw new Error(
+        `Restore operation blocked: Backup source '${backupPath}' resolves to a protected production path under active test isolation.`
+      );
+    }
+  }
   if (!existsSync(backupPath)) {
     throw new Error(`Backup file not found at: ${backupPath}`);
   }
@@ -193,7 +382,7 @@ export async function loadFandomRegistry() {
  * Parses batch input from string, array, or object.
  * Returns array of normalized entries: { url, category, fandom, fandomIds }.
  */
-export function parseBatchInput(input, defaultCategory = "", defaultFandom = "") {
+export function parseBatchInput(input, defaultCategory = "", defaultFandom = "", defaultFormat = "") {
   let items = [];
 
   if (typeof input === "string") {
@@ -201,7 +390,7 @@ export function parseBatchInput(input, defaultCategory = "", defaultFandom = "")
     if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
       try {
         const parsed = JSON.parse(trimmed);
-        return parseBatchInput(parsed, defaultCategory, defaultFandom);
+        return parseBatchInput(parsed, defaultCategory, defaultFandom, defaultFormat);
       } catch {
         // Fall back to line-by-line parsing
       }
@@ -214,6 +403,7 @@ export function parseBatchInput(input, defaultCategory = "", defaultFandom = "")
       category: defaultCategory,
       fandom: defaultFandom,
       fandomIds: defaultFandom ? [defaultFandom] : [],
+      format: defaultFormat,
       hasExplicitCategory: Boolean(defaultCategory && defaultCategory.trim()),
       hasExplicitFandom: Boolean(defaultFandom && defaultFandom.trim()),
     }));
@@ -225,6 +415,7 @@ export function parseBatchInput(input, defaultCategory = "", defaultFandom = "")
           category: defaultCategory,
           fandom: defaultFandom,
           fandomIds: defaultFandom ? [defaultFandom] : [],
+          format: defaultFormat,
           hasExplicitCategory: Boolean(defaultCategory && defaultCategory.trim()),
           hasExplicitFandom: Boolean(defaultFandom && defaultFandom.trim()),
         };
@@ -245,6 +436,7 @@ export function parseBatchInput(input, defaultCategory = "", defaultFandom = "")
         url: item.url,
         category: item.category || item.ownerCategory || defaultCategory,
         fandom: item.fandom || item.ownerFandom || defaultFandom,
+        format: item.format || item.ownerFormat || defaultFormat,
         fandomIds: Array.isArray(item.fandomIds)
           ? item.fandomIds
           : Array.isArray(item.ownerFandomIds)
@@ -269,12 +461,15 @@ export function parseBatchInput(input, defaultCategory = "", defaultFandom = "")
       ? input.fandomIds
       : (batchFan ? [batchFan] : []);
 
+    const batchFormat = input.format || input.ownerFormat || defaultFormat;
+
     if (Array.isArray(input.urls)) {
       items = input.urls.map((url) => ({
         url,
         category: batchCat,
         fandom: batchFan,
         fandomIds: batchFandomIds,
+        format: batchFormat,
         hasExplicitCategory: hasBatchCat,
         hasExplicitFandom: hasBatchFan,
       }));
@@ -295,6 +490,7 @@ export function parseBatchInput(input, defaultCategory = "", defaultFandom = "")
           url: item.url,
           category: item.category || item.ownerCategory || batchCat,
           fandom: item.fandom || item.ownerFandom || batchFan,
+          format: item.format || item.ownerFormat || batchFormat,
           fandomIds: Array.isArray(item.fandomIds)
             ? item.fandomIds
             : (item.fandom ? [item.fandom] : batchFandomIds),
@@ -321,12 +517,13 @@ export async function ingestYouTubeBatch(inputOrOptions = {}, maybeOptions = {})
     ? { ...maybeOptions, batchInput: inputOrOptions }
     : inputOrOptions;
 
-  const batchId = options.batchId || options["batch-id"] || `batch-${Date.now()}`;
-  const batchFile = options.batchFile || options["batch-file"] || options.batchPath || options["batch-path"];
+  const batchId = options.batchId || options["batch-id"] || options.batch || `batch-${Date.now()}`;
+  const batchFile = options.batchFile || options["batch-file"] || options.batchPath || options["batch-path"] || options.input;
   const {
     batchInput,
     category = "",
     fandom = "",
+    format = "",
     auditFilePath = CANONICAL_AUDIT_PATH,
     dryRun = false,
     mockMode = false,
@@ -363,12 +560,58 @@ export async function ingestYouTubeBatch(inputOrOptions = {}, maybeOptions = {})
   const errors = [];
   const warnings = [];
 
+  // Reject access to protected canonical production audits during test isolation (both dryRun and mutating runs)
+  if (isTestIsolationActive() && (isProtectedProductionPath(auditFilePath) || isProtectedAuditPath(auditFilePath))) {
+    return {
+      success: false,
+      batchId,
+      processedCount: 0,
+      newCount: 0,
+      duplicateCount: 0,
+      errors: [
+        `Intake ingestion blocked: Target audit path '${auditFilePath}' resolves to a protected production path under active test isolation. Ingestion during test execution cannot read or modify canonical audit files.`,
+      ],
+      warnings,
+      items: [],
+      auditFilePath,
+    };
+  }
+
   // 1. Load batch items (supports batchFile, batchPath, raw text, JSON, array, or file path)
   let rawItems = [];
-  const resolvedFilePath = batchFile || (typeof batchInput === "string" && existsSync(batchInput) ? batchInput : null);
+  const isLikelyPath = typeof batchInput === "string" && (
+    batchInput.startsWith("/") ||
+    batchInput.startsWith("./") ||
+    batchInput.startsWith("../") ||
+    batchInput.includes("content/audit") ||
+    batchInput.includes("src/data") ||
+    batchInput.endsWith(".json") ||
+    batchInput.endsWith(".txt") ||
+    customProtectedRoots.some((r) => batchInput.includes(r)) ||
+    (!batchInput.includes("\n") && !batchInput.trim().startsWith("[") && !batchInput.trim().startsWith("{") && existsSync(batchInput))
+  );
+  const resolvedFilePath = batchFile || (isLikelyPath ? batchInput : null);
 
   if (resolvedFilePath) {
     const resolvedPath = resolve(resolvedFilePath);
+
+    // Reject protected audit and production paths supplied as batch input under test isolation
+    if (isTestIsolationActive() && (isProtectedProductionPath(resolvedPath) || isProtectedAuditPath(resolvedPath))) {
+      return {
+        success: false,
+        batchId,
+        processedCount: 0,
+        newCount: 0,
+        duplicateCount: 0,
+        errors: [
+          `Batch input blocked: Batch input path '${resolvedPath}' resolves to a protected production path under active test isolation. Ingestion during test execution cannot read protected audit or production files as batch sources.`,
+        ],
+        warnings,
+        items: [],
+        auditFilePath,
+      };
+    }
+
     if (!existsSync(resolvedPath)) {
       return {
         success: false,
@@ -377,10 +620,10 @@ export async function ingestYouTubeBatch(inputOrOptions = {}, maybeOptions = {})
         processed: [],
       };
     }
-    const content = readFileSync(resolvedPath, "utf-8");
-    rawItems = parseBatchInput(content, category, fandom);
+    const content = batchFileReader(resolvedPath, "utf-8");
+    rawItems = parseBatchInput(content, category, fandom, format);
   } else if (batchInput) {
-    rawItems = parseBatchInput(batchInput, category, fandom);
+    rawItems = parseBatchInput(batchInput, category, fandom, format);
   }
 
   // 2. Strict Limit: At most 10 URLs per batch
@@ -467,6 +710,7 @@ export async function ingestYouTubeBatch(inputOrOptions = {}, maybeOptions = {})
       urlFormatHint: norm.urlFormatHint,
       category: raw.category || raw.ownerCategory || category,
       fandom: raw.fandom || raw.ownerFandom || fandom,
+      format: raw.format || raw.ownerFormat || format,
       fandomIds: raw.fandomIds || (raw.fandom ? [raw.fandom] : (raw.ownerFandom ? [raw.ownerFandom] : (fandom ? [fandom] : []))),
       hasExplicitCategory: raw.hasExplicitCategory ?? Boolean((raw.category || raw.ownerCategory || category || "").trim()),
       hasExplicitFandom: raw.hasExplicitFandom ?? Boolean((raw.fandom || raw.ownerFandom || fandom || "").trim() || (Array.isArray(raw.fandomIds) && raw.fandomIds.length > 0)),
@@ -633,6 +877,7 @@ export async function ingestYouTubeBatch(inputOrOptions = {}, maybeOptions = {})
         metadata,
         registeredFandoms,
         urlFormatHint: effectiveFormat,
+        ownerFormat: entry.format || options.format || options.ownerFormat,
       });
     } else {
       classification = {
@@ -877,6 +1122,7 @@ export async function runImporterCli(args = process.argv.slice(2)) {
     batchId: `batch-${Date.now()}`,
     category: "",
     fandom: "",
+    format: "",
     batchPath: "",
     urls: [],
     dryRun: false,
@@ -897,6 +1143,7 @@ Options:
   --batch, --batch-id <id>     Batch identifier (e.g. 01, batch-01, batch-10)
   --category <name>            Category (Anime, Gaming, Movies, Series, Phonk, Multifandom)
   --fandom <slug>              Fandom slug (e.g. valorant, jujutsu-kaisen)
+  --format <type>              Format (video, landscape, short)
   --input, --batch-file <file> Input file (.txt with 1 URL per line or .json)
   --urls <u1,u2>               Comma-separated list of YouTube URLs
   --dry-run                    Simulate import without writing to audit file
@@ -911,6 +1158,8 @@ Options:
       options.category = args[++i];
     } else if (arg === "--fandom" && args[i + 1]) {
       options.fandom = args[++i];
+    } else if ((arg === "--format" || arg === "--owner-format") && args[i + 1]) {
+      options.format = args[++i];
     } else if ((arg === "--input" || arg === "--batch-file") && args[i + 1]) {
       options.batchPath = args[++i];
     } else if (arg === "--urls" && args[i + 1]) {
@@ -935,10 +1184,21 @@ Options:
   if (options.dryRun) console.log("Mode: DRY-RUN (no files will be written)");
   if (options.mockMode) console.log("Mode: MOCK (synthetic offline test mode)");
 
+  if (isTestIsolationActive() && (isProtectedProductionPath(options.auditFilePath) || isProtectedAuditPath(options.auditFilePath))) {
+    console.error(`\n❌ Ingestion aborted: Accessing protected production audit file '${options.auditFilePath}' is prohibited under active test isolation.`);
+    return 1;
+  }
+
+  if (options.batchPath && isTestIsolationActive() && (isProtectedProductionPath(options.batchPath) || isProtectedAuditPath(options.batchPath))) {
+    console.error(`\n❌ Ingestion aborted: Accessing protected production batch input file '${options.batchPath}' is prohibited under active test isolation.`);
+    return 1;
+  }
+
   const result = await ingestYouTubeBatch({
     batchId: options.batchId,
     category: options.category,
     fandom: options.fandom,
+    format: options.format,
     batchPath: options.batchPath || undefined,
     batchInput,
     dryRun: options.dryRun,

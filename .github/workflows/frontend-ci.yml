@@ -7,9 +7,12 @@ name: Frontend CI
       - feat/discovery-ui-search
       - feat/recsys-baseline
       - feat/mission5-recsys-integration
+      - feat/mission7c-jjk-landscape-batch-01
+      - feat/stage1-security-finalization
   pull_request:
     branches:
       - main
+      - feat/stage1-security-finalization
 
 permissions:
   contents: read
@@ -17,7 +20,7 @@ permissions:
 jobs:
   validate:
     name: Frontend and Recsys Quality Checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
@@ -49,8 +52,38 @@ jobs:
       - name: Run TypeScript typecheck
         run: pnpm typecheck
 
-      - name: Run unit and regression tests
-        run: pnpm test
+      - name: Verify kernel unprivileged namespace capability
+        run: |
+          # On Ubuntu 24.04, unprivileged user namespaces may be restricted by AppArmor.
+          # Explicitly configure unprivileged user namespaces if the sysctl knob is present.
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          # Validate unprivileged user/network namespace capability directly (fail closed immediately if unavailable)
+          unshare -rn true || {
+            echo "[CI ERROR] Kernel unprivileged user/network namespace creation failed." >&2
+            exit 1
+          }
+
+      - name: Verify kernel network namespace isolation pre-flight
+        run: |
+          /usr/bin/env -i \
+            PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            HOME="$HOME" \
+            CI="true" \
+            GITHUB_ACTIONS="true" \
+            GITHUB_WORKSPACE="$GITHUB_WORKSPACE" \
+            /bin/bash --noprofile --norc ./scripts/run-isolated-tests.sh --check-isolation
+
+      - name: Run unit and regression tests (network isolated)
+        run: |
+          /usr/bin/env -i \
+            PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            HOME="$HOME" \
+            CI="true" \
+            GITHUB_ACTIONS="true" \
+            GITHUB_WORKSPACE="$GITHUB_WORKSPACE" \
+            /bin/bash --noprofile --norc ./scripts/run-isolated-tests.sh
 
       - name: Run local media asset checks
         run: pnpm check:assets

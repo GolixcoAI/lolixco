@@ -33,13 +33,26 @@ import {
   safeAtomicWriteFileSync,
   createAuditBackup,
   restoreAuditBackup,
+  isProtectedProductionPath,
+  isProtectedAuditPath,
 } from "./youtube-importer.mjs";
+import { isTestIsolationActive } from "./youtube-api.mjs";
 import { CANONICAL_CATEGORIES } from "./youtube-editorial.mjs";
 
 /**
  * Lists all audit records pending owner review.
  */
 export async function listPendingReviewItems(auditFilePath = CANONICAL_AUDIT_PATH) {
+  if (isTestIsolationActive() && isProtectedProductionPath(auditFilePath)) {
+    return {
+      success: false,
+      errors: [
+        `Review listing blocked: Target audit path '${auditFilePath}' resolves to a protected production path under active test isolation.`,
+      ],
+      items: [],
+    };
+  }
+
   if (!existsSync(auditFilePath)) {
     return { success: false, errors: [`Audit file not found at: ${auditFilePath}`], items: [] };
   }
@@ -79,6 +92,13 @@ export async function listPendingReviewItems(auditFilePath = CANONICAL_AUDIT_PAT
  * Retrieves detailed record information for a single video.
  */
 export async function inspectReviewItem(videoId, auditFilePath = CANONICAL_AUDIT_PATH) {
+  if (isTestIsolationActive() && isProtectedProductionPath(auditFilePath)) {
+    return {
+      success: false,
+      error: `Review inspection blocked: Target audit path '${auditFilePath}' resolves to a protected production path under active test isolation.`,
+    };
+  }
+
   if (!existsSync(auditFilePath)) {
     return { success: false, error: `Audit file not found at: ${auditFilePath}` };
   }
@@ -108,6 +128,15 @@ export async function confirmItemFormat(videoId, format, options = {}) {
     reviewer = "owner",
     dryRun = false,
   } = options;
+
+  if (isTestIsolationActive() && isProtectedProductionPath(auditFilePath)) {
+    return {
+      success: false,
+      errors: [
+        `Format confirmation blocked: Target audit path '${auditFilePath}' resolves to a protected production path under active test isolation.`,
+      ],
+    };
+  }
 
   if (!existsSync(auditFilePath)) {
     return { success: false, errors: [`Audit file not found at: ${auditFilePath}`] };
@@ -204,6 +233,15 @@ export async function approveReviewItem(videoId, options = {}) {
     auditFilePath = CANONICAL_AUDIT_PATH,
     dryRun = false,
   } = options;
+
+  if (isTestIsolationActive() && isProtectedProductionPath(auditFilePath)) {
+    return {
+      success: false,
+      errors: [
+        `Review approval blocked: Target audit path '${auditFilePath}' resolves to a protected production path under active test isolation.`,
+      ],
+    };
+  }
 
   if (!existsSync(auditFilePath)) {
     return { success: false, errors: [`Audit file not found at: ${auditFilePath}`] };
@@ -398,6 +436,15 @@ export async function rejectReviewItem(videoId, options = {}) {
     dryRun = false,
   } = options;
 
+  if (isTestIsolationActive() && isProtectedProductionPath(auditFilePath)) {
+    return {
+      success: false,
+      errors: [
+        `Review rejection blocked: Target audit path '${auditFilePath}' resolves to a protected production path under active test isolation.`,
+      ],
+    };
+  }
+
   if (!existsSync(auditFilePath)) {
     return { success: false, errors: [`Audit file not found at: ${auditFilePath}`] };
   }
@@ -452,6 +499,19 @@ export async function rejectReviewItem(videoId, options = {}) {
  */
 export async function approveBatch(batchId, options = {}) {
   const { auditFilePath = CANONICAL_AUDIT_PATH, dryRun = false } = options;
+
+  if (isTestIsolationActive() && isProtectedProductionPath(auditFilePath)) {
+    return {
+      success: false,
+      errors: [
+        `Batch approval blocked: Target audit path '${auditFilePath}' resolves to a protected production path under active test isolation.`,
+      ],
+      approvedCount: 0,
+      totalEligible: 0,
+      warnings: [],
+      auditFilePath,
+    };
+  }
 
   if (!existsSync(auditFilePath)) {
     return { success: false, errors: [`Audit file not found at: ${auditFilePath}`] };
@@ -606,6 +666,20 @@ Batch 01 Review Example:
   node scripts/review-youtube-batch.mjs --approve-batch 01
 `);
     return 0;
+  }
+
+  if (["list", "show", "restore", "confirm-format", "approve", "reject", "approve-batch"].includes(command)) {
+    if (isTestIsolationActive() && isProtectedProductionPath(auditFilePath)) {
+      console.error(`\n❌ Review command '${command}' aborted: Target audit path '${auditFilePath}' resolves to a protected production path under active test isolation.`);
+      return 1;
+    }
+  }
+
+  if (command === "restore" && restorePath) {
+    if (isTestIsolationActive() && isProtectedProductionPath(restorePath)) {
+      console.error(`\n❌ Review restore aborted: Source backup path '${restorePath}' resolves to a protected production path under active test isolation.`);
+      return 1;
+    }
   }
 
   if (command === "restore") {

@@ -619,8 +619,9 @@ test("V3 FIX 6: Incomplete YouTube API responses return structured errors withou
     // 2. Complete item is mapped properly
     assert.equal(result.items.length, 1);
     assert.equal(result.items[0].canonicalVideoId, "goodVideo11");
-    assert.equal(result.items[0].title, "Complete Video Title");
-    assert.equal(result.items[0].provenance, "youtube_data_api_v3");
+    assert.equal(result.items[0].provenance, "synthetic_mock", "Provenance must be synthetic_mock");
+    assert.equal(result.items[0].isMock, true, "isMock must be true for synthetic execution");
+    assert.equal(result.items[0].syntheticOrigin, "test_environment_mock", "syntheticOrigin must match test_environment_mock");
     assert.equal(result.items[0].fetchStatus, "success");
 
     // 3. Incomplete item is tracked in missingIds & incompleteIds with clear error

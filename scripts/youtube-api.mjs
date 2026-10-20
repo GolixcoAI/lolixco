@@ -1,38 +1,166 @@
-import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, existsSync, realpathSync, lstatSync } from "node:fs";
+import { resolve, relative, isAbsolute, basename } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const __projectRoot = fileURLToPath(new URL("../", import.meta.url));
 
+// Capture initial system default fetch before any test stubs are installed
+const _initialDefaultFetch = globalThis.fetch;
+
+// Registry of explicitly authorized disposable fixture directories for test-mode environment loading
+const _authorizedTestEnvDirs = new Set();
+
 /**
- * Loads .env and .env.local if present in project root.
+ * Registers an explicitly authorized disposable fixture directory for test-mode environment loading.
+ * The directory must be within os.tmpdir() and have a valid canonical path.
+ * @param {string} dirPath Directory path to authorize
+ */
+export function registerAuthorizedTestEnvDir(dirPath) {
+  if (typeof dirPath === "string" && dirPath.trim()) {
+    try {
+      const canonical = existsSync(dirPath) ? realpathSync(dirPath) : resolve(dirPath);
+      _authorizedTestEnvDirs.add(canonical);
+    } catch {
+      _authorizedTestEnvDirs.add(resolve(dirPath));
+    }
+  }
+}
+
+/**
+ * Unregisters an authorized test environment directory.
+ * @param {string} dirPath Directory path to unregister
+ */
+export function unregisterAuthorizedTestEnvDir(dirPath) {
+  if (typeof dirPath === "string" && dirPath.trim()) {
+    try {
+      const canonical = existsSync(dirPath) ? realpathSync(dirPath) : resolve(dirPath);
+      _authorizedTestEnvDirs.delete(canonical);
+    } catch {
+      _authorizedTestEnvDirs.delete(resolve(dirPath));
+    }
+  }
+}
+
+/**
+ * Clears all registered authorized test environment directories.
+ */
+export function clearAuthorizedTestEnvDirs() {
+  _authorizedTestEnvDirs.clear();
+}
+
+/**
+ * Evaluates whether test isolation is active.
+ * Evaluates multiple redundant indicators: environment variables,
+ * process arguments, and test runner contexts.
+ * @returns {boolean}
+ */
+export function isTestIsolationActive() {
+  return (
+    process.env.LOLIXCO_TEST_ISOLATION === "1" ||
+    process.env.LOLIXCO_TEST_MODE === "1" ||
+    process.env.NODE_ENV === "test" ||
+    process.env.npm_lifecycle_event === "test" ||
+    (Array.isArray(process.execArgv) && process.execArgv.includes("--test")) ||
+    typeof process.env.NODE_TEST_CONTEXT !== "undefined"
+  );
+}
+
+/**
+ * Loads .env and .env.local if present in target directory.
+ * When test isolation is active:
+ * 1. Target directory resolving canonically to project root (including symlinks/aliases) is strictly skipped.
+ * 2. Only explicitly authorized disposable fixture environments strictly within os.tmpdir() may be loaded.
+ * 3. Arbitrary external workstation directories and un-registered temporary directories are strictly rejected.
+ * 4. Symlinks resolving outside the registered fixture directory boundary are strictly blocked.
+ *
+ * @param {string} rootDir Root directory to search for .env files
+ * @returns {{ loaded: boolean; skipped: boolean; reason?: string }}
  */
 export function loadEnvConfig(rootDir = __projectRoot) {
-  // Try Node.js built-in process.loadEnvFile first
-  if (typeof process.loadEnvFile === "function") {
-    const envPath = resolve(rootDir, ".env");
-    if (existsSync(envPath)) {
-      try {
-        process.loadEnvFile(envPath);
-      } catch {
-        // Fallback below
+  let canonicalTarget = null;
+  if (isTestIsolationActive()) {
+    try {
+      const canonicalProjectRoot = realpathSync(__projectRoot);
+      const targetExists = existsSync(rootDir);
+      canonicalTarget = targetExists ? realpathSync(rootDir) : resolve(rootDir);
+
+      // Block canonical project root and any symlink aliases pointing to it
+      if (canonicalTarget === canonicalProjectRoot) {
+        return { loaded: false, skipped: true, reason: "test_isolation_active" };
       }
-    }
-    const envLocalPath = resolve(rootDir, ".env.local");
-    if (existsSync(envLocalPath)) {
-      try {
-        process.loadEnvFile(envLocalPath);
-      } catch {
-        // Ignore
+
+      // Block any directory located inside project root
+      const relToProject = relative(canonicalProjectRoot, canonicalTarget);
+      if (!relToProject.startsWith("..") && !isAbsolute(relToProject)) {
+        return { loaded: false, skipped: true, reason: "test_isolation_active" };
       }
+
+      // Restrict test-mode parsing strictly to explicitly authorized disposable fixture directories inside os.tmpdir()
+      const canonicalTmpDir = realpathSync(tmpdir());
+      const relToTmp = relative(canonicalTmpDir, canonicalTarget);
+
+      // Proper directory-boundary check: must be strictly inside canonicalTmpDir
+      // Rejects temporary-directory prefix lookalikes (e.g. /tmp-lookalike) and the temp root itself (/tmp)
+      if (relToTmp.startsWith("..") || isAbsolute(relToTmp) || relToTmp === "") {
+        return { loaded: false, skipped: true, reason: "unauthorized_test_env_directory" };
+      }
+
+      // Explicit authorization check: do NOT treat every directory under os.tmpdir() as approved.
+      // Requires explicit registration via registerAuthorizedTestEnvDir
+      const isExplicitlyRegistered = _authorizedTestEnvDirs.has(canonicalTarget);
+      if (!isExplicitlyRegistered) {
+        return { loaded: false, skipped: true, reason: "unauthorized_test_env_directory" };
+      }
+    } catch {
+      return { loaded: false, skipped: true, reason: "test_isolation_active" };
     }
   }
 
-  // Fallback manual parser to ensure .env loading across platforms
-  const targetFiles = [".env", ".env.local"];
+  // Helper to ensure target file is strictly contained within the registered fixture boundary
+  function validateFixtureFile(filePath) {
+    if (!isTestIsolationActive()) return { safe: true };
+    try {
+      if (!canonicalTarget) return { safe: false, reason: "unauthorized_test_env_directory" };
+      const lstat = lstatSync(filePath);
+      const canonicalFile = realpathSync(filePath);
+      const relToFile = relative(canonicalTarget, canonicalFile);
+
+      // If it's a symlink pointing outside or resolving outside the registered fixture directory -> reject!
+      if (relToFile.startsWith("..") || isAbsolute(relToFile) || relToFile === "") {
+        return {
+          safe: false,
+          reason: lstat.isSymbolicLink() ? "symlink_escape_denied" : "file_traversal_denied",
+        };
+      }
+      return { safe: true };
+    } catch {
+      return { safe: false, reason: "file_access_error" };
+    }
+  }
+
+  // In test isolation, do NOT use process.loadEnvFile directly because it opens files without
+  // running canonical symlink containment checks.
+  if (!isTestIsolationActive() && typeof process.loadEnvFile === "function") {
+    const envLocalPath = resolve(rootDir, ".env.local");
+    if (existsSync(envLocalPath)) {
+      try { process.loadEnvFile(envLocalPath); } catch {}
+    }
+    const envPath = resolve(rootDir, ".env");
+    if (existsSync(envPath)) {
+      try { process.loadEnvFile(envPath); } catch {}
+    }
+  }
+
+  // Fallback manual parser to ensure .env.local / .env loading across platforms with symlink containment check
+  const targetFiles = [".env.local", ".env"];
   for (const file of targetFiles) {
     const fullPath = resolve(rootDir, file);
     if (existsSync(fullPath)) {
+      const validation = validateFixtureFile(fullPath);
+      if (!validation.safe) {
+        return { loaded: false, skipped: true, reason: validation.reason };
+      }
       try {
         const content = readFileSync(fullPath, "utf-8");
         for (const line of content.split(/\r?\n/)) {
@@ -51,14 +179,17 @@ export function loadEnvConfig(rootDir = __projectRoot) {
           }
         }
       } catch {
-        // Ignore
+        // Ignore read errors
       }
     }
   }
+  return { loaded: true, skipped: false };
 }
 
-// Auto-load on import
-loadEnvConfig();
+// Auto-load on import ONLY when NOT in test isolation
+if (!isTestIsolationActive()) {
+  loadEnvConfig();
+}
 
 /**
  * Parses ISO 8601 duration (e.g., "PT30S", "PT1M15S", "PT1H2M3S") into seconds and formatted string.
@@ -165,11 +296,13 @@ export async function fetchYouTubeVideoMetadata(videoIds, options = {}) {
   loadEnvConfig();
 
   const {
-    apiKey = process.env.YOUTUBE_API_KEY,
+    apiKey = process.env.YOUTUBE_DATA_API_KEY || process.env.YOUTUBE_API_KEY,
     mockMode = false,
     customMockMetadata = null,
     timeoutMs = 10000,
     maxRetries = 2,
+    fetchTransport = null,
+    customFetch = null,
   } = options;
 
   if (!Array.isArray(videoIds) || videoIds.length === 0) {
@@ -193,7 +326,7 @@ export async function fetchYouTubeVideoMetadata(videoIds, options = {}) {
       items: [],
       missingIds: batch,
       errors: [
-        "YouTube API key is missing. Set YOUTUBE_API_KEY in .env or pass --mock for offline testing.",
+        "YouTube API key is missing. Set YOUTUBE_DATA_API_KEY (or YOUTUBE_API_KEY) in .env.local or .env, or pass --mock for offline testing.",
       ],
     };
   }
@@ -272,6 +405,37 @@ export async function fetchYouTubeVideoMetadata(videoIds, options = {}) {
   }
 
   // REAL API CALL (When YOUTUBE_API_KEY is available)
+  const isCustomTransport = Boolean(fetchTransport || customFetch);
+  const isSyntheticExecution = isTestIsolationActive() || isCustomTransport;
+  const transport = fetchTransport || customFetch || globalThis.fetch;
+
+  // FAIL-CLOSED TEST ISOLATION:
+  // In test mode, reject unmocked default-network calls before fetch executes,
+  // even when the test bootstrap was not imported.
+  if (isTestIsolationActive()) {
+    const isUnmockedDefaultTransport =
+      !isCustomTransport &&
+      (transport === _initialDefaultFetch ||
+        transport === globalThis.__LOLIXCO_FAIL_CLOSED_FETCH__ ||
+        (typeof transport === "function" &&
+          transport.name === "fetch" &&
+          typeof globalThis.__LOLIXCO_FAIL_CLOSED_FETCH__ === "undefined" &&
+          transport === globalThis.fetch));
+
+    if (isUnmockedDefaultTransport) {
+      return {
+        items: [],
+        missingIds: batch,
+        incompleteIds: [],
+        confirmedUnavailableIds: [],
+        retryableIds: [],
+        errors: [
+          "FAIL-CLOSED TEST ISOLATION: Unmocked default-network YouTube API calls are strictly prohibited in test mode. Tests must provide deterministic mock transports (fetchTransport/customFetch), use mockMode, or execute outside test isolation.",
+        ],
+      };
+    }
+  }
+
   const endpoint = new URL("https://www.googleapis.com/youtube/v3/videos");
   endpoint.searchParams.set("part", "snippet,contentDetails,status");
   endpoint.searchParams.set("id", batch.join(","));
@@ -286,7 +450,7 @@ export async function fetchYouTubeVideoMetadata(videoIds, options = {}) {
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch(endpoint.toString(), {
+      const response = await transport(endpoint.toString(), {
         signal: controller.signal,
         headers: { Accept: "application/json" },
       });
@@ -383,8 +547,9 @@ export async function fetchYouTubeVideoMetadata(videoIds, options = {}) {
           embeddable: status.embeddable === true,
           privacyStatus: status.privacyStatus || "unknown",
           regionRestriction: contentDetails.regionRestriction || null,
-          isMock: false,
-          provenance: "youtube_data_api_v3",
+          isMock: isSyntheticExecution ? true : false,
+          provenance: isSyntheticExecution ? "synthetic_mock" : "youtube_data_api_v3",
+          ...(isSyntheticExecution ? { syntheticOrigin: isCustomTransport ? "injected_fetch_transport" : "test_environment_mock" } : {}),
           fetchStatus: "success",
         });
       }
