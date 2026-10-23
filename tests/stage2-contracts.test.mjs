@@ -13,6 +13,10 @@ import {
   projectToPreviewEdit,
   BASELINE_DEMO_RECORDS,
   PINNED_EDITS_TS_SHA256,
+  PUBLIC_FIELD_ALLOWLIST,
+  FORBIDDEN_PRIVATE_FIELDS,
+  isPublicFieldAllowed,
+  isForbiddenPrivateField,
   projectRoot,
 } from "../scripts/validate-content.mjs";
 import { projectToPublicYouTubeEdit } from "../scripts/compile-youtube-catalog.mjs";
@@ -639,6 +643,7 @@ test("Stage 2: Curated public records (ID >= 100) strictly require explicit sour
     creator: "Studio Trigger",
     poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
     source: "https://www.youtube.com/watch?v=12345678901",
+    youtubeVideoId: "12345678901",
     duration: "1:30",
     trending: false,
   };
@@ -699,4 +704,213 @@ test("Stage 2: Preview options (allowDraft: true, strict: false) are rejected wh
     () => projectToPublicEdit(draftItem, { strict: false, forProduction: true }),
     /preview options .* are strictly forbidden for production output/
   );
+});
+
+// ============================================================================
+// 7. ADVERSARIAL REVIEW REGRESSION SUITE (R1-R7)
+// ============================================================================
+
+test("Stage 2 R1: Production projection rejects self-declared authorization with synthetic/unverified provenance", () => {
+  const syntheticYt = {
+    id: 100,
+    title: "Synthetic Review Fixture",
+    category: "Anime",
+    tags: ["anime"],
+    description: "Synthetic offline review fixture only.",
+    creator: "Synthetic Creator",
+    poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+    source: "https://www.youtube.com/watch?v=12345678901",
+    duration: "0:30",
+    trending: false,
+    format: "video",
+    sourceType: "youtube_embed",
+    youtubeVideoId: "12345678901",
+    contentReviewStatus: "approved",
+    provenance: "youtube_data_api_v3",
+    metadataFetchStatus: "failed",
+    lastMetadataVerification: "2000-01-01T00:00:00Z",
+    metadata: {
+      privacyStatus: "private",
+      embeddable: false,
+      syntheticOrigin: "LOLIXCO_SYNTHETIC_REVIEW",
+    },
+  };
+
+  assert.throws(
+    () => projectToPublicEdit(syntheticYt, { forProduction: true }),
+    /production publication eligibility failed/
+  );
+});
+
+test("Stage 2 R1: Production projection fails closed for hosted media without evidence", () => {
+  const hostedItem = {
+    id: 300,
+    title: "Hosted Video",
+    category: "Anime",
+    tags: ["anime"],
+    description: "Hosted video description.",
+    creator: "Creator",
+    poster: "https://cdn.review.invalid/posters/landscape/test.webp",
+    source: "https://cdn.review.invalid/optimized/landscape/test.mp4",
+    duration: "0:30",
+    trending: false,
+    format: "video",
+    sourceType: "licensed_local_media",
+    editorial: {
+      reviewStatus: "approved",
+      rightsCleared: true,
+    },
+  };
+
+  assert.throws(
+    () => projectToPublicEdit(hostedItem, { forProduction: true, approvedOrigins: ["https://cdn.review.invalid"] }),
+    /hosted production publication requires verified media inspection/
+  );
+});
+
+test("Stage 2 R2: Demo identity rejects arbitrary external asset bases even with matching checksum", () => {
+  const b = BASELINE_DEMO_RECORDS[0];
+  const externalDemo = {
+    id: 0,
+    title: b.title,
+    category: b.category,
+    tags: [...b.tags],
+    description: b.description,
+    creator: b.creator,
+    poster: "https://attacker.invalid/media/art-0.svg",
+    source: "https://attacker.invalid/media/motion-study.webm",
+    duration: b.duration,
+    trending: b.trending,
+  };
+
+  assert.equal(isBaselineDemoRecord(externalDemo, { checkFileChecksum: true }), false);
+  assert.throws(
+    () => projectToPublicEdit(externalDemo, { forProduction: true }),
+    /production publication eligibility failed|failed baseline demo verification/
+  );
+});
+
+test("Stage 2 R3: Public assertion validates sourceUrl and rejects credentials/unauthorized origins", () => {
+  const yt = {
+    id: 100,
+    title: "Valid Title",
+    category: "Anime",
+    tags: ["anime"],
+    description: "Valid description.",
+    creator: "Creator",
+    poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+    source: "https://www.youtube.com/watch?v=12345678901",
+    duration: "0:30",
+    trending: false,
+    format: "video",
+    sourceType: "youtube_embed",
+    youtubeVideoId: "12345678901",
+  };
+
+  const maliciousSourceUrl = {
+    ...yt,
+    sourceUrl: "https://review-user:review-pass@attacker.invalid/path?token=LOLIXCO_SYNTHETIC_REVIEW",
+  };
+
+  assert.throws(
+    () => assertPublicEditIntegrity(maliciousSourceUrl),
+    /sourceUrl validation failed/
+  );
+});
+
+test("Stage 2 R3: Public assertion rejects mismatched poster and source video identities", () => {
+  const mismatchedYt = {
+    id: 100,
+    title: "Valid Title",
+    category: "Anime",
+    tags: ["anime"],
+    description: "Valid description.",
+    creator: "Creator",
+    poster: "https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg",
+    source: "https://www.youtube.com/watch?v=12345678901",
+    duration: "0:30",
+    trending: false,
+    format: "video",
+    sourceType: "youtube_embed",
+    youtubeVideoId: "12345678901",
+  };
+
+  assert.throws(
+    () => assertPublicEditIntegrity(mismatchedYt),
+    /poster URL validation failed/
+  );
+});
+
+test("Stage 2 R3: Public assertion detects leaked secrets inside array elements", () => {
+  const ytWithSecretTag = {
+    id: 100,
+    title: "Valid Title",
+    category: "Anime",
+    tags: ["anime", "ghp_" + "a".repeat(36)],
+    description: "Valid description.",
+    creator: "Creator",
+    poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+    source: "https://www.youtube.com/watch?v=12345678901",
+    duration: "0:30",
+    trending: false,
+    format: "video",
+    sourceType: "youtube_embed",
+    youtubeVideoId: "12345678901",
+  };
+
+  assert.throws(
+    () => assertPublicEditIntegrity(ytWithSecretTag),
+    /secret\/leakage pattern detected/
+  );
+});
+
+test("Stage 2 R6: Security lookup lists are frozen and immutable", () => {
+  assert.equal(Array.isArray(PUBLIC_FIELD_ALLOWLIST), true);
+  assert.equal(Object.isFrozen(PUBLIC_FIELD_ALLOWLIST), true);
+  assert.equal(Array.isArray(FORBIDDEN_PRIVATE_FIELDS), true);
+  assert.equal(Object.isFrozen(FORBIDDEN_PRIVATE_FIELDS), true);
+
+  assert.throws(() => {
+    PUBLIC_FIELD_ALLOWLIST.push("rightsClearanceDocumentation");
+  }, /Cannot add property|not extensible|read only/i);
+
+  assert.equal(isPublicFieldAllowed("rightsClearanceDocumentation"), false);
+  assert.equal(isForbiddenPrivateField("canonicalVideoId"), true);
+});
+
+test("Stage 2 R7: validateMediaUrlOrigin rejects mixed-case and encoded dot segments before normalization", () => {
+  const maliciousUrls = [
+    "https://www.youtube.com/private/.%2e/watch?v=12345678901",
+    "https://www.youtube.com/private/%2e./watch?v=12345678901",
+    "https://www.youtube.com/./watch?v=12345678901",
+    "https://www.youtube.com/watch?%76=12345678901",
+  ];
+
+  for (const url of maliciousUrls) {
+    const res = validateMediaUrlOrigin(url, { sourceType: "youtube_embed", expectedVideoId: "12345678901" });
+    assert.equal(res.valid, false, `URL ${url} must be rejected before normalization`);
+  }
+});
+
+test("Stage 2 R5: compiler projects multiword and hashtag tags deterministically into slug contract", () => {
+  const audit = {
+    assignedLolixcoId: 105,
+    canonicalVideoId: "12345678901",
+    canonicalUrl: "https://www.youtube.com/watch?v=12345678901",
+    category: "Anime",
+    format: "video",
+    metadata: {
+      title: "Title",
+      description: "Description",
+      channelTitle: "Creator",
+      channelId: "UC_SYNTHETIC_REVIEW",
+      durationFormatted: "0:30",
+      thumbnailUrl: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+      tags: ["anime edit", "4k", "#AMV", "action-packed"],
+    },
+  };
+
+  const projected = projectToPublicYouTubeEdit(audit);
+  assert.deepEqual(projected.tags, ["anime", "anime-edit", "4k", "amv", "action-packed"]);
+  assert.equal(assertPublicEditIntegrity(projected), true);
 });

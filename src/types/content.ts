@@ -124,68 +124,82 @@ export interface EditorialMetadata {
 }
 
 /**
+ * Content review and lifecycle statuses across importer, audit store, and catalog compiler.
+ */
+export type ContentReviewStatus =
+  | "draft"
+  | "metadata_collected"
+  | "embed_eligible"
+  | "embed_restricted"
+  | "needs_review"
+  | "needs_recheck"
+  | "submitted"
+  | "approved"
+  | "rejected"
+  | "unavailable"
+  | "published"
+  | "duplicate"
+  | (string & {});
+
+/**
  * Common private editorial/provenance audit fields.
+ * Models real raw audit store entries including valid nullable fields.
  */
 export interface BaseAuditRecord {
-  assignedLolixcoId?: number;
-  category?: ContentCategory | string;
-  ownerCategory?: string;
-  fandomIds?: string[];
-  ownerFandomIds?: string[];
-  ownerFandom?: string;
-  contentReviewStatus?:
-    | "draft"
-    | "metadata_collected"
-    | "embed_eligible"
-    | "needs_recheck"
-    | "approved"
-    | "rejected"
-    | "unavailable"
-    | "published";
+  assignedLolixcoId?: number | null;
+  category?: ContentCategory | string | null;
+  ownerCategory?: string | null;
+  fandomIds?: string[] | null;
+  ownerFandomIds?: string[] | null;
+  ownerFandom?: string | null;
+  contentReviewStatus?: ContentReviewStatus | null;
   auditHistory?: Array<{
     date: string;
     event: string;
-    status?: string;
-    assignedLolixcoId?: number;
-    notes?: string;
-  }>;
-  curatorNotes?: string;
+    status?: string | null;
+    assignedLolixcoId?: number | null;
+    notes?: string | null;
+  }> | null;
+  curatorNotes?: string | null;
 }
 
 /**
  * YouTube intake and audit record contract (describes existing private audit records).
+ * Models real raw audit store entries including valid nullable fields and review states.
  */
 export interface YouTubeAuditRecord extends BaseAuditRecord {
-  sourceType?: "youtube_embed";
+  sourceType?: "youtube_embed" | null;
   canonicalVideoId: string;
-  canonicalUrl?: string;
-  format?: ContentFormat;
-  formatConfirmed?: boolean;
-  confirmedFormat?: ContentFormat;
-  provenance?: string;
-  metadataFetchStatus?: string;
-  lastMetadataVerification?: string;
-  isMock?: boolean;
-  syntheticOrigin?: string;
+  canonicalUrl?: string | null;
+  format?: ContentFormat | null;
+  formatConfirmed?: boolean | null;
+  confirmedFormat?: ContentFormat | null;
+  provenance?: string | null;
+  metadataFetchStatus?: string | null;
+  lastMetadataVerification?: string | null;
+  isMock?: boolean | null;
+  syntheticOrigin?: string | null;
   metadata?: {
-    canonicalVideoId?: string;
-    title?: string;
-    description?: string;
-    channelTitle?: string;
-    channelId?: string;
-    durationSec?: number;
-    durationSeconds?: number;
-    durationFormatted?: string;
-    thumbnailUrl?: string;
-    privacyStatus?: "public" | "unlisted" | "private";
-    embeddable?: boolean;
-    provenance?: string;
-    isMock?: boolean;
-    syntheticOrigin?: string;
-    tags?: string[];
-    hashtags?: string[];
-  };
-  trending?: boolean;
+    canonicalVideoId?: string | null;
+    title?: string | null;
+    description?: string | null;
+    channelTitle?: string | null;
+    channelId?: string | null;
+    durationSec?: number | null;
+    durationSeconds?: number | null;
+    durationFormatted?: string | null;
+    thumbnailUrl?: string | null;
+    privacyStatus?: "public" | "unlisted" | "private" | null;
+    embeddable?: boolean | null;
+    provenance?: string | null;
+    isMock?: boolean | null;
+    syntheticOrigin?: string | null;
+    tags?: string[] | null;
+    hashtags?: string[] | null;
+  } | null;
+  editorial?: EditorialMetadata | null;
+  media?: MediaMetadata | null;
+  trending?: boolean | null;
 }
 
 /**
