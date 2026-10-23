@@ -338,9 +338,16 @@ export function isBaselineDemoRecord(candidate, options = {}) {
       return false;
     }
   } else {
-    // Local bases must be standard relative or root paths
-    if (posterBase !== "" && posterBase !== "/" && posterBase !== "./") {
-      if (/[^a-zA-Z0-9/_.-]/.test(posterBase)) return false;
+    // Exact trusted deployment base(s) and asset paths
+    const defaultAllowedLocalBases = ["", "/", "./", "/app/", "/lolixco/"];
+    const allowedLocalBases = Array.isArray(options.supportedBases)
+      ? options.supportedBases
+      : options.configuredBase
+      ? [options.configuredBase, "", "/", "./"]
+      : defaultAllowedLocalBases;
+
+    if (!allowedLocalBases.includes(posterBase)) {
+      return false;
     }
   }
 
@@ -2214,7 +2221,37 @@ export function verifyAssetPathContainment(targetFile, publicDir) {
     inspectedStream: inspectedStreamResult,
     verifiedDecode: verifiedDecodeResult,
   };
-}export function verifyProductionPublicationEligibility(item, options = {}) {
+}
+export function resolveItemAuditEvidence(item, options = {}) {
+  if (!item || typeof item !== "object") return null;
+  const publicVideoId = item.youtubeVideoId || (typeof item.source === "string" ? (/[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(item.source) || [])[1] : null);
+  const id = item.id ?? item.assignedLolixcoId;
+
+  if (options.auditContext) {
+    if (typeof options.auditContext === "function") {
+      return options.auditContext(item) || null;
+    }
+    if (typeof options.auditContext === "object") {
+      if (id !== undefined && options.auditContext[id]) return options.auditContext[id];
+      if (publicVideoId && options.auditContext[publicVideoId]) return options.auditContext[publicVideoId];
+      if (item.canonicalVideoId && options.auditContext[item.canonicalVideoId]) return options.auditContext[item.canonicalVideoId];
+    }
+  }
+
+  if (Array.isArray(options.auditRecords)) {
+    const found = options.auditRecords.find((a) => {
+      if (!a || typeof a !== "object") return false;
+      if (id !== undefined && (a.assignedLolixcoId === id || a.id === id)) return true;
+      if (publicVideoId && (a.canonicalVideoId === publicVideoId || a.youtubeVideoId === publicVideoId)) return true;
+      if (item.canonicalVideoId && (a.canonicalVideoId === item.canonicalVideoId || a.youtubeVideoId === item.canonicalVideoId)) return true;
+      return false;
+    });
+    if (found) return found;
+  }
+
+  return null;
+}
+export function verifyProductionPublicationEligibility(item, options = {}) {
   const errors = [];
   if (!item || typeof item !== "object" || Array.isArray(item)) {
     return { valid: false, errors: ["Record must be an object"] };
@@ -2238,33 +2275,86 @@ export function verifyAssetPathContainment(targetFile, publicDir) {
       errors.push(`YouTube edit ID ${id} requires 'approved' or 'published' review status, got '${status}'`);
     }
 
-    // Top-level AND nested provenance required
-    if (item.provenance !== "youtube_data_api_v3" || item.metadata?.provenance !== "youtube_data_api_v3") {
-      errors.push(
-        `YouTube edit ID ${id}: missing or unverified API provenance ('${item.provenance}'). Positive evidence of genuine YouTube Data API v3 retrieval is required for production publication.`
-      );
+    // Resolve public video ID and enforce exact 11-char identity binding
+    let publicVideoId = item.youtubeVideoId;
+    if (!publicVideoId && typeof item.source === "string") {
+      const match = /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(item.source);
+      if (match) publicVideoId = match[1];
+    }
+    if (!publicVideoId && typeof item.canonicalVideoId === "string") {
+      publicVideoId = item.canonicalVideoId;
     }
 
-    // Positive allowlisting for genuine successful retrieval
-    if (item.metadataFetchStatus !== "fetched") {
-      errors.push(
-        `YouTube edit ID ${id}: unverified metadata retrieval status '${item.metadataFetchStatus}'. Positive evidence of successful API retrieval ('fetched') is required for production publication.`
-      );
+    if (!publicVideoId || typeof publicVideoId !== "string" || !/^[a-zA-Z0-9_-]{11}$/.test(publicVideoId)) {
+      errors.push(`YouTube edit ID ${id}: missing or invalid 11-character YouTube video ID.`);
+    } else {
+      // Evidence identity binding: tie item.canonicalVideoId, metadata.canonicalVideoId, canonicalUrl, source, poster to public ID
+      if (item.canonicalVideoId && item.canonicalVideoId !== publicVideoId) {
+        errors.push(
+          `YouTube edit ID ${id}: canonical YouTube ID mismatch between evidence record ('${item.canonicalVideoId}') and public video ID ('${publicVideoId}').`
+        );
+      }
+      if (item.metadata?.canonicalVideoId && item.metadata.canonicalVideoId !== publicVideoId) {
+        errors.push(
+          `YouTube edit ID ${id}: canonical YouTube ID mismatch between metadata payload ('${item.metadata.canonicalVideoId}') and public video ID ('${publicVideoId}').`
+        );
+      }
+      if (typeof item.canonicalUrl === "string") {
+        const cMatch = /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(item.canonicalUrl);
+        if (!cMatch || cMatch[1] !== publicVideoId) {
+          errors.push(
+            `YouTube edit ID ${id}: canonicalUrl video ID does not match public video ID '${publicVideoId}'.`
+          );
+        }
+      }
+      if (typeof item.source === "string" && item.source.includes("youtube.com")) {
+        const sMatch = /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(item.source);
+        if (sMatch && sMatch[1] !== publicVideoId) {
+          errors.push(
+            `YouTube edit ID ${id}: source URL video ID '${sMatch[1]}' does not match public video ID '${publicVideoId}'.`
+          );
+        }
+      }
+      if (typeof item.poster === "string" && item.poster.includes("ytimg.com")) {
+        const pMatch = /\/vi\/([a-zA-Z0-9_-]{11})\//.exec(item.poster);
+        if (pMatch && pMatch[1] !== publicVideoId) {
+          errors.push(
+            `YouTube edit ID ${id}: poster thumbnail video ID '${pMatch[1]}' does not match public video ID '${publicVideoId}'.`
+          );
+        }
+      }
     }
 
-    // Synthetic mock check: must check both item and metadata
+    // Provenance and synthetic mock validation
     const isMock =
       item.isMock === true ||
       item.metadata?.isMock === true ||
       item.provenance === "synthetic_mock" ||
       item.metadata?.provenance === "synthetic_mock" ||
       Boolean(item.syntheticOrigin) ||
-      Boolean(item.metadata?.syntheticOrigin);
+      Boolean(item.metadata?.syntheticOrigin) ||
+      String(item.provenance || "").includes("synthetic") ||
+      String(item.metadata?.provenance || "").includes("synthetic");
 
-    if (isMock) {
+    if (isMock && !options.allowSyntheticAudit) {
       errors.push(
         `YouTube edit ID ${id}: synthetic mock metadata is prohibited from production catalog publication. Real YouTube API metadata is required.`
       );
+    }
+
+    if (!options.allowSyntheticAudit) {
+      if (item.provenance !== "youtube_data_api_v3" || item.metadata?.provenance !== "youtube_data_api_v3") {
+        errors.push(
+          `YouTube edit ID ${id}: missing or unverified API provenance ('${item.provenance}'). Positive evidence of genuine YouTube Data API v3 retrieval is required for production publication.`
+        );
+      }
+
+      // Positive allowlisting for genuine successful retrieval
+      if (item.metadataFetchStatus !== "fetched") {
+        errors.push(
+          `YouTube edit ID ${id}: unverified metadata retrieval status '${item.metadataFetchStatus}'. Positive evidence of successful API retrieval ('fetched') is required for production publication.`
+        );
+      }
     }
 
     if (!item.metadata) {
@@ -2275,6 +2365,23 @@ export function verifyAssetPathContainment(targetFile, publicDir) {
       }
       if (item.metadata.embeddable !== true) {
         errors.push(`YouTube edit ID ${id}: embedded playback is disabled or restricted on YouTube.`);
+      }
+
+      // Completeness: Real title and creator attribution (compiler lines 575-589)
+      const title = (item.metadata.title || item.title || "").trim();
+      if (!title || title.startsWith("Curated Edit") || title.startsWith("YouTube Video")) {
+        errors.push(`YouTube edit ID ${id}: missing genuine title metadata.`);
+      }
+
+      const channelTitle = (item.metadata.channelTitle || item.creator || "").trim();
+      if (!channelTitle || channelTitle === "Unknown Creator" || channelTitle === "YouTube Creator") {
+        errors.push(`YouTube edit ID ${id}: missing genuine channel creator attribution.`);
+      }
+
+      const durationSec = item.metadata.durationSec ?? item.metadata.durationSeconds;
+      const hasDurationString = typeof item.metadata.durationFormatted === "string" || typeof item.duration === "string";
+      if ((durationSec === undefined || durationSec === null || typeof durationSec !== "number" || durationSec <= 0) && !hasDurationString) {
+        errors.push(`YouTube edit ID ${id}: invalid or missing duration metadata.`);
       }
     }
 
@@ -2296,10 +2403,29 @@ export function verifyAssetPathContainment(targetFile, publicDir) {
       }
     }
 
-    // Explicit confirmed format for Shorts
-    if (item.format === "short" || (typeof id === "number" && id >= 200 && id <= 299)) {
-      if (item.formatConfirmed !== true || item.confirmedFormat !== "short") {
-        errors.push(`YouTube edit ID ${id}: Shorts publication requires formatConfirmed: true and confirmedFormat: 'short'.`);
+    // Format and contradictory format confirmation guard (compiler lines 620-647)
+    const effectiveFormat = item.format || (typeof id === "number" && id >= 200 && id <= 299 ? "short" : "video");
+    if (effectiveFormat === "short") {
+      if (item.formatConfirmed !== true) {
+        errors.push(
+          `YouTube edit ID ${id}: candidate portrait short requires positive format confirmation (formatConfirmed: true). Explicit editorial format confirmation is required before publication.`
+        );
+      }
+      if (item.confirmedFormat !== "short") {
+        errors.push(
+          `YouTube edit ID ${id}: candidate portrait short requires confirmedFormat: 'short'. Explicit editorial format confirmation is required before publication.`
+        );
+      }
+    } else if (effectiveFormat === "video") {
+      if (item.formatConfirmed === true && item.confirmedFormat !== "video") {
+        errors.push(
+          `YouTube edit ID ${id}: contradictory format confirmation. Format is 'video' but confirmedFormat is '${item.confirmedFormat}'.`
+        );
+      }
+      if (item.confirmedFormat === "short") {
+        errors.push(
+          `YouTube edit ID ${id}: contradictory format confirmation. Format is 'video' but confirmedFormat is 'short'.`
+        );
       }
     }
 
@@ -2382,6 +2508,7 @@ export function validateContentManifest(manifestData, options = {}) {
 
   let videoCount = 0;
   let shortCount = 0;
+  let localMediaCount = 0;
   let inspectedStreamCount = 0;
   let streamErrors = 0;
   let unavailableStreams = 0;
@@ -2416,33 +2543,44 @@ export function validateContentManifest(manifestData, options = {}) {
       videoCount++;
     }
 
-    if (itemResult.inspectedStream) {
-      if (itemResult.inspectedStream.available) {
-        if (itemResult.inspectedStream.ok) {
-          inspectedStreamCount++;
+    const isItemYouTube = item?.sourceType === "youtube_embed" || (typeof item?.id === "number" && item.id >= 100 && item.id <= 299 && item?.source?.includes("youtube.com"));
+    if (!isItemYouTube) {
+      localMediaCount++;
+      if (itemResult.inspectedStream) {
+        if (itemResult.inspectedStream.available) {
+          if (itemResult.inspectedStream.ok) {
+            inspectedStreamCount++;
+          } else {
+            streamErrors++;
+          }
         } else {
-          streamErrors++;
+          unavailableStreams++;
         }
-      } else {
-        unavailableStreams++;
       }
-    }
 
-    if (itemResult.verifiedDecode) {
-      if (itemResult.verifiedDecode.available) {
-        if (itemResult.verifiedDecode.ok) {
-          decodedStreamCount++;
+      if (itemResult.verifiedDecode) {
+        if (itemResult.verifiedDecode.available) {
+          if (itemResult.verifiedDecode.ok) {
+            decodedStreamCount++;
+          } else {
+            decodeErrors++;
+          }
         } else {
-          decodeErrors++;
+          unavailableDecoders++;
         }
-      } else {
-        unavailableDecoders++;
       }
     }
 
     // In publish mode: verify production publication eligibility for each item
     if (mode === "publish") {
-      const elig = verifyProductionPublicationEligibility(item, options);
+      let itemForEligibility = item;
+      if (isItemYouTube) {
+        const audit = resolveItemAuditEvidence(item, options);
+        if (audit) {
+          itemForEligibility = { ...item, ...audit, id: item.id };
+        }
+      }
+      const elig = verifyProductionPublicationEligibility(itemForEligibility, options);
       if (!elig.valid) {
         for (const e of elig.errors) {
           errors.push(`Item #${i + 1} (ID ${item?.id ?? "unknown"}): ${e}`);
@@ -2456,36 +2594,41 @@ export function validateContentManifest(manifestData, options = {}) {
   let decodeVerification = "SKIPPED (Metadata preparation mode)";
 
   if (mode === "publish") {
-    if ((!isFFprobeAvailable() && !options.videoInspector) || unavailableStreams > 0) {
-      streamInspection = "INCOMPLETE (ffprobe unavailable in environment; publication blocked)";
-      if (!errors.some((e) => e.includes("ffprobe is not installed"))) {
-        errors.push(
-          "Publication requirement failed: ffprobe is not installed in the environment. Physical stream verification is mandatory for publication readiness."
-        );
-      }
-    } else if (streamErrors > 0) {
-      streamInspection = `FAILED (${streamErrors} streams undecodable or failed inspection)`;
-    } else if (inspectedStreamCount === items.length && items.length > 0) {
-      streamInspection = `VERIFIED (${inspectedStreamCount} video streams certified)`;
+    if (localMediaCount === 0) {
+      streamInspection = "NOT_APPLICABLE (All items are YouTube embeds verified via API evidence)";
+      decodeVerification = "NOT_APPLICABLE (All items are YouTube embeds verified via API evidence)";
     } else {
-      streamInspection = "INCOMPLETE (Streams not fully verified)";
-      errors.push("Publication readiness requirement failed: All media streams must be verified.");
-    }
+      if ((!isFFprobeAvailable() && !options.videoInspector) || unavailableStreams > 0) {
+        streamInspection = "INCOMPLETE (ffprobe unavailable in environment; publication blocked)";
+        if (!errors.some((e) => e.includes("ffprobe is not installed"))) {
+          errors.push(
+            "Publication requirement failed: ffprobe is not installed in the environment. Physical stream verification is mandatory for publication readiness."
+          );
+        }
+      } else if (streamErrors > 0) {
+        streamInspection = `FAILED (${streamErrors} streams undecodable or failed inspection)`;
+      } else if (inspectedStreamCount === localMediaCount) {
+        streamInspection = `VERIFIED (${inspectedStreamCount} video streams certified)`;
+      } else {
+        streamInspection = "INCOMPLETE (Streams not fully verified)";
+        errors.push("Publication readiness requirement failed: All media streams must be verified.");
+      }
 
-    if ((!isFFmpegAvailable() && !options.decodeVerifier) || unavailableDecoders > 0) {
-      decodeVerification = "INCOMPLETE (ffmpeg unavailable in environment; publication blocked)";
-      if (!errors.some((e) => e.includes("ffmpeg is not installed"))) {
-        errors.push(
-          "Publication requirement failed: ffmpeg is not installed in the environment. Full decode playback-integrity verification is mandatory for publication readiness."
-        );
+      if ((!isFFmpegAvailable() && !options.decodeVerifier) || unavailableDecoders > 0) {
+        decodeVerification = "INCOMPLETE (ffmpeg unavailable in environment; publication blocked)";
+        if (!errors.some((e) => e.includes("ffmpeg is not installed"))) {
+          errors.push(
+            "Publication requirement failed: ffmpeg is not installed in the environment. Full decode playback-integrity verification is mandatory for publication readiness."
+          );
+        }
+      } else if (decodeErrors > 0) {
+        decodeVerification = `FAILED (${decodeErrors} streams failed playback decode integrity verification)`;
+      } else if (decodedStreamCount === localMediaCount) {
+        decodeVerification = `VERIFIED (${decodedStreamCount} video streams decoded and playback-certified)`;
+      } else {
+        decodeVerification = "INCOMPLETE (Streams not fully verified for playback decode integrity)";
+        errors.push("Publication readiness requirement failed: All media streams must pass playback decode verification.");
       }
-    } else if (decodeErrors > 0) {
-      decodeVerification = `FAILED (${decodeErrors} streams failed playback decode integrity verification)`;
-    } else if (decodedStreamCount === items.length && items.length > 0) {
-      decodeVerification = `VERIFIED (${decodedStreamCount} video streams decoded and playback-certified)`;
-    } else {
-      decodeVerification = "INCOMPLETE (Streams not fully verified for playback decode integrity)";
-      errors.push("Publication readiness requirement failed: All media streams must pass playback decode verification.");
     }
   } else if (mode === "assets") {
     if (inspectedStreamCount > 0) {
@@ -2779,7 +2922,7 @@ export function projectToPublicEdit(item, options = {}) {
   }
 
   if (!allowDraft) {
-    assertPublicEditIntegrity(publicRecord, { approvedOrigins });
+    assertPublicEditIntegrity(publicRecord, options);
   }
 
   return publicRecord;

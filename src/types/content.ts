@@ -167,6 +167,20 @@ export interface BaseAuditRecord {
  * YouTube intake and audit record contract (describes existing private audit records).
  * Models real raw audit store entries including valid nullable fields and review states.
  */
+/**
+ * Media metadata container for stream or playback technical attributes.
+ */
+export interface MediaMetadata {
+  aspectRatio?: "16:9" | "9:16" | "4:3" | "2.39:1" | null;
+  width?: number | null;
+  height?: number | null;
+  codec?: string | null;
+  audioCodec?: string | null;
+  frameRate?: number | null;
+  bitrateKbps?: number | null;
+  loudnessLkfs?: number | null;
+}
+
 export interface YouTubeAuditRecord extends BaseAuditRecord {
   sourceType?: "youtube_embed" | null;
   canonicalVideoId: string;
@@ -248,3 +262,33 @@ export type FeedSection<T = import("../data/edits").Edit> =
       title: string;
       items: T[];
     };
+
+/**
+ * Compile-time verification fixture ensuring raw nullable audit store entries are accepted.
+ * Validates R8 audit shape contract during tsc builds without runtime side effects.
+ */
+export const _auditShapeTypecheckFixture: YouTubeAuditRecord = {
+  canonicalVideoId: "12345678901",
+  assignedLolixcoId: null,
+  category: null,
+  ownerCategory: null,
+  fandomIds: null,
+  ownerFandomIds: null,
+  ownerFandom: null,
+  contentReviewStatus: null,
+  auditHistory: null,
+  curatorNotes: null,
+  canonicalUrl: null,
+  format: null,
+  formatConfirmed: null,
+  confirmedFormat: null,
+  provenance: null,
+  metadataFetchStatus: null,
+  lastMetadataVerification: null,
+  isMock: null,
+  syntheticOrigin: null,
+  metadata: null,
+  editorial: null,
+  media: null,
+  trending: null,
+};

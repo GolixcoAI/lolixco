@@ -18,6 +18,9 @@ import {
   isPublicFieldAllowed,
   isForbiddenPrivateField,
   projectRoot,
+  resolveItemAuditEvidence,
+  verifyProductionPublicationEligibility,
+  validateContentManifest,
 } from "../scripts/validate-content.mjs";
 import { projectToPublicYouTubeEdit } from "../scripts/compile-youtube-catalog.mjs";
 
@@ -913,4 +916,341 @@ test("Stage 2 R5: compiler projects multiword and hashtag tags deterministically
   const projected = projectToPublicYouTubeEdit(audit);
   assert.deepEqual(projected.tags, ["anime", "anime-edit", "4k", "amv", "action-packed"]);
   assert.equal(assertPublicEditIntegrity(projected), true);
+});
+
+// ============================================================================
+// 10. STAGE 2 CORRECTIONS (V2 REVIEW): IDENTITY BINDING, FORMAT GUARDS,
+//     MANIFEST AUDIT PUBLICATION PATH, AND EXACT DEMO LOCAL BASE
+// ============================================================================
+
+test("Stage 2 P2: Demo identity rejects unconfigured local asset bases but accepts configured base paths", () => {
+  const baseline = BASELINE_DEMO_RECORDS[0];
+  const unconfiguredDemo = {
+    id: 0,
+    title: baseline.title,
+    category: baseline.category,
+    tags: [...baseline.tags],
+    description: baseline.description,
+    creator: baseline.creator,
+    poster: `/unconfigured/${baseline.posterSuffix}`,
+    source: `/unconfigured/${baseline.sourceSuffix}`,
+    duration: baseline.duration,
+    trending: baseline.trending,
+  };
+
+  // Default supported bases (["", "/", "./", "/app/", "/lolixco/"]) must reject unconfigured local prefix
+  assert.equal(isBaselineDemoRecord(unconfiguredDemo), false);
+  assert.throws(() => {
+    projectToPublicEdit(unconfiguredDemo, { forProduction: true });
+  }, /failed baseline demo verification|Not recognized as genuine baseline demo item/i);
+
+  // When configured with the custom base, it is accepted
+  assert.equal(
+    isBaselineDemoRecord(unconfiguredDemo, { supportedBases: ["/unconfigured/"] }),
+    true
+  );
+  const projected = projectToPublicEdit(unconfiguredDemo, {
+    forProduction: true,
+    supportedBases: ["/unconfigured/"],
+  });
+  assert.equal(projected.id, 0);
+  assert.equal(projected.poster, "/unconfigured/media/art-0.svg");
+});
+
+test("Stage 2 P1: Production projection binds evidence identity and rejects mismatching video IDs", () => {
+  const item = {
+    id: 105,
+    title: "Valid Anime Edit",
+    category: "Anime",
+    format: "video",
+    sourceType: "youtube_embed",
+    source: "https://www.youtube.com/watch?v=12345678901",
+    poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+    youtubeVideoId: "12345678901",
+    tags: ["anime"],
+    editorial: {
+      reviewStatus: "approved",
+      rightsCleared: true,
+    },
+    publicationStatus: "published",
+    // Evidence with mismatching canonicalVideoId
+    canonicalVideoId: "abcdefghijk",
+    provenance: "youtube_data_api_v3",
+    metadataFetchStatus: "fetched",
+    lastMetadataVerification: "2026-10-23T12:00:00Z",
+    metadata: {
+      canonicalVideoId: "abcdefghijk",
+      title: "Valid Anime Edit",
+      channelTitle: "Creator Channel",
+      channelId: "UC_TEST",
+      durationSec: 120,
+      privacyStatus: "public",
+      embeddable: true,
+      formatConfirmed: true,
+      confirmedFormat: "video",
+      provenance: "youtube_data_api_v3",
+    },
+  };
+
+  // Mismatching canonical ID must fail production eligibility
+  const eligibility = verifyProductionPublicationEligibility(item, { allowSyntheticAudit: true });
+  assert.equal(eligibility.valid, false);
+  assert.match(
+    eligibility.errors.join("; "),
+    /canonical YouTube ID mismatch between evidence record/i
+  );
+
+  assert.throws(() => {
+    projectToPublicEdit(item, { forProduction: true, allowSyntheticAudit: true });
+  }, /canonical YouTube ID mismatch between evidence record/i);
+});
+
+test("Stage 2 P1: Production projection enforces landscape contradictory-confirmation guards and metadata completeness", () => {
+  // 1. Contradictory format confirmation (format: video with confirmedFormat: short)
+  const contradictoryItem = {
+    id: 105,
+    title: "Landscape Video",
+    category: "Anime",
+    format: "video",
+    sourceType: "youtube_embed",
+    source: "https://www.youtube.com/watch?v=12345678901",
+    poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+    youtubeVideoId: "12345678901",
+    tags: ["anime"],
+    editorial: {
+      reviewStatus: "approved",
+      rightsCleared: true,
+    },
+    publicationStatus: "published",
+    canonicalVideoId: "12345678901",
+    provenance: "youtube_data_api_v3",
+    metadataFetchStatus: "fetched",
+    lastMetadataVerification: "2026-10-23T12:00:00Z",
+    formatConfirmed: true,
+    confirmedFormat: "short",
+    metadata: {
+      canonicalVideoId: "12345678901",
+      title: "Landscape Video",
+      channelTitle: "Creator",
+      channelId: "UC_TEST",
+      durationSec: 60,
+      privacyStatus: "public",
+      embeddable: true,
+      formatConfirmed: true,
+      confirmedFormat: "short",
+      provenance: "youtube_data_api_v3",
+    },
+  };
+
+  assert.throws(() => {
+    projectToPublicEdit(contradictoryItem, { forProduction: true, allowSyntheticAudit: true });
+  }, /contradictory format confirmation/i);
+
+  // 2. Metadata completeness: missing title / channel / durationSec <= 0
+  const incompleteItem = {
+    ...contradictoryItem,
+    formatConfirmed: true,
+    confirmedFormat: "video",
+    metadata: {
+      canonicalVideoId: "12345678901",
+      title: "",
+      channelTitle: "",
+      channelId: "UC_TEST",
+      durationSec: 0,
+      privacyStatus: "public",
+      embeddable: true,
+      formatConfirmed: true,
+      confirmedFormat: "video",
+      provenance: "youtube_data_api_v3",
+    },
+  };
+
+  assert.throws(() => {
+    projectToPublicEdit(incompleteItem, { forProduction: true, allowSyntheticAudit: true });
+  }, /missing genuine channel creator attribution|invalid or missing duration metadata/i);
+});
+
+test("Stage 2 P1: Positive synthetic offline fixtures matching approved AND published compiler contracts pass", () => {
+  const validYouTubeItem = {
+    id: 105,
+    title: "Genuine Curated Anime Edit",
+    description: "An offline synthetic fixture matching compiler contracts and public schema.",
+    creator: "Studio Creator",
+    category: "Anime",
+    format: "video",
+    duration: "1:35",
+    sourceType: "youtube_embed",
+    source: "https://www.youtube.com/watch?v=12345678901",
+    poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+    youtubeVideoId: "12345678901",
+    tags: ["anime", "amv"],
+    editorial: {
+      reviewStatus: "approved",
+      rightsCleared: true,
+    },
+    publicationStatus: "published",
+    canonicalVideoId: "12345678901",
+    canonicalUrl: "https://www.youtube.com/watch?v=12345678901",
+    provenance: "youtube_api_v3_synthetic_fixture",
+    metadataFetchStatus: "fetched",
+    lastMetadataVerification: "2026-10-23T12:00:00Z",
+    metadata: {
+      canonicalVideoId: "12345678901",
+      title: "Genuine Curated Anime Edit",
+      description: "An offline synthetic fixture matching compiler contracts",
+      channelTitle: "Studio Creator",
+      channelId: "UC_SYNTHETIC_OFFLINE",
+      durationSec: 95,
+      durationFormatted: "1:35",
+      privacyStatus: "public",
+      embeddable: true,
+      thumbnailUrl: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+      formatConfirmed: true,
+      confirmedFormat: "video",
+      provenance: "youtube_api_v3_synthetic_fixture",
+    },
+  };
+
+  const projected = projectToPublicEdit(validYouTubeItem, {
+    forProduction: true,
+    allowSyntheticAudit: true,
+  });
+
+  assert.equal(projected.id, 105);
+  assert.equal(projected.title, "Genuine Curated Anime Edit");
+  assert.equal(projected.youtubeVideoId, "12345678901");
+  assert.equal(projected.format, "video");
+  assert.equal(projected.sourceType, "youtube_embed");
+  assert.equal(assertPublicEditIntegrity(projected), true);
+});
+
+test("Stage 2 P1: Manifest publication succeeds with schema-valid intake record + matched trusted audit context", () => {
+  // Schema-valid intake manifest: NO private audit properties in JSON (respects additionalProperties: false)
+  const manifest = {
+    manifestVersion: "1.0.0",
+    catalogVersion: "catalog-v2",
+    items: [
+      {
+        id: 105,
+        format: "video",
+        title: "Verified Curated Anime Edit",
+        description: "An authentic high-octane anime edit curated for Lolixco.",
+        category: "Anime",
+        tags: ["anime"],
+        poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+        source: "https://www.youtube.com/watch?v=12345678901",
+        duration: "2:00",
+        sourceType: "youtube_embed",
+        youtubeVideoId: "12345678901",
+        editorial: {
+          reviewStatus: "approved",
+          rightsCleared: true,
+          curatorNotes: "Curated for production test",
+        },
+      },
+    ],
+  };
+
+  // Trusted caller provides audit context separately
+  const auditRecords = [
+    {
+      assignedLolixcoId: 105,
+      canonicalVideoId: "12345678901",
+      canonicalUrl: "https://www.youtube.com/watch?v=12345678901",
+      provenance: "youtube_data_api_v3",
+      metadataFetchStatus: "fetched",
+      lastMetadataVerification: "2026-10-23T12:00:00Z",
+      reviewStatus: "approved",
+      publicationStatus: "published",
+      metadata: {
+        canonicalVideoId: "12345678901",
+        title: "Verified Curated Anime Edit",
+        description: "Official publication metadata",
+        channelTitle: "Studio Creator",
+        channelId: "UC_GENUINE_CREATOR",
+        durationSec: 120,
+        durationFormatted: "2:00",
+        privacyStatus: "public",
+        embeddable: true,
+        thumbnailUrl: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+        formatConfirmed: true,
+        confirmedFormat: "video",
+        provenance: "youtube_data_api_v3",
+      },
+    },
+  ];
+
+  // 1. Publish validation WITH matched audit context passes without requiring local media decode
+  const successRes = validateContentManifest(manifest, {
+    mode: "publish",
+    auditRecords,
+  });
+  assert.equal(successRes.valid, true, `Expected valid manifest, got: ${successRes.errors.join("; ")}`);
+  assert.equal(successRes.errors.length, 0);
+  assert.match(successRes.streamInspection, /NOT_APPLICABLE/i);
+  assert.match(successRes.decodeVerification, /NOT_APPLICABLE/i);
+
+  // 2. Publish validation WITHOUT audit context fails on missing evidence (zero decode errors)
+  const failMissingRes = validateContentManifest(manifest, {
+    mode: "publish",
+  });
+  assert.equal(failMissingRes.valid, false);
+  assert.match(failMissingRes.errors.join("; "), /missing or unverified API provenance/i);
+  // Ensure no spurious ffmpeg decode errors
+  const decodeErrors = failMissingRes.errors.filter((e) => e.includes("decode") || e.includes("FFmpeg"));
+  assert.equal(decodeErrors.length, 0);
+
+  // 3. Publish validation with mismatched audit context fails
+  const mismatchedAudit = [{ ...auditRecords[0], canonicalVideoId: "99999999999" }];
+  const failMismatchRes = validateContentManifest(manifest, {
+    mode: "publish",
+    auditRecords: mismatchedAudit,
+  });
+  assert.equal(failMismatchRes.valid, false);
+
+  // 4. Actual production validation strictly forbids synthetic markers
+  const syntheticAudit = [
+    {
+      ...auditRecords[0],
+      provenance: "synthetic_mock",
+      metadata: {
+        ...auditRecords[0].metadata,
+        provenance: "synthetic_mock",
+      },
+    },
+  ];
+  const failSyntheticRes = validateContentManifest(manifest, {
+    mode: "publish",
+    auditRecords: syntheticAudit,
+    allowSyntheticAudit: false, // Default production posture
+  });
+  assert.equal(failSyntheticRes.valid, false);
+  assert.match(failSyntheticRes.errors.join("; "), /synthetic mock metadata is prohibited/i);
+
+  // 5. Hosted media remains fail-closed in publish mode
+  const hostedManifest = {
+    manifestVersion: "1.0.0",
+    catalogVersion: "catalog-v2",
+    items: [
+      {
+        id: 305,
+        format: "video",
+        title: "Hosted Video Edit",
+        description: "A licensed hosted video edit for testing publication gates.",
+        category: "Anime",
+        tags: ["anime"],
+        poster: "/media/hosted.jpg",
+        source: "/media/hosted.mp4",
+        duration: "1:30",
+        sourceType: "licensed_local_media",
+        editorial: {
+          reviewStatus: "approved",
+          rightsCleared: true,
+        },
+      },
+    ],
+  };
+  const hostedRes = validateContentManifest(hostedManifest, { mode: "publish" });
+  assert.equal(hostedRes.valid, false);
+  assert.match(hostedRes.errors.join("; "), /hosted publication evidence is not implemented/i);
 });
