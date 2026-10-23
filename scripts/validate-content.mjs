@@ -394,6 +394,21 @@ export function isFFmpegAvailable() {
 }
 
 /**
+ * FFmpeg may exit zero despite demuxer errors. Read tagged severity rather than
+ * matching broad words in warnings; some versions report incomplete input only
+ * as a warning, so explicitly recognize those container-integrity diagnostics.
+ */
+export function hasFFmpegDecodeErrors(stderr) {
+  const prefix = "^[ \\t]*(?:\\[[^\\]\\r\\n]+\\][ \\t]*)*";
+  const severe = new RegExp(`${prefix}\\[(?:error|fatal|panic)\\]`, "im");
+  const incomplete = new RegExp(
+    `${prefix}(?:File ended prematurely\\b|File extends beyond end of segment\\b|Truncating packet\\b|Packet corrupt\\b)`,
+    "im"
+  );
+  return severe.test(stderr) || incomplete.test(stderr);
+}
+
+/**
  * Perform playback-integrity verification by decoding the full media stream to a null sink.
  * Detects truncated media, bitstream corruption, and unplayable files.
  */
@@ -410,7 +425,7 @@ export function verifyVideoDecodeIntegrityWithFFmpeg(filePath) {
       "ffmpeg",
       [
         "-v",
-        "error",
+        "level+warning",
         "-xerror",
         "-i",
         filePath,
@@ -430,7 +445,7 @@ export function verifyVideoDecodeIntegrityWithFFmpeg(filePath) {
       };
     }
     const stderr = res.stderr ? res.stderr.trim() : "";
-    if (stderr.length > 0 && /error|invalid|corrupt|truncated|end of file/i.test(stderr)) {
+    if (hasFFmpegDecodeErrors(stderr)) {
       return {
         available: true,
         ok: false,

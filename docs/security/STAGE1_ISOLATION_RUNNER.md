@@ -62,6 +62,20 @@ pip install -r server/recsys/requirements.txt "jsonschema[format-nongpl]"
 /usr/bin/env -i PATH="/usr/local/bin:/usr/bin:/bin" HOME="$HOME" /bin/bash --noprofile --norc ./scripts/run-isolated-tests.sh
 ```
 
+Default execution discovers regular `tests/*.test.mjs` files directly with Node's
+filesystem APIs and sorts their names before spawning the suite. It does not
+depend on shell glob expansion or version-specific Node test-runner glob support.
+An empty default selection fails instead of invoking Node's automatic discovery.
+Explicit selections are forwarded unchanged as positional arguments, for example:
+
+```bash
+/usr/bin/env -i PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" HOME="$HOME" /bin/bash --noprofile --norc ./scripts/run-isolated-tests.sh tests/runner-discovery.test.mjs tests/shorts.test.mjs
+```
+
+File discovery and test spawning still occur only after kernel evidence and live
+network probes pass. WSL2's trusted system Node may differ from the NVM Node used
+for frontend builds; no NVM path is added to the launcher's trusted PATH.
+
 ---
 
 ## 5. Strict Kernel Evidence Verification & 3-State IPv6 Detection

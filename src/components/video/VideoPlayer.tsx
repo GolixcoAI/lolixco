@@ -217,7 +217,7 @@ export default function VideoPlayer({
           const v = video.current!;
           setDuration(v.duration);
           setQuality(`${v.videoHeight}p · original source`);
-          const save = (
+          const save = typeof navigator !== "undefined" && (
             navigator as Navigator & { connection?: { saveData?: boolean } }
           ).connection?.saveData;
           if (
