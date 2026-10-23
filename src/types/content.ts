@@ -1,10 +1,12 @@
 /**
- * Content format and taxonomy type definitions for Lolixco.
+ * Content format, taxonomy, public and private contract type definitions for Lolixco.
  * 
  * Separates:
  * - Content format (video vs. short)
+ * - Source types (local_demo, youtube_embed, licensed_local_media)
+ * - ID partitions across sources and formats
  * - Canonical production categories vs. legacy demo categories
- * - Public metadata vs. internal recommendation engine fields
+ * - Public media contracts vs. private editorial and audit contracts
  */
 
 export type ContentFormat = "video" | "short";
@@ -49,6 +51,44 @@ export type ContentCategory = CanonicalCategory | LegacyCategory;
 export type BrowsingCategory = "All" | ContentCategory;
 
 /**
+ * ID Partition boundaries across content sources and formats.
+ */
+export const ID_PARTITIONS = {
+  DEMO: { min: 0, max: 16, description: "Baseline demo edits" },
+  RESERVED_TEST: { min: 17, max: 99, description: "Internal test harness" },
+  YOUTUBE_VIDEO: { min: 100, max: 199, description: "Curated landscape YouTube videos" },
+  YOUTUBE_SHORT: { min: 200, max: 299, description: "Curated portrait YouTube shorts" },
+  HOSTED_VIDEO: { min: 300, max: 399, description: "Licensed hosted landscape videos" },
+  HOSTED_SHORT: { min: 400, max: 499, description: "Licensed hosted portrait shorts" },
+  RESERVED_UPPER: { min: 500, max: Infinity, description: "Unallocated / reserved" },
+} as const;
+
+/**
+ * Public catalog edit record presented to visitors and rendered by client components.
+ * Format and sourceType are optional for backward compatibility with frozen demo items 0-16.
+ * All internal review statuses, S3 keys, and audit history are strictly excluded.
+ */
+export interface PublicEdit {
+  id: number;
+  title: string;
+  category: ContentCategory | string;
+  tags: string[];
+  description: string;
+  creator: string;
+  poster: string;
+  source: string;
+  duration: string;
+  trending: boolean;
+  format?: ContentFormat;
+  fandomIds?: string[];
+  sourceType?: VideoSourceType;
+  youtubeVideoId?: string;
+  channelTitle?: string;
+  channelId?: string;
+  sourceUrl?: string;
+}
+
+/**
  * Public metadata presented to visitors.
  * Intentionally excludes creator names, private ratings, or platform view metrics.
  */
@@ -75,10 +115,107 @@ export interface PublicMediaMetadata {
  */
 export interface EditorialMetadata {
   curatorNotes?: string;
-  reviewStatus?: "draft" | "reviewed" | "published";
+  reviewStatus?: "draft" | "reviewed" | "approved" | "rejected" | "published";
+  rightsCleared?: boolean;
+  sourceAttribution?: string;
+  ownerAssetRef?: string;
   originalAspectRatio?: "16:9" | "9:16" | "4:3" | "2.39:1";
   legacyCreatorId?: string;
 }
+
+/**
+ * Common private editorial/provenance audit fields.
+ */
+export interface BaseAuditRecord {
+  assignedLolixcoId?: number;
+  category?: ContentCategory | string;
+  ownerCategory?: string;
+  fandomIds?: string[];
+  ownerFandomIds?: string[];
+  ownerFandom?: string;
+  contentReviewStatus?:
+    | "draft"
+    | "metadata_collected"
+    | "embed_eligible"
+    | "needs_recheck"
+    | "approved"
+    | "rejected"
+    | "unavailable"
+    | "published";
+  auditHistory?: Array<{
+    date: string;
+    event: string;
+    status?: string;
+    assignedLolixcoId?: number;
+    notes?: string;
+  }>;
+  curatorNotes?: string;
+}
+
+/**
+ * YouTube intake and audit record contract (describes existing private audit records).
+ */
+export interface YouTubeAuditRecord extends BaseAuditRecord {
+  sourceType?: "youtube_embed";
+  canonicalVideoId: string;
+  canonicalUrl?: string;
+  format?: ContentFormat;
+  formatConfirmed?: boolean;
+  confirmedFormat?: ContentFormat;
+  provenance?: string;
+  metadataFetchStatus?: string;
+  lastMetadataVerification?: string;
+  isMock?: boolean;
+  syntheticOrigin?: string;
+  metadata?: {
+    canonicalVideoId?: string;
+    title?: string;
+    description?: string;
+    channelTitle?: string;
+    channelId?: string;
+    durationSec?: number;
+    durationSeconds?: number;
+    durationFormatted?: string;
+    thumbnailUrl?: string;
+    privacyStatus?: "public" | "unlisted" | "private";
+    embeddable?: boolean;
+    provenance?: string;
+    isMock?: boolean;
+    syntheticOrigin?: string;
+    tags?: string[];
+    hashtags?: string[];
+  };
+  trending?: boolean;
+}
+
+/**
+ * Hosted licensed media intake and audit record contract.
+ */
+export interface HostedAuditRecord extends BaseAuditRecord {
+  sourceType: "licensed_local_media";
+  assetRef: string;
+  format: ContentFormat;
+  rightsCleared: boolean;
+  rightsDocumentation: string;
+  playbackVerifiedAt?: string;
+  media?: {
+    aspectRatio: "16:9" | "9:16" | "4:3" | "2.39:1";
+    width: number;
+    height: number;
+    codec: string;
+    audioCodec?: string;
+    frameRate?: number;
+    bitrateKbps?: number;
+    loudnessLkfs?: number;
+  };
+  deliveryUrl?: string;
+  posterDeliveryUrl?: string;
+}
+
+/**
+ * Union of all private audit records.
+ */
+export type PrivateAuditRecord = YouTubeAuditRecord | HostedAuditRecord;
 
 /**
  * Format-aware feed section model.
@@ -97,4 +234,3 @@ export type FeedSection<T = import("../data/edits").Edit> =
       title: string;
       items: T[];
     };
-

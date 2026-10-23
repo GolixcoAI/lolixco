@@ -33,6 +33,7 @@ try {
 }
 
 import { allocateStableId, CANONICAL_CATEGORIES } from "./youtube-editorial.mjs";
+import { assertPublicEditIntegrity, validateSourceAndId } from "./validate-content.mjs";
 import { loadEnvConfig, isTestIsolationActive } from "./youtube-api.mjs";
 import {
   safeAtomicWriteFileSync,
@@ -99,7 +100,11 @@ export function projectToPublicYouTubeEdit(auditItem) {
 
   const uniqueTags = Array.from(new Set(rawTags.map((t) => t.toLowerCase().trim()).filter(Boolean))).slice(0, 10);
 
-  return {
+  if (uniqueTags.length === 0) {
+    uniqueTags.push(category.toLowerCase());
+  }
+
+  const publicEdit = {
     id: auditItem.assignedLolixcoId,
     title: metadata.title || "",
     category,
@@ -117,6 +122,12 @@ export function projectToPublicYouTubeEdit(auditItem) {
     channelTitle: metadata.channelTitle || undefined,
     channelId: metadata.channelId || undefined,
   };
+
+  if (typeof publicEdit.id === "number") {
+    assertPublicEditIntegrity(publicEdit);
+  }
+
+  return publicEdit;
 }
 
 /**
@@ -664,6 +675,9 @@ export async function compileYouTubeCatalog(options = {}) {
       errors.push(`Duplicate Lolixco ID collision: ID ${projected.id} is assigned multiple times.`);
     }
     seenLolixcoIds.add(projected.id);
+
+    // Stage 2: Runtime Public Record Integrity Assertion before serialization
+    assertPublicEditIntegrity(projected);
 
     newEdits.push(projected);
   }
