@@ -20,6 +20,7 @@ import {
   isFFmpegAvailable,
   isFFprobeAvailable,
   verifyVideoDecodeIntegrityWithFFmpeg,
+  hasFFmpegDecodeErrors,
   inspectVideoWithFFprobe,
 } from "../scripts/validate-content.mjs";
 import { FANDOM_REGISTRY } from "../src/data/fandoms.ts";
@@ -346,6 +347,11 @@ test("projectToPublicEdit enforces strict publication clearance boundary", () =>
   // Approved record projects safely and completely strips private editorial data
   const approvedRecord = {
     ...MOCK_VALID_VIDEO,
+    sourceType: "youtube_embed",
+    youtubeVideoId: "12345678901",
+    poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+    source: "https://www.youtube.com/watch?v=12345678901",
+    provenance: "youtube_data_api_v3",
     editorial: {
       reviewStatus: "approved",
       rightsCleared: true,
@@ -1015,6 +1021,11 @@ test("FIX D: projectToPublicEdit is safe by default without requiring optional s
   // Approved and cleared record projects successfully and strips all private editorial fields
   const approvedRecord = {
     ...MOCK_VALID_VIDEO,
+    sourceType: "youtube_embed",
+    youtubeVideoId: "12345678901",
+    poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+    source: "https://www.youtube.com/watch?v=12345678901",
+    provenance: "youtube_data_api_v3",
     editorial: {
       reviewStatus: "approved",
       rightsCleared: true,
@@ -1079,6 +1090,36 @@ test("FIX E: CLI execution accepts all valid modes (metadata, assets, publish)",
 // V4 ISSUE A: Playable Video Verification & Decode Integrity
 // -------------------------------------------------------------
 
+test("FFmpeg zero-exit diagnostics reject incomplete streams and tagged decode errors", () => {
+  for (const diagnostic of [
+    "[matroska,webm @ 0x55] File ended prematurely",
+    "[matroska,webm @ 0x55] [error] File ended prematurely",
+    "[matroska,webm @ 0x55] [warning] File ended prematurely",
+    "[warning] File extends beyond end of segment.",
+    "[warning] Truncating packet of size 2048 to 32",
+    "[mpegts @ 0x55] [warning] Packet corrupt (stream = 0)",
+    "[vp8 @ 0x55] [error] Header size larger than data provided",
+    "[fatal] Decoder failed",
+    "[panic] Internal failure",
+    "[warning] Estimating duration\n[vp8 @ 0x55] [error] Decode failed",
+  ]) {
+    assert.equal(hasFFmpegDecodeErrors(diagnostic), true, diagnostic);
+  }
+});
+
+test("FFmpeg ordinary warnings do not falsely reject decodable media", () => {
+  for (const diagnostic of [
+    "",
+    "[swscaler @ 0x55] [warning] deprecated pixel format used, make sure you did set range correctly",
+    "[warning] Estimating duration from bitrate, this may be inaccurate",
+    "[warning] Error resilience enabled",
+    "[warning] Output filename contains invalid or corrupt words",
+    "[warning] Output filename contains [error] as literal text",
+  ]) {
+    assert.equal(hasFFmpegDecodeErrors(diagnostic), false, diagnostic);
+  }
+});
+
 test("V4 ISSUE A: Publication mode requires successful playback decode integrity verification", () => {
   const dummyInspector = () => ({
     available: true,
@@ -1120,9 +1161,10 @@ test("V4 ISSUE A: Publication mode requires successful playback decode integrity
 });
 
 test("V4 ISSUE A: Real-media regression: isolated valid clip vs deliberately truncated copy", () => {
-  const publicDir = resolve(projectRoot, "public");
+  const originalPublicDir = resolve(projectRoot, "public");
+  const publicDir = mkdtempSync(join(tmpdir(), "lolixco-decode-media-"));
   const mediaDir = resolve(publicDir, "media");
-  const originalMedia = resolve(mediaDir, "motion-study.webm");
+  const originalMedia = resolve(originalPublicDir, "media/motion-study.webm");
   assert.equal(existsSync(originalMedia), true, "motion-study.webm must exist in public/media");
 
   const fullBytes = readFileSync(originalMedia);
@@ -1133,6 +1175,8 @@ test("V4 ISSUE A: Real-media regression: isolated valid clip vs deliberately tru
   const truncatedFile = resolve(mediaDir, "test-v4-truncated.webm");
 
   try {
+    mkdirSync(mediaDir);
+    writeFileSync(resolve(mediaDir, "art-0.svg"), readFileSync(resolve(originalPublicDir, "media/art-0.svg")));
     writeFileSync(isolatedValidFile, fullBytes);
     writeFileSync(truncatedFile, truncatedBytes);
 
@@ -1195,6 +1239,7 @@ test("V4 ISSUE A: Real-media regression: isolated valid clip vs deliberately tru
 
     const pubRes = validateContentManifest(truncatedManifest, {
       mode: "publish",
+      publicDir,
       videoInspector: streamInspector,
       decodeVerifier: truncatedDecodeVerifier,
       fandomRegistry: FANDOM_REGISTRY,
@@ -1204,7 +1249,8 @@ test("V4 ISSUE A: Real-media regression: isolated valid clip vs deliberately tru
     assert.match(pubRes.decodeVerification, /FAILED/);
     assert.match(pubRes.errors.join("; "), /playback decode integrity verification failed/);
 
-    // Valid isolated clip passes publication mode
+    // The intact clip passes media validation, but playable bytes alone cannot
+    // authorize publication for this legacy fixture in a YouTube ID partition.
     const validRecord = {
       ...truncatedRecord,
       id: 103,
@@ -1216,17 +1262,28 @@ test("V4 ISSUE A: Real-media regression: isolated valid clip vs deliberately tru
       items: [validRecord],
     };
 
+    const validAssetRes = validateContentManifest(validManifest, {
+      mode: "assets",
+      publicDir,
+      videoInspector: streamInspector,
+      fandomRegistry: FANDOM_REGISTRY,
+    });
+    assert.equal(validAssetRes.valid, true, `Valid media failed asset validation: ${validAssetRes.errors.join("; ")}`);
+    assert.match(validAssetRes.streamInspection, /VERIFIED/);
+
     const validPubRes = validateContentManifest(validManifest, {
       mode: "publish",
+      publicDir,
       videoInspector: streamInspector,
       decodeVerifier: () => ({ available: true, ok: true }),
       fandomRegistry: FANDOM_REGISTRY,
     });
-    assert.equal(validPubRes.valid, true, `Valid clip failed: ${validPubRes.errors.join("; ")}`);
+    assert.equal(validPubRes.valid, false, "Playable media without source-specific evidence must not authorize publication");
+    assert.match(validPubRes.errors.join("; "), /missing provenance or audit evidence/);
+    assert.match(validPubRes.streamInspection, /VERIFIED/);
     assert.match(validPubRes.decodeVerification, /VERIFIED/);
   } finally {
-    if (existsSync(isolatedValidFile)) unlinkSync(isolatedValidFile);
-    if (existsSync(truncatedFile)) unlinkSync(truncatedFile);
+    rmSync(publicDir, { recursive: true, force: true });
   }
 });
 

@@ -1,12 +1,28 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import net from "node:net";
 import os from "node:os";
 
 export const __projectRoot = fileURLToPath(new URL("../", import.meta.url));
+
+/** Expand only the default selection; explicit arguments remain literal argv. */
+export function discoverTestFiles(args, testsDirectory = resolve(__projectRoot, "tests")) {
+  if (args.length > 0) return [...args];
+
+  const files = readdirSync(testsDirectory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".test.mjs"))
+    .map((entry) => entry.name)
+    .sort()
+    .map((name) => resolve(testsDirectory, name));
+
+  if (files.length === 0) {
+    throw new Error("No test files found: expected regular tests/*.test.mjs files.");
+  }
+  return files;
+}
 
 /**
  * Explicit allowlist of environment variables permitted into isolated test processes.
@@ -657,7 +673,7 @@ async function main() {
       LOLIXCO_KERNEL_ISOLATED: "1",
     });
 
-    const testFiles = rawArgs.length > 0 ? rawArgs : ["tests/*.test.mjs"];
+    const testFiles = discoverTestFiles(rawArgs);
     const nodeArgs = ["--import", "./tests/register-ts.mjs", "--test", ...testFiles];
 
     // Spawn test suite using process.execPath with explicit sanitized environment and positional args

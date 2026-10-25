@@ -1485,6 +1485,34 @@ test("V3 FIX B: Filtered Shorts navigation scope: Changes in available Short lis
 // 13. REVIEW V3 FIX C: Background Playback & Late Metadata Prevention
 // ---------------------------------------------------------------------------
 
+for (const scenario of [
+  { name: "absent navigator", navigator: undefined, expectedPlayCalls: 1 },
+  { name: "navigator without connection", navigator: {}, expectedPlayCalls: 1 },
+  { name: "browser data-saver preference", navigator: { connection: { saveData: true } }, expectedPlayCalls: 0 },
+]) {
+  test(`VideoPlayer metadata respects ${scenario.name}`, async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+    const { container, root, cleanup } = setupMountedDom();
+    try {
+      if (scenario.navigator === undefined) delete globalThis.navigator;
+      else Object.defineProperty(globalThis, "navigator", { configurable: true, value: scenario.navigator });
+
+      await act(async () => {
+        root.render(React.createElement(VideoPlayer, { edit: edits[0] }));
+      });
+      const video = container.querySelectorAll("video")[0];
+      assert.ok(video);
+      const before = video._playCalls;
+      await act(async () => { video.dispatchEvent({ type: "loadedmetadata" }); });
+      assert.equal(video._playCalls - before, scenario.expectedPlayCalls);
+    } finally {
+      await cleanup();
+      if (descriptor) Object.defineProperty(globalThis, "navigator", descriptor);
+      else delete globalThis.navigator;
+    }
+  });
+}
+
 test("V3 FIX C: Late metadata race: loadedmetadata event on VideoPlayer while ShortsViewer is open does not start playback", async () => {
   const { container, root, cleanup } = setupMountedDom();
 

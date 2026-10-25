@@ -3,7 +3,11 @@
   "title": "LolixcoContentManifest",
   "description": "Schema for Lolixco owner-curated video and shorts content manifest",
   "type": "object",
-  "required": ["manifestVersion", "catalogVersion", "items"],
+  "required": [
+    "manifestVersion",
+    "catalogVersion",
+    "items"
+  ],
   "additionalProperties": false,
   "properties": {
     "$schema": {
@@ -50,11 +54,14 @@
         "id": {
           "type": "integer",
           "minimum": 0,
-          "description": "Stable unique numeric identifier. IDs 0-16 are reserved for baseline demo edits. Recommended 100-199 for curated landscape videos and 200-299 for curated portrait shorts."
+          "description": "Stable unique numeric identifier. Partitions: 0-16 baseline demo edits, 17-99 reserved test harness, 100-199 curated landscape YouTube videos, 200-299 curated portrait YouTube shorts, 300-399 licensed hosted landscape videos, 400-499 licensed hosted portrait shorts, 500+ unallocated."
         },
         "format": {
           "type": "string",
-          "enum": ["video", "short"],
+          "enum": [
+            "video",
+            "short"
+          ],
           "description": "Content presentation format: standard landscape video (16:9) or vertical Short (9:16)."
         },
         "title": {
@@ -106,8 +113,8 @@
         },
         "source": {
           "type": "string",
-          "pattern": "^(\\/|https?:\\/\\/|\\.\\/).+\\.(mp4|webm|m4v)$",
-          "description": "Asset path or URL for the media video file."
+          "pattern": "^(\\/|https?:\\/\\/|\\.\\/).+(\\.(mp4|webm|m4v)|youtube\\.com\\/watch\\?v=[a-zA-Z0-9_-]{11})$",
+          "description": "Asset path or URL for the media video file or canonical YouTube watch URL."
         },
         "duration": {
           "type": "string",
@@ -130,6 +137,35 @@
         },
         "editorial": {
           "$ref": "#/definitions/EditorialProvenanceMetadata"
+        },
+        "sourceType": {
+          "type": "string",
+          "enum": [
+            "local_demo",
+            "youtube_embed",
+            "licensed_local_media"
+          ],
+          "description": "Underlying playback mechanism and source provider partition."
+        },
+        "youtubeVideoId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]{11}$",
+          "description": "Optional canonical 11-character YouTube video ID for youtube_embed sources."
+        },
+        "channelTitle": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Optional YouTube channel title for youtube_embed sources."
+        },
+        "channelId": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Optional YouTube channel ID for youtube_embed sources."
+        },
+        "sourceUrl": {
+          "type": "string",
+          "pattern": "^https?:\\/\\/.+$",
+          "description": "Optional canonical source URL."
         }
       }
     },
@@ -139,7 +175,12 @@
       "properties": {
         "aspectRatio": {
           "type": "string",
-          "enum": ["16:9", "9:16", "4:3", "2.39:1"]
+          "enum": [
+            "16:9",
+            "9:16",
+            "4:3",
+            "2.39:1"
+          ]
         },
         "width": {
           "type": "integer",
@@ -153,11 +194,22 @@
         },
         "codec": {
           "type": "string",
-          "enum": ["h264", "hevc", "av1", "vp9", "vp8"]
+          "enum": [
+            "h264",
+            "hevc",
+            "av1",
+            "vp9",
+            "vp8"
+          ]
         },
         "audioCodec": {
           "type": "string",
-          "enum": ["aac", "opus", "mp3", "none"]
+          "enum": [
+            "aac",
+            "opus",
+            "mp3",
+            "none"
+          ]
         },
         "frameRate": {
           "type": "number",
@@ -183,7 +235,13 @@
       "properties": {
         "reviewStatus": {
           "type": "string",
-          "enum": ["draft", "reviewed", "approved", "rejected", "published"]
+          "enum": [
+            "draft",
+            "reviewed",
+            "approved",
+            "rejected",
+            "published"
+          ]
         },
         "rightsCleared": {
           "type": "boolean",

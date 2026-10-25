@@ -33,6 +33,7 @@ try {
 }
 
 import { allocateStableId, CANONICAL_CATEGORIES } from "./youtube-editorial.mjs";
+import { assertPublicEditIntegrity, validateSourceAndId } from "./validate-content.mjs";
 import { loadEnvConfig, isTestIsolationActive } from "./youtube-api.mjs";
 import {
   safeAtomicWriteFileSync,
@@ -77,6 +78,24 @@ export async function loadFandomRegistry() {
  * Projects a validated audit record to a public Edit object.
  * Strips all internal review statuses, notes, and audit fields.
  */
+/**
+ * Normalizes external raw tags into valid public slug tags (lowercase alphanumeric and hyphens).
+ */
+export function normalizeCatalogTag(tag) {
+  if (typeof tag !== "string") return null;
+  let normalized = tag.trim().toLowerCase();
+  if (normalized.startsWith("#")) {
+    normalized = normalized.slice(1).trim();
+  }
+  normalized = normalized.replace(/[^a-z0-9_-]+/g, "-");
+  normalized = normalized.replace(/[-_]{2,}/g, "-");
+  normalized = normalized.replace(/^[-_]+|[-_]+$/g, "");
+  if (!normalized || !/^[a-z0-9_-]+$/.test(normalized)) {
+    return null;
+  }
+  return normalized;
+}
+
 export function projectToPublicYouTubeEdit(auditItem) {
   const metadata = auditItem.metadata || {};
   const category = auditItem.category || auditItem.ownerCategory || "Cinematic";
@@ -97,9 +116,22 @@ export function projectToPublicYouTubeEdit(auditItem) {
     ...(metadata.hashtags || []),
   ];
 
-  const uniqueTags = Array.from(new Set(rawTags.map((t) => t.toLowerCase().trim()).filter(Boolean))).slice(0, 10);
+  const normalizedTags = [];
+  for (const t of rawTags) {
+    const norm = normalizeCatalogTag(t);
+    if (norm && !normalizedTags.includes(norm)) {
+      normalizedTags.push(norm);
+    }
+  }
 
-  return {
+  const categoryTag = normalizeCatalogTag(category) || "cinematic";
+  if (!normalizedTags.includes(categoryTag)) {
+    normalizedTags.unshift(categoryTag);
+  }
+
+  const uniqueTags = normalizedTags.slice(0, 10);
+
+  const publicEdit = {
     id: auditItem.assignedLolixcoId,
     title: metadata.title || "",
     category,
@@ -117,6 +149,12 @@ export function projectToPublicYouTubeEdit(auditItem) {
     channelTitle: metadata.channelTitle || undefined,
     channelId: metadata.channelId || undefined,
   };
+
+  if (typeof publicEdit.id === "number") {
+    assertPublicEditIntegrity(publicEdit);
+  }
+
+  return publicEdit;
 }
 
 /**
@@ -664,6 +702,14 @@ export async function compileYouTubeCatalog(options = {}) {
       errors.push(`Duplicate Lolixco ID collision: ID ${projected.id} is assigned multiple times.`);
     }
     seenLolixcoIds.add(projected.id);
+
+    // Stage 2: Runtime Public Record Integrity Assertion before serialization
+    try {
+      assertPublicEditIntegrity(projected);
+    } catch (err) {
+      errors.push(`Item '${videoId}': public integrity assertion failed: ${err.message}`);
+      continue;
+    }
 
     newEdits.push(projected);
   }

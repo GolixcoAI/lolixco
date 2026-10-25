@@ -65,22 +65,16 @@ await page.waitForFunction(
 );
 await page.getByRole("button", { name: "Anime", exact: true }).click();
 assert.ok((await page.getByRole("button", { name: /Watch / }).count()) > 0);
-await page.getByRole("button", { name: "Featured", exact: true }).click();
-await page.getByRole("button", { name: "Sign In", exact: true }).click();
-await page.getByRole("button", { name: "Enter member preview" }).click();
-assert.ok(
-  await page.getByRole("button", { name: "Create", exact: true }).isVisible(),
-);
-await page.screenshot({
-  path: `${outputDirectory}/member-desktop.png`,
-  fullPage: true,
-});
-await page.getByRole("button", { name: "Profile menu" }).click();
-await page.getByRole("button", { name: "Sign Out of preview" }).click();
+await page.getByRole("button", { name: "All", exact: true }).click();
+// The current discovery header has Help rather than the retired member preview.
 assert.equal(
   await page.getByRole("button", { name: "Create", exact: true }).count(),
   0,
 );
+await page.getByRole("button", { name: "Help and shortcuts", exact: true }).click();
+assert.ok(await page.getByRole("dialog", { name: "Help", exact: true }).isVisible());
+await page.keyboard.press("Escape");
+assert.equal(await page.getByRole("dialog").count(), 0);
 await page.getByRole("button", { name: "A–B Loop", exact: true }).click();
 await page.getByRole("spinbutton", { name: "Loop start seconds" }).fill("1");
 await page.getByRole("spinbutton", { name: "Loop end seconds" }).fill("2");
