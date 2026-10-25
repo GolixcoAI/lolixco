@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import os
+import tempfile
 from typing import Any, Dict, List, Tuple
 
 
@@ -71,15 +73,31 @@ def generate_snapshot_payload(edits: List[Dict[str, Any]], version: str = "demo-
 
 def sync_catalog(repo_root: Path, output_file: Path) -> Dict[str, Any]:
     """Fetch live edits from TypeScript source and write snapshot JSON."""
-    if output_file.resolve() == (get_repo_root() / "server/recsys/catalog_snapshot.json").resolve():
+    target = output_file.resolve()
+    protected_root = get_repo_root()
+    if (target == (protected_root / "server/recsys/catalog_snapshot.json").resolve()
+            or target.is_relative_to((protected_root / "src/data").resolve())
+            or target.is_relative_to((protected_root / "content").resolve())):
         raise ValueError("Independent production snapshot writes are retired; use scripts/compile-catalog.mjs for paired publication")
+    if output_file.suffix != ".json":
+        raise ValueError("Fixture snapshot exports require a JSON output path")
     edits = fetch_edits_from_source(repo_root)
     payload = generate_snapshot_payload(edits)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    with output_file.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
-        f.write("\n")
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=output_file.parent, delete=False) as f:
+            temp_path = Path(f.name)
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        # Replace a directory entry instead of truncating possible hard-link aliases.
+        os.replace(temp_path, output_file)
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
 
     return payload
 

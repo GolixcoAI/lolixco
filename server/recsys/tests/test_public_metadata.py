@@ -80,8 +80,10 @@ class TestPublicChannelMetadata(unittest.TestCase):
         self.assertEqual(tag_idf_similarity(before.get(0).tags,before.get(1).tags,idf),tag_idf_similarity(after.get(0).tags,after.get(1).tags,idf))
 
     def test_exporter_cannot_independently_write_production_snapshot(self):
-        with self.assertRaisesRegex(ValueError,'paired publication'):
-            sync_catalog(get_repo_root(),get_repo_root()/'server/recsys/catalog_snapshot.json')
+        for path in ('server/recsys/catalog_snapshot.json', 'src/data/edits.ts', 'content/baseline/edits.ts', 'content/audit/blocked.json'):
+            with self.subTest(path=path):
+                with self.assertRaisesRegex(ValueError,'paired publication'):
+                    sync_catalog(get_repo_root(),get_repo_root()/path)
 
     def test_dataclass_rejects_invalid_optional_types(self):
         item = Catalog.from_dict_list([self.record]).get(100)

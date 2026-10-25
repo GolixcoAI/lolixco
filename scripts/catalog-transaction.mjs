@@ -9,6 +9,7 @@ import {
 } from "./youtube-importer.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const baselineTemplate = resolve(root, "content/baseline/edits.ts");
 export const PRODUCTION_OUTPUTS = Object.freeze([
   resolve(root, "src/data/edits.ts"),
   resolve(root, "server/recsys/catalog_snapshot.json"),
@@ -32,6 +33,10 @@ export function checkOutputPaths(paths) {
   )
     throw new Error("Two output paths are required");
   for (const path of paths) {
+    if (resolve(path) === baselineTemplate)
+      throw new Error(
+        "Immutable demo template cannot be an output destination",
+      );
     // Lexical protection is checked before canonical filesystem operations.
     if (isProtectedAuditPath(path))
       throw new Error("Private audit destinations are forbidden");
@@ -45,6 +50,10 @@ export function checkOutputPaths(paths) {
       );
   }
   const result = paths.map(canonicalPath);
+  if (result.includes(baselineTemplate))
+    throw new Error(
+      "Immutable demo template alias cannot be an output destination",
+    );
   if (
     result[0] === result[1] ||
     !result[0].endsWith(".ts") ||

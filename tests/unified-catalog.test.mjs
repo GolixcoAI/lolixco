@@ -384,6 +384,21 @@ test("Unified: the demo trust template is byte-for-byte the frozen milestone cat
   );
 });
 
+test("Unified: immutable demo template and its aliases cannot be transaction outputs", async () =>
+  withFixture(async (f) => {
+    const baseline = resolve("content/baseline/edits.ts");
+    assert.throws(
+      () => commitCatalogPair([baseline, f.paths[1]], ["bad", "bad"]),
+      /Immutable demo template/,
+    );
+    const alias = join(f.dir, "baseline.ts");
+    fs.symlinkSync(baseline, alias);
+    assert.throws(
+      () => commitCatalogPair([alias, f.paths[1]], ["bad", "bad"]),
+      /Immutable demo template/,
+    );
+  }));
+
 test("Unified: explicit empty audits preserve the exact demo-only frontend and snapshot", async () =>
   withFixture(async (f) => {
     f.options.youtubeAudit.items = [];
