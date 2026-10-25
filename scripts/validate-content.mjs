@@ -2222,6 +2222,22 @@ export function verifyAssetPathContainment(targetFile, publicDir) {
     verifiedDecode: verifiedDecodeResult,
   };
 }
+export function hasSyntheticMarker(record) {
+  if (!record || typeof record !== "object") return false;
+  if (record.isMock === true) return true;
+  if (Boolean(record.syntheticOrigin)) return true;
+  if (record.provenance === "synthetic_mock") return true;
+  if (typeof record.provenance === "string" && record.provenance.toLowerCase().includes("synthetic")) return true;
+  if (typeof record.channelId === "string" && record.channelId.startsWith("UC_SYNTHETIC")) return true;
+  if (record.metadata && typeof record.metadata === "object") {
+    if (record.metadata.isMock === true) return true;
+    if (Boolean(record.metadata.syntheticOrigin)) return true;
+    if (record.metadata.provenance === "synthetic_mock") return true;
+    if (typeof record.metadata.provenance === "string" && record.metadata.provenance.toLowerCase().includes("synthetic")) return true;
+    if (typeof record.metadata.channelId === "string" && record.metadata.channelId.startsWith("UC_SYNTHETIC")) return true;
+  }
+  return false;
+}
 export function resolveItemAuditEvidence(item, options = {}) {
   if (!item || typeof item !== "object") return null;
 
@@ -2365,27 +2381,52 @@ export function verifyProductionPublicationEligibility(item, options = {}) {
       }
 
       // Audit evidence binding against candidate intake identity (audit fields must not overwrite candidate)
-      if (audit.assignedLolixcoId !== undefined && audit.assignedLolixcoId !== null && typeof id === "number" && audit.assignedLolixcoId !== id) {
-        errors.push(
-          `YouTube edit ID ${id}: audit evidence assignedLolixcoId (${audit.assignedLolixcoId}) does not match candidate catalog ID (${id}).`
-        );
+      // Positive allocation check: Production publication requires a valid historically assigned catalog ID
+      const allocatedId = audit.assignedLolixcoId ?? audit.id;
+      if (typeof id !== "number" || typeof allocatedId !== "number" || allocatedId !== id) {
+        if (typeof id === "number" && typeof allocatedId === "number" && allocatedId !== id) {
+          if (audit.assignedLolixcoId !== undefined && audit.assignedLolixcoId !== null) {
+            errors.push(
+              `YouTube edit ID ${id}: audit evidence assignedLolixcoId (${audit.assignedLolixcoId}) does not match candidate catalog ID (${id}).`
+            );
+          } else {
+            errors.push(
+              `YouTube edit ID ${id}: audit evidence ID (${audit.id}) does not match candidate catalog ID (${id}).`
+            );
+          }
+        } else {
+          errors.push(
+            `YouTube edit ID ${id}: missing historically assigned catalog ID in audit evidence (assignedLolixcoId: ${audit.assignedLolixcoId ?? "unallocated"}).`
+          );
+        }
       }
-      if (audit.id !== undefined && audit.id !== null && typeof id === "number" && audit.id !== id) {
+      if (typeof audit.assignedLolixcoId === "number" && typeof audit.id === "number" && audit.assignedLolixcoId !== audit.id) {
         errors.push(
-          `YouTube edit ID ${id}: audit evidence ID (${audit.id}) does not match candidate catalog ID (${id}).`
+          `YouTube edit ID ${id}: conflicting catalog IDs in audit evidence (assignedLolixcoId: ${audit.assignedLolixcoId}, id: ${audit.id}).`
         );
       }
 
-      if (audit.canonicalVideoId && audit.canonicalVideoId !== publicVideoId) {
+      // Positive video identity check: Production publication requires positive canonical video IDs in evidence and metadata
+      if (!audit.canonicalVideoId || typeof audit.canonicalVideoId !== "string" || !/^[a-zA-Z0-9_-]{11}$/.test(audit.canonicalVideoId)) {
+        errors.push(
+          `YouTube edit ID ${id}: missing or invalid canonical YouTube video ID in audit evidence ('${audit.canonicalVideoId ?? ""}').`
+        );
+      } else if (audit.canonicalVideoId !== publicVideoId) {
         errors.push(
           `YouTube edit ID ${id}: canonical YouTube ID mismatch between evidence record ('${audit.canonicalVideoId}') and candidate video ID ('${publicVideoId}').`
         );
       }
-      if (audit.metadata?.canonicalVideoId && audit.metadata.canonicalVideoId !== publicVideoId) {
+
+      if (!audit.metadata?.canonicalVideoId || typeof audit.metadata.canonicalVideoId !== "string" || !/^[a-zA-Z0-9_-]{11}$/.test(audit.metadata.canonicalVideoId)) {
+        errors.push(
+          `YouTube edit ID ${id}: missing or invalid canonical YouTube video ID in metadata payload ('${audit.metadata?.canonicalVideoId ?? ""}').`
+        );
+      } else if (audit.metadata.canonicalVideoId !== publicVideoId) {
         errors.push(
           `YouTube edit ID ${id}: canonical YouTube ID mismatch between metadata payload ('${audit.metadata.canonicalVideoId}') and candidate video ID ('${publicVideoId}').`
         );
       }
+
       if (typeof audit.canonicalUrl === "string") {
         const cMatch = /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(audit.canonicalUrl);
         if (!cMatch || cMatch[1] !== publicVideoId) {
@@ -2427,25 +2468,21 @@ export function verifyProductionPublicationEligibility(item, options = {}) {
       }
     }
 
-    // Review status check
-    const status = item.contentReviewStatus || item.editorial?.reviewStatus || item.reviewStatus || audit.contentReviewStatus || audit.reviewStatus || audit.editorial?.reviewStatus;
-    if (status !== "approved" && status !== "published") {
-      errors.push(`YouTube edit ID ${id} requires 'approved' or 'published' review status, got '${status}'`);
+    // Review status check: Authoritative review authorization MUST come from the trusted matched audit record.
+    // Candidate intake declarations must never supply missing authorization or override a rejected/non-approved audit state.
+    const auditStatus = audit.contentReviewStatus || audit.reviewStatus || audit.editorial?.reviewStatus;
+    if (auditStatus !== "approved" && auditStatus !== "published") {
+      errors.push(`YouTube edit ID ${id} requires authoritative audit review status 'approved' or 'published', got '${auditStatus ?? "missing"}'`);
     }
 
-    // Provenance and synthetic mock validation (Point 1: No synthetic bypass)
-    const isMock =
-      audit.isMock === true ||
-      audit.metadata?.isMock === true ||
-      audit.provenance === "synthetic_mock" ||
-      audit.metadata?.provenance === "synthetic_mock" ||
-      Boolean(audit.syntheticOrigin) ||
-      Boolean(audit.metadata?.syntheticOrigin) ||
-      String(audit.provenance || "").includes("synthetic") ||
-      String(audit.metadata?.provenance || "").includes("synthetic") ||
-      String(audit.metadata?.channelId || "").startsWith("UC_SYNTHETIC") ||
-      item.isMock === true ||
-      item.provenance === "synthetic_mock";
+    // Candidate intake record, if declaring a review status, cannot contradict publication authorization
+    const candidateStatus = item.contentReviewStatus || item.editorial?.reviewStatus || item.reviewStatus;
+    if (candidateStatus && candidateStatus !== "approved" && candidateStatus !== "published") {
+      errors.push(`YouTube edit ID ${id}: candidate review status '${candidateStatus}' contradicts publication authorization.`);
+    }
+
+    // Provenance and synthetic mock validation (Point 1 & Point 3: No synthetic bypass; candidate & evidence markers checked)
+    const isMock = hasSyntheticMarker(audit) || hasSyntheticMarker(item);
 
     if (isMock) {
       errors.push(
@@ -2937,13 +2974,7 @@ export function projectToPublicEdit(item, options = {}) {
           `Cannot project YouTube item ${item.id} to public catalog: review status must be 'approved' or 'published', got '${status}'`
         );
       }
-      const isMock =
-        item.isMock === true ||
-        item.metadata?.isMock === true ||
-        item.provenance === "synthetic_mock" ||
-        item.metadata?.provenance === "synthetic_mock" ||
-        Boolean(item.syntheticOrigin) ||
-        Boolean(item.metadata?.syntheticOrigin);
+      const isMock = hasSyntheticMarker(item) || (options.auditEvidence && hasSyntheticMarker(options.auditEvidence));
       if (isMock) {
         throw new Error(
           `Cannot project YouTube item ${item.id} to public catalog: synthetic mock metadata is prohibited`

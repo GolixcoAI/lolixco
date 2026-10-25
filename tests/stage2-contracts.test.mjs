@@ -1408,3 +1408,103 @@ test("Stage 2 V3: Manifest publication succeeds with schema-valid intake record 
   assert.equal(hostedRes.valid, false);
   assert.match(hostedRes.errors.join("; "), /hosted publication evidence is not implemented/i);
 });
+
+
+// ============================================================================
+// STAGE 2 V4 REVIEW REGRESSION TESTS (Codex Review Acceptance Cases)
+// ============================================================================
+
+const reviewCandidate = {
+  id: 105,
+  title: 'Offline review candidate',
+  description: 'Offline synthetic fixture, no API call.',
+  creator: 'Fixture Creator',
+  category: 'Anime',
+  format: 'video',
+  duration: '2:00',
+  sourceType: 'youtube_embed',
+  source: 'https://www.youtube.com/watch?v=12345678901',
+  poster: 'https://i.ytimg.com/vi/12345678901/hqdefault.jpg',
+  youtubeVideoId: '12345678901',
+  tags: ['anime'],
+  trending: false,
+  editorial: { reviewStatus: 'approved' }
+};
+
+const reviewEvidence = {
+  assignedLolixcoId: 105,
+  canonicalVideoId: '12345678901',
+  canonicalUrl: reviewCandidate.source,
+  format: 'video',
+  contentReviewStatus: 'approved',
+  provenance: 'youtube_data_api_v3',
+  metadataFetchStatus: 'fetched',
+  lastMetadataVerification: '2026-10-25T10:00:00Z',
+  metadata: {
+    canonicalVideoId: '12345678901',
+    title: 'Offline review candidate',
+    channelTitle: 'Fixture Creator',
+    channelId: 'UC_FIXTURE_REVIEW',
+    durationSec: 120,
+    durationFormatted: '2:00',
+    privacyStatus: 'public',
+    embeddable: true,
+    provenance: 'youtube_data_api_v3'
+  }
+};
+const reviewNow = '2026-10-25T12:00:00Z';
+
+function manifestReviewHelper(item, audit) {
+  const intake = { ...item };
+  delete intake.creator;
+  return validateContentManifest(
+    { manifestVersion: '1.0.0', catalogVersion: 'review-v3', items: [intake] },
+    { mode: 'publish', auditRecords: [audit], now: reviewNow }
+  );
+}
+
+for (const status of ['approved', 'published']) {
+  test('Review positive control: matched audit ' + status, () => {
+    const audit = { ...reviewEvidence, contentReviewStatus: status };
+    assert.equal(projectToPublicEdit(reviewCandidate, { forProduction: true, auditEvidence: audit, now: reviewNow }).id, 105);
+    assert.equal(manifestReviewHelper(reviewCandidate, audit).valid, true);
+  });
+}
+
+test('Review regression: candidate approval cannot override rejected or missing audit approval', () => {
+  for (const status of ['rejected', 'needs_recheck', 'unavailable', 'draft', 'compiled', undefined]) {
+    const audit = { ...reviewEvidence, contentReviewStatus: status };
+    assert.equal(manifestReviewHelper(reviewCandidate, audit).valid, false, 'manifest accepted audit status ' + String(status));
+    assert.throws(
+      () => projectToPublicEdit(reviewCandidate, { forProduction: true, auditEvidence: audit, now: reviewNow }),
+      'projector accepted audit status ' + String(status)
+    );
+  }
+});
+
+test('Review regression: production requires positive audit identity and allocated ID', () => {
+  const noIdentity = { ...reviewEvidence, metadata: { ...reviewEvidence.metadata } };
+  delete noIdentity.canonicalVideoId;
+  delete noIdentity.canonicalUrl;
+  delete noIdentity.metadata.canonicalVideoId;
+  assert.equal(manifestReviewHelper(reviewCandidate, noIdentity).valid, false, 'accepted evidence without any video identity');
+  for (const assigned of [null, undefined]) {
+    assert.equal(
+      manifestReviewHelper({ ...reviewCandidate, id: 106 }, { ...reviewEvidence, assignedLolixcoId: assigned }).valid,
+      false,
+      'accepted missing historical allocation'
+    );
+  }
+});
+
+test('Review regression: separate clean audit cannot mask candidate synthetic markers', () => {
+  for (const item of [
+    { ...reviewCandidate, syntheticOrigin: 'LOLIXCO_SYNTHETIC_REVIEW' },
+    { ...reviewCandidate, metadata: { syntheticOrigin: 'LOLIXCO_SYNTHETIC_REVIEW' } }
+  ]) {
+    assert.throws(
+      () => projectToPublicEdit(item, { forProduction: true, auditEvidence: reviewEvidence, now: reviewNow }),
+      'candidate synthetic marker was ignored'
+    );
+  }
+});
