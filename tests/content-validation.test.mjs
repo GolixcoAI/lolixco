@@ -347,6 +347,11 @@ test("projectToPublicEdit enforces strict publication clearance boundary", () =>
   // Approved record projects safely and completely strips private editorial data
   const approvedRecord = {
     ...MOCK_VALID_VIDEO,
+    sourceType: "youtube_embed",
+    youtubeVideoId: "12345678901",
+    poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+    source: "https://www.youtube.com/watch?v=12345678901",
+    provenance: "youtube_data_api_v3",
     editorial: {
       reviewStatus: "approved",
       rightsCleared: true,
@@ -1016,6 +1021,11 @@ test("FIX D: projectToPublicEdit is safe by default without requiring optional s
   // Approved and cleared record projects successfully and strips all private editorial fields
   const approvedRecord = {
     ...MOCK_VALID_VIDEO,
+    sourceType: "youtube_embed",
+    youtubeVideoId: "12345678901",
+    poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+    source: "https://www.youtube.com/watch?v=12345678901",
+    provenance: "youtube_data_api_v3",
     editorial: {
       reviewStatus: "approved",
       rightsCleared: true,
@@ -1239,7 +1249,8 @@ test("V4 ISSUE A: Real-media regression: isolated valid clip vs deliberately tru
     assert.match(pubRes.decodeVerification, /FAILED/);
     assert.match(pubRes.errors.join("; "), /playback decode integrity verification failed/);
 
-    // Valid isolated clip passes publication mode
+    // The intact clip passes media validation, but playable bytes alone cannot
+    // authorize publication for this legacy fixture in a YouTube ID partition.
     const validRecord = {
       ...truncatedRecord,
       id: 103,
@@ -1251,6 +1262,15 @@ test("V4 ISSUE A: Real-media regression: isolated valid clip vs deliberately tru
       items: [validRecord],
     };
 
+    const validAssetRes = validateContentManifest(validManifest, {
+      mode: "assets",
+      publicDir,
+      videoInspector: streamInspector,
+      fandomRegistry: FANDOM_REGISTRY,
+    });
+    assert.equal(validAssetRes.valid, true, `Valid media failed asset validation: ${validAssetRes.errors.join("; ")}`);
+    assert.match(validAssetRes.streamInspection, /VERIFIED/);
+
     const validPubRes = validateContentManifest(validManifest, {
       mode: "publish",
       publicDir,
@@ -1258,7 +1278,9 @@ test("V4 ISSUE A: Real-media regression: isolated valid clip vs deliberately tru
       decodeVerifier: () => ({ available: true, ok: true }),
       fandomRegistry: FANDOM_REGISTRY,
     });
-    assert.equal(validPubRes.valid, true, `Valid clip failed: ${validPubRes.errors.join("; ")}`);
+    assert.equal(validPubRes.valid, false, "Playable media without source-specific evidence must not authorize publication");
+    assert.match(validPubRes.errors.join("; "), /missing provenance or audit evidence/);
+    assert.match(validPubRes.streamInspection, /VERIFIED/);
     assert.match(validPubRes.decodeVerification, /VERIFIED/);
   } finally {
     rmSync(publicDir, { recursive: true, force: true });

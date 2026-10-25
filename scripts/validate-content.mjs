@@ -12,6 +12,7 @@ import { resolve, relative, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { register } from "node:module";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 
 export const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 
@@ -40,7 +41,7 @@ export const VALID_TAG_REGEX = /^[a-z0-9_-]+$/;
 export const DURATION_REGEX = /^[0-9]+:[0-5][0-9]$/;
 export const FANDOM_SLUG_REGEX = /^[a-z0-9_-]+$/;
 export const POSTER_PATH_REGEX = /^(\/|https?:\/\/|\.\/).+\.(svg|png|jpg|jpeg|webp)$/;
-export const VIDEO_PATH_REGEX = /^(\/|https?:\/\/|\.\/).+\.(mp4|webm|m4v)$/;
+export const VIDEO_PATH_REGEX = /^(\/|https?:\/\/|\.\/).+(\.(mp4|webm|m4v)|youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11})$/;
 export const RFC3339_DATE_TIME_REGEX =
   /^([0-9]{4})-([0-9]{2})-([0-9]{2})[Tt]([0-9]{2}):([0-9]{2}):([0-9]{2})(\.[0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$/;
 
@@ -78,6 +79,11 @@ export const ALLOWED_RECORD_KEYS = [
   "duration",
   "durationMs",
   "trending",
+  "sourceType",
+  "youtubeVideoId",
+  "channelTitle",
+  "channelId",
+  "sourceUrl",
   "media",
   "editorial",
 ];
@@ -106,13 +112,985 @@ export const ALLOWED_AUDIO_CODECS = ["aac", "opus", "mp3", "none"];
 export const ALLOWED_ASPECT_RATIOS = ["16:9", "9:16", "4:3", "2.39:1"];
 export const ALLOWED_REVIEW_STATUSES = ["draft", "reviewed", "approved", "rejected", "published"];
 
-const schemaPath = resolve(projectRoot, "content/manifest.schema.json");
+// Stage 2: Pinned checksum and unforgeable baseline reference for the 17 frozen demo records
+export const PINNED_EDITS_TS_SHA256 =
+  "43d214282ba2122c3f3b95e0c047d92027ea33f05a54f6832e17543a2e575b88";
+
+export const BASELINE_DEMO_TITLES = Object.freeze([
+  "Into the Light",
+  "Echoes of Tomorrow",
+  "Fragments",
+  "Red Horizon",
+  "Silent World",
+  "Neon Soul",
+  "Broken Crowns",
+  "Liminal",
+  "Darkest Days",
+  "Reflections",
+  "Chasing Heaven",
+  "Afterglow",
+  "Cold Hearts",
+  "Parallel",
+  "Lost Signal",
+  "Radiant",
+  "Midnight City",
+]);
+
+export const BASELINE_DEMO_CATEGORIES = Object.freeze([
+  "Cinematic",
+  "Gaming",
+  "Anime",
+  "Movies",
+  "Series",
+  "Phonk",
+]);
+
+export const ID_PARTITIONS = Object.freeze({
+  DEMO: { min: 0, max: 16, description: "Baseline demo edits" },
+  RESERVED_TEST: { min: 17, max: 99, description: "Internal test harness" },
+  YOUTUBE_VIDEO: { min: 100, max: 199, description: "Curated landscape YouTube videos" },
+  YOUTUBE_SHORT: { min: 200, max: 299, description: "Curated portrait YouTube shorts" },
+  HOSTED_VIDEO: { min: 300, max: 399, description: "Licensed hosted landscape videos" },
+  HOSTED_SHORT: { min: 400, max: 499, description: "Licensed hosted portrait shorts" },
+  RESERVED_UPPER: { min: 500, max: Infinity, description: "Unallocated / reserved" },
+});
+
+const PRIVATE_PUBLIC_FIELD_ALLOWLIST = new Set([
+  "id",
+  "title",
+  "category",
+  "tags",
+  "description",
+  "creator",
+  "poster",
+  "source",
+  "duration",
+  "trending",
+  "format",
+  "fandomIds",
+  "sourceType",
+  "youtubeVideoId",
+  "channelTitle",
+  "channelId",
+  "sourceUrl",
+]);
+
+const PRIVATE_FORBIDDEN_FIELDS = new Set([
+  "media",
+  "editorial",
+  "reviewStatus",
+  "rightsCleared",
+  "sourceAttribution",
+  "curatorNotes",
+  "ownerAssetRef",
+  "canonicalVideoId",
+  "auditHistory",
+  "provenance",
+  "isMock",
+  "syntheticOrigin",
+  "metadataFetchStatus",
+  "lastMetadataVerification",
+  "formatConfirmed",
+  "confirmedFormat",
+  "rawMetadata",
+  "s3Key",
+  "s3Bucket",
+  "credentials",
+  "apiKey",
+  "accessKeyId",
+  "secretAccessKey",
+  "sessionToken",
+]);
+
+export const PUBLIC_FIELD_ALLOWLIST = Object.freeze(Array.from(PRIVATE_PUBLIC_FIELD_ALLOWLIST));
+export const FORBIDDEN_PRIVATE_FIELDS = Object.freeze(Array.from(PRIVATE_FORBIDDEN_FIELDS));
+
+export function isPublicFieldAllowed(field) {
+  return PRIVATE_PUBLIC_FIELD_ALLOWLIST.has(field);
+}
+
+export function isForbiddenPrivateField(field) {
+  return PRIVATE_FORBIDDEN_FIELDS.has(field);
+}
+
+export const SECRET_PATTERNS = Object.freeze([
+  /s3\.amazonaws\.com/i,
+  /s3:\/\//i,
+  /AKIA[0-9A-Z]{16}/,
+  /Bearer\s+[A-Za-z0-9._~+/-]+=*/i,
+  /client_secret/i,
+  /ghp_[A-Za-z0-9]{36}/,
+  /AIza[0-9A-Za-z-_]{35}/,
+]);
+
+export const BASELINE_DEMO_RECORDS = Object.freeze(
+  BASELINE_DEMO_TITLES.map((title, id) =>
+    Object.freeze({
+      id,
+      title,
+      category: BASELINE_DEMO_CATEGORIES[id % 6],
+      tags: Object.freeze([
+        BASELINE_DEMO_CATEGORIES[id % 6].toLowerCase(),
+        "original",
+        "demo",
+        id % 2 ? "neon" : "landscape",
+      ]),
+      description:
+        "Original geometric artwork. Silent motion study for player testing; not finished creator footage.",
+      creator: "Lolixco demo",
+      posterSuffix: `media/art-${id}.svg`,
+      sourceSuffix: "media/motion-study.webm",
+      duration: "0:12",
+      trending: id > 10,
+    })
+  )
+);
+
+export function isBaselineDemoRecord(candidate, options = {}) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return false;
+  }
+
+  const candidateKeys = Object.keys(candidate).sort();
+  const expectedKeys = [
+    "category",
+    "creator",
+    "description",
+    "duration",
+    "id",
+    "poster",
+    "source",
+    "tags",
+    "title",
+    "trending",
+  ];
+  if (candidateKeys.length !== expectedKeys.length) {
+    return false;
+  }
+  for (let i = 0; i < expectedKeys.length; i++) {
+    if (candidateKeys[i] !== expectedKeys[i]) {
+      return false;
+    }
+  }
+
+  const id = candidate.id;
+  if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0 || id > 16) {
+    return false;
+  }
+
+  const expected = BASELINE_DEMO_RECORDS[id];
+  if (!expected) return false;
+
+  if (candidate.title !== expected.title) return false;
+  if (candidate.category !== expected.category) return false;
+  if (candidate.description !== expected.description) return false;
+  if (candidate.creator !== expected.creator) return false;
+  if (candidate.duration !== expected.duration) return false;
+  if (candidate.trending !== expected.trending) return false;
+
+  if (!Array.isArray(candidate.tags) || candidate.tags.length !== expected.tags.length) {
+    return false;
+  }
+  for (let i = 0; i < expected.tags.length; i++) {
+    if (candidate.tags[i] !== expected.tags[i]) return false;
+  }
+
+  if (typeof candidate.poster !== "string" || typeof candidate.source !== "string") {
+    return false;
+  }
+
+  const expectedPosterSuffix = `media/art-${id}.svg`;
+  const expectedSourceSuffix = "media/motion-study.webm";
+
+  if (!candidate.poster.endsWith(expectedPosterSuffix)) return false;
+  if (!candidate.source.endsWith(expectedSourceSuffix)) return false;
+
+  const posterBase = candidate.poster.slice(0, candidate.poster.length - expectedPosterSuffix.length);
+  const sourceBase = candidate.source.slice(0, candidate.source.length - expectedSourceSuffix.length);
+
+  if (posterBase !== sourceBase) return false;
+
+  // Reject control characters, userinfo, and dot-traversal segments
+  if (/[\x00-\x1f\x7f@]/.test(posterBase)) return false;
+  if (posterBase !== "./" && (
+    /(?:^|\/)\.\.(?:\/|$)/.test(posterBase) ||
+    /\/\.(?:\/|$)/.test(posterBase) ||
+    /(?:%2e\.|\.%2e|%2e%2e)/i.test(posterBase) ||
+    /%252e/i.test(posterBase) ||
+    posterBase === "." ||
+    posterBase === ".."
+  )) {
+    return false;
+  }
+
+  // External or protocol-relative substitutions are rejected unless that exact base is explicitly approved
+  if (posterBase.startsWith("//") || /^https?:\/\//i.test(posterBase)) {
+    const approved = Array.isArray(options.approvedOrigins)
+      ? options.approvedOrigins
+      : Array.isArray(options.trustedOrigins)
+      ? options.trustedOrigins
+      : [];
+    const isApproved = approved.some((orig) => {
+      const origNormalized = orig.endsWith("/") ? orig : `${orig}/`;
+      return posterBase === orig || posterBase === origNormalized;
+    });
+    if (!isApproved) {
+      return false;
+    }
+  } else {
+    // Exact trusted deployment base(s) and asset paths
+    const defaultAllowedLocalBases = ["", "/", "./", "/app/", "/lolixco/"];
+    const allowedLocalBases = Array.isArray(options.supportedBases)
+      ? options.supportedBases
+      : options.configuredBase
+      ? [options.configuredBase, "", "/", "./"]
+      : defaultAllowedLocalBases;
+
+    if (!allowedLocalBases.includes(posterBase)) {
+      return false;
+    }
+  }
+
+  // Pinned checksum verification: mandatory whenever baseline trust is claimed (production or checksum flag)
+  const shouldCheckChecksum =
+    options.checkFileChecksum === true ||
+    options.forProduction === true ||
+    options.enforceChecksum !== false;
+
+  if (shouldCheckChecksum) {
+    try {
+      const editsTsPath = resolve(projectRoot, "src/data/edits.ts");
+      if (!existsSync(editsTsPath)) return false;
+      const fileBuffer = readFileSync(editsTsPath);
+      const hash = createHash("sha256").update(fileBuffer).digest("hex");
+      if (hash !== PINNED_EDITS_TS_SHA256) return false;
+    } catch {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function validateSourceAndId(record, options = {}) {
+  const errors = [];
+  const {
+    isNewBatch = false,
+    allowTestHarness = false,
+    requireCuratedFields = false,
+  } = options;
+
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    return { valid: false, errors: ["Record must be an object"] };
+  }
+
+  const id = record.id;
+  if (id === undefined || id === null) {
+    return { valid: false, errors: ["Missing required property 'id'"] };
+  }
+
+  if (typeof id !== "number" || !Number.isSafeInteger(id)) {
+    return {
+      valid: false,
+      errors: [`Invalid ID: ${JSON.stringify(id)} (must be a safe integer)`],
+    };
+  }
+
+  if (id < 0) {
+    return {
+      valid: false,
+      errors: [`Invalid ID: ${id} (must be non-negative)`],
+    };
+  }
+
+  const seenIds = options.seenIds;
+  if (seenIds && seenIds.has(id)) {
+    errors.push(`Duplicate ID: ${id} is already assigned in this catalog/manifest`);
+  } else if (seenIds) {
+    seenIds.add(id);
+  }
+
+  const format = record.format;
+  const sourceType = record.sourceType;
+
+  if (id >= 0 && id <= 16) {
+    if (isNewBatch) {
+      errors.push(
+        `Reserved ID conflict: ID ${id} is reserved for baseline demo edits (0-16). New curated content must use IDs >= 100.`
+      );
+    } else {
+      if (!isBaselineDemoRecord(record, options)) {
+        errors.push(
+          `Demo impersonation detected for ID ${id}: record does not match trusted baseline demo record anchored to pinned checksum.`
+        );
+      }
+    }
+  } else if (id >= 17 && id <= 99) {
+    if (!allowTestHarness) {
+      errors.push(
+        `Reserved ID conflict: ID ${id} is reserved for internal test harnesses (17-99) and is never publishable. Use 100-199 for YouTube videos, 200-299 for YouTube shorts, 300-399 for hosted videos, 400-499 for hosted shorts.`
+      );
+    }
+  } else if (id >= 100 && id <= 199) {
+    if (requireCuratedFields && !sourceType) {
+      errors.push(`Curated record requires explicit sourceType 'youtube_embed' for ID ${id}`);
+    }
+    if (requireCuratedFields && !format) {
+      errors.push(`Curated record requires explicit format 'video' for ID ${id}`);
+    }
+    if (sourceType && sourceType !== "youtube_embed") {
+      errors.push(
+        `Source partition conflict: ID ${id} belongs to YouTube landscape partition [100..199], but sourceType is '${sourceType}'.`
+      );
+    }
+    if (format === "short") {
+      errors.push(
+        `Format partition conflict: ID range mismatch: Curated Short ID ${id} belongs to landscape partition [100..199], but format is 'short'. Curated Short ID ${id} must be in range 200-299 according to documented allocation policy. Automatic format migration is prohibited.`
+      );
+    }
+  } else if (id >= 200 && id <= 299) {
+    if (requireCuratedFields && !sourceType) {
+      errors.push(`Curated record requires explicit sourceType 'youtube_embed' for ID ${id}`);
+    }
+    if (requireCuratedFields && !format) {
+      errors.push(`Curated record requires explicit format 'short' for ID ${id}`);
+    }
+    if (sourceType && sourceType !== "youtube_embed") {
+      errors.push(
+        `Source partition conflict: ID ${id} belongs to YouTube portrait partition [200..299], but sourceType is '${sourceType}'.`
+      );
+    }
+    if (format === "video") {
+      errors.push(
+        `Format partition conflict: ID range mismatch: Landscape video ID ${id} belongs to portrait Short partition [200..299], but format is 'video'. Landscape video ID ${id} must be in range 100-199 according to documented allocation policy. Automatic format migration is prohibited.`
+      );
+    }
+  } else if (id >= 300 && id <= 399) {
+    if (requireCuratedFields && !sourceType) {
+      errors.push(`Curated record requires explicit sourceType 'licensed_local_media' for ID ${id}`);
+    }
+    if (requireCuratedFields && !format) {
+      errors.push(`Curated record requires explicit format 'video' for ID ${id}`);
+    }
+    if (sourceType && sourceType !== "licensed_local_media") {
+      errors.push(
+        `Source partition conflict: ID ${id} belongs to licensed hosted landscape partition [300..399], but sourceType is '${sourceType}'.`
+      );
+    }
+    if (format === "short") {
+      errors.push(
+        `Format partition conflict: ID ${id} belongs to landscape partition [300..399], but format is 'short'. Automatic format migration is prohibited.`
+      );
+    }
+  } else if (id >= 400 && id <= 499) {
+    if (requireCuratedFields && !sourceType) {
+      errors.push(`Curated record requires explicit sourceType 'licensed_local_media' for ID ${id}`);
+    }
+    if (requireCuratedFields && !format) {
+      errors.push(`Curated record requires explicit format 'short' for ID ${id}`);
+    }
+    if (sourceType && sourceType !== "licensed_local_media") {
+      errors.push(
+        `Source partition conflict: ID ${id} belongs to licensed hosted portrait partition [400..499], but sourceType is '${sourceType}'.`
+      );
+    }
+    if (format === "video") {
+      errors.push(
+        `Format partition conflict: ID ${id} belongs to portrait Short partition [400..499], but format is 'video'. Automatic format migration is prohibited.`
+      );
+    }
+  } else if (id >= 500) {
+    errors.push(`Unallocated ID partition: ID ${id} is outside allocated partitions [0..499].`);
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+export function validateMediaUrlOrigin(rawUrl, options = {}) {
+  if (typeof rawUrl !== "string" || !rawUrl.trim()) {
+    return { valid: false, error: "Media URL must be a non-empty string" };
+  }
+
+  const trimmed = rawUrl.trim();
+
+  // Step 1: Raw String Security Checks
+  if (/[\x00-\x1F\x7F\\]/.test(trimmed)) {
+    return { valid: false, error: "URL contains forbidden control characters or backslashes" };
+  }
+  if (/%5c/i.test(trimmed)) {
+    return { valid: false, error: "URL contains encoded backslash (%5C)" };
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^/?#]*@/.test(trimmed)) {
+    return { valid: false, error: "URL contains forbidden userinfo syntax ('@')" };
+  }
+
+  const afterScheme = trimmed.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "");
+  if (afterScheme.includes("//")) {
+    return { valid: false, error: "URL contains forbidden double slashes" };
+  }
+
+  const pathPart = afterScheme.split(/[?#]/)[0];
+  const queryPart = afterScheme.includes("?") ? afterScheme.split("?")[1].split("#")[0] : "";
+
+  // Reject raw, single-dot, double-dot, mixed encoded, and double-encoded dot segments in path
+  if (
+    /(?:^|\/)(?:\.\.|\.%2e|%2e\.|%2e%2e|\.|%2e)(?:\/|$)/i.test(pathPart) ||
+    /%252e/i.test(pathPart)
+  ) {
+    return { valid: false, error: "URL contains forbidden directory traversal or dot segment" };
+  }
+
+  if (/%2f/i.test(pathPart)) {
+    return { valid: false, error: "URL contains forbidden encoded path separator (%2F)" };
+  }
+
+  // Query parameter security checks
+  if (queryPart) {
+    const rawPairs = queryPart.split("&");
+    const seenParamKeys = new Set();
+    for (const pair of rawPairs) {
+      if (!pair) continue;
+      const rawKey = pair.split("=")[0];
+      if (/%[0-9a-fA-F]{2}/.test(rawKey)) {
+        return { valid: false, error: `URL contains forbidden percent-encoded parameter name: '${rawKey}'` };
+      }
+      if (seenParamKeys.has(rawKey)) {
+        if (rawKey === "v") {
+          return { valid: false, error: "YouTube watch URL must contain exactly one 'v' parameter, found duplicate" };
+        }
+        return { valid: false, error: `URL contains duplicate query parameter: '${rawKey}'` };
+      }
+      seenParamKeys.add(rawKey);
+    }
+  }
+
+  // Step 2: Parse URL
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch (err) {
+    return { valid: false, error: `Invalid URL syntax: ${err.message}` };
+  }
+
+  if (parsed.protocol !== "https:") {
+    return { valid: false, error: `Media URL must use HTTPS protocol, got '${parsed.protocol}'` };
+  }
+
+  if (parsed.port !== "") {
+    return { valid: false, error: `Media URL cannot specify custom port: ${parsed.port}` };
+  }
+
+  if (parsed.hash !== "") {
+    return { valid: false, error: "Media URL cannot contain fragment identifier ('#')" };
+  }
+
+  // Hostname check: ASCII lowercase alphanumeric, hyphens, and dots only
+  if (!/^[a-z0-9.-]+$/.test(parsed.hostname)) {
+    return { valid: false, error: `URL hostname contains forbidden characters: ${parsed.hostname}` };
+  }
+
+  const sourceType = options.sourceType || "youtube_embed";
+  const kind = options.kind || "source";
+  const format = options.format;
+  const expectedVideoId = options.expectedVideoId;
+
+  // Step 3 & 4 & 5: Source-specific policy and path checks
+  if (sourceType === "youtube_embed") {
+    if (kind === "source") {
+      const allowedOrigins = ["https://www.youtube.com", "https://youtube.com"];
+      if (!allowedOrigins.includes(parsed.origin)) {
+        return {
+          valid: false,
+          error: `YouTube watch URL origin must be 'https://www.youtube.com', got '${parsed.origin}'`,
+        };
+      }
+      if (parsed.pathname !== "/watch") {
+        return {
+          valid: false,
+          error: `YouTube watch URL pathname must be '/watch', got '${parsed.pathname}'`,
+        };
+      }
+      const searchParams = Array.from(parsed.searchParams.entries());
+      const vEntries = searchParams.filter(([k]) => k === "v");
+      if (vEntries.length !== 1) {
+        return {
+          valid: false,
+          error: `YouTube watch URL must contain exactly one 'v' parameter, found ${vEntries.length}`,
+        };
+      }
+      if (searchParams.length !== 1) {
+        return {
+          valid: false,
+          error: `YouTube watch URL must not contain query parameters other than 'v'`,
+        };
+      }
+      const videoId = vEntries[0][1];
+      if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+        return {
+          valid: false,
+          error: `Invalid YouTube video ID format: '${videoId}' (must be 11 characters)`,
+        };
+      }
+      if (expectedVideoId && videoId !== expectedVideoId) {
+        return {
+          valid: false,
+          error: `YouTube video ID mismatch: expected '${expectedVideoId}', got '${videoId}'`,
+        };
+      }
+    } else if (kind === "poster") {
+      const allowedOrigins = ["https://i.ytimg.com"];
+      if (!allowedOrigins.includes(parsed.origin)) {
+        return {
+          valid: false,
+          error: `YouTube poster URL origin must be 'https://i.ytimg.com', got '${parsed.origin}'`,
+        };
+      }
+      if (parsed.search !== "") {
+        return {
+          valid: false,
+          error: "YouTube poster URL must not contain query parameters",
+        };
+      }
+      const match = parsed.pathname.match(
+        /^\/vi\/([a-zA-Z0-9_-]{11})\/(hqdefault|maxresdefault|default|mqdefault|sddefault)\.jpg$/
+      );
+      if (!match) {
+        return {
+          valid: false,
+          error: `YouTube poster path does not match standard thumbnail pattern: '${parsed.pathname}'`,
+        };
+      }
+      const posterVideoId = match[1];
+      if (expectedVideoId && posterVideoId !== expectedVideoId) {
+        return {
+          valid: false,
+          error: `YouTube poster video ID mismatch: expected '${expectedVideoId}', got '${posterVideoId}'`,
+        };
+      }
+    }
+  } else if (sourceType === "licensed_local_media") {
+    const approvedOrigins = options.approvedOrigins;
+    if (!approvedOrigins || !Array.isArray(approvedOrigins) || approvedOrigins.length === 0) {
+      return {
+        valid: false,
+        error: "Hosted media origin validation failed: no approved CDN origins configured (fail-closed policy).",
+      };
+    }
+    // Verify policy entries: no wildcards, exact canonical origins
+    for (const entry of approvedOrigins) {
+      if (typeof entry !== "string" || entry.includes("*")) {
+        return {
+          valid: false,
+          error: `Malformed origin policy: wildcards are prohibited: '${entry}'`,
+        };
+      }
+      try {
+        const pEntry = new URL(entry);
+        if (pEntry.origin !== entry) {
+          return {
+            valid: false,
+            error: `Malformed origin policy entry: '${entry}' must be a canonical origin`,
+          };
+        }
+      } catch {
+        return {
+          valid: false,
+          error: `Malformed origin policy entry: '${entry}'`,
+        };
+      }
+    }
+
+    if (!approvedOrigins.includes(parsed.origin)) {
+      return {
+        valid: false,
+        error: `Hosted media origin '${parsed.origin}' is not authorized by origin policy`,
+      };
+    }
+
+    if (parsed.search !== "") {
+      return {
+        valid: false,
+        error: "Hosted media URL must not contain query parameters",
+      };
+    }
+
+    if (kind === "source") {
+      if (format === "video") {
+        if (!parsed.pathname.startsWith("/optimized/landscape/")) {
+          return {
+            valid: false,
+            error: `Hosted landscape video path must start with '/optimized/landscape/', got '${parsed.pathname}'`,
+          };
+        }
+      } else if (format === "short") {
+        if (!parsed.pathname.startsWith("/optimized/portrait/")) {
+          return {
+            valid: false,
+            error: `Hosted portrait short path must start with '/optimized/portrait/', got '${parsed.pathname}'`,
+          };
+        }
+      } else {
+        if (!parsed.pathname.startsWith("/optimized/")) {
+          return {
+            valid: false,
+            error: `Hosted video path must start with '/optimized/', got '${parsed.pathname}'`,
+          };
+        }
+      }
+      if (!/\.(mp4|webm)$/i.test(parsed.pathname)) {
+        return {
+          valid: false,
+          error: `Hosted video file must have .mp4 or .webm extension, got '${parsed.pathname}'`,
+        };
+      }
+    } else if (kind === "poster") {
+      if (format === "video") {
+        if (!parsed.pathname.startsWith("/posters/landscape/")) {
+          return {
+            valid: false,
+            error: `Hosted landscape poster path must start with '/posters/landscape/', got '${parsed.pathname}'`,
+          };
+        }
+      } else if (format === "short") {
+        if (!parsed.pathname.startsWith("/posters/portrait/")) {
+          return {
+            valid: false,
+            error: `Hosted portrait poster path must start with '/posters/portrait/', got '${parsed.pathname}'`,
+          };
+        }
+      } else {
+        if (!parsed.pathname.startsWith("/posters/")) {
+          return {
+            valid: false,
+            error: `Hosted poster path must start with '/posters/', got '${parsed.pathname}'`,
+          };
+        }
+      }
+      if (!/\.(webp|jpg|jpeg|png|svg)$/i.test(parsed.pathname)) {
+        return {
+          valid: false,
+          error: `Hosted poster file must have image extension, got '${parsed.pathname}'`,
+        };
+      }
+    }
+  }
+
+  return {
+    valid: true,
+    canonicalUrl: `${parsed.origin}${parsed.pathname}${parsed.search}`,
+  };
+}
+
+export function assertPublicEditIntegrity(record, options = {}) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    throw new Error("assertPublicEditIntegrity failed: record must be a non-null object");
+  }
+
+  // 1. Check for forbidden private fields and unexpected properties
+  for (const key of Object.keys(record)) {
+    if (PRIVATE_FORBIDDEN_FIELDS.has(key)) {
+      throw new Error(
+        `assertPublicEditIntegrity failed: forbidden private field '${key}' leaked into public edit ID ${record.id}`
+      );
+    }
+    if (!PRIVATE_PUBLIC_FIELD_ALLOWLIST.has(key)) {
+      throw new Error(
+        `assertPublicEditIntegrity failed: unrecognized property '${key}' in public edit ID ${record.id}`
+      );
+    }
+  }
+
+  // 2. Check required fields
+  const required = [
+    "id",
+    "title",
+    "category",
+    "tags",
+    "description",
+    "creator",
+    "poster",
+    "source",
+    "duration",
+    "trending",
+  ];
+  for (const req of required) {
+    if (!(req in record) || record[req] === undefined || record[req] === null) {
+      throw new Error(
+        `assertPublicEditIntegrity failed: missing required property '${req}' in public edit ID ${record.id}`
+      );
+    }
+  }
+
+  // 3. Validate types and value constraints
+  const id = record.id;
+  if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) {
+    throw new Error(
+      `assertPublicEditIntegrity failed: 'id' must be a safe non-negative integer, got ${JSON.stringify(id)}`
+    );
+  }
+
+  if (typeof record.title !== "string" || record.title.trim().length < 3 || record.title.trim().length > 100) {
+    throw new Error(
+      `assertPublicEditIntegrity failed: 'title' must be a string of 3-100 characters, got '${record.title}'`
+    );
+  }
+
+  if (typeof record.category !== "string" || !ALL_CATEGORIES.includes(record.category)) {
+    throw new Error(
+      `assertPublicEditIntegrity failed: 'category' must be one of allowed categories, got '${record.category}'`
+    );
+  }
+  if (id >= 100 && !PRIMARY_CATEGORIES.includes(record.category)) {
+    throw new Error(
+      `assertPublicEditIntegrity failed: curated edit ID ${id} cannot use legacy category '${record.category}'`
+    );
+  }
+
+  if (!Array.isArray(record.tags) || record.tags.length < 1 || record.tags.length > 20) {
+    throw new Error(
+      `assertPublicEditIntegrity failed: 'tags' must be an array of 1-20 strings in edit ID ${id}`
+    );
+  }
+  for (const t of record.tags) {
+    if (typeof t !== "string" || !VALID_TAG_REGEX.test(t)) {
+      throw new Error(
+        `assertPublicEditIntegrity failed: tag '${t}' is invalid (must be lowercase alphanumeric/hyphen)`
+      );
+    }
+  }
+
+  if (
+    typeof record.description !== "string" ||
+    record.description.trim().length < 5 ||
+    record.description.trim().length > 1000
+  ) {
+    throw new Error(
+      `assertPublicEditIntegrity failed: 'description' must be 5-1000 characters in edit ID ${id}`
+    );
+  }
+
+  if (
+    typeof record.creator !== "string" ||
+    record.creator.trim().length < 1 ||
+    record.creator.trim().length > 100
+  ) {
+    throw new Error(
+      `assertPublicEditIntegrity failed: 'creator' must be 1-100 characters in edit ID ${id}`
+    );
+  }
+
+  if (typeof record.duration !== "string" || !DURATION_REGEX.test(record.duration)) {
+    throw new Error(
+      `assertPublicEditIntegrity failed: 'duration' must match M:SS or MM:SS format, got '${record.duration}' in edit ID ${id}`
+    );
+  }
+
+  if (typeof record.trending !== "boolean") {
+    throw new Error(
+      `assertPublicEditIntegrity failed: 'trending' must be boolean, got ${typeof record.trending} in edit ID ${id}`
+    );
+  }
+
+  // 4. Validate optional fields if present
+  if (record.format !== undefined && record.format !== null) {
+    if (record.format !== "video" && record.format !== "short") {
+      throw new Error(
+        `assertPublicEditIntegrity failed: 'format' must be 'video' or 'short', got '${record.format}' in edit ID ${id}`
+      );
+    }
+  }
+
+  if (record.fandomIds !== undefined && record.fandomIds !== null) {
+    if (!Array.isArray(record.fandomIds)) {
+      throw new Error(
+        `assertPublicEditIntegrity failed: 'fandomIds' must be an array in edit ID ${id}`
+      );
+    }
+    for (const f of record.fandomIds) {
+      if (typeof f !== "string" || !FANDOM_SLUG_REGEX.test(f)) {
+        throw new Error(
+          `assertPublicEditIntegrity failed: fandom ID '${f}' is invalid in edit ID ${id}`
+        );
+      }
+    }
+  }
+
+  if (record.sourceType !== undefined && record.sourceType !== null) {
+    const validSources = ["local_demo", "youtube_embed", "licensed_local_media"];
+    if (!validSources.includes(record.sourceType)) {
+      throw new Error(
+        `assertPublicEditIntegrity failed: 'sourceType' must be one of ${validSources.join(", ")}, got '${record.sourceType}' in edit ID ${id}`
+      );
+    }
+  }
+
+  // 5. Partition and field check
+  if (id >= 0 && id <= 16) {
+    if (!isBaselineDemoRecord(record, options)) {
+      throw new Error(
+        `assertPublicEditIntegrity failed: demo impersonation detected for ID ${id}`
+      );
+    }
+  } else if (id >= 17 && id <= 99) {
+    throw new Error(
+      `assertPublicEditIntegrity failed: ID ${id} is reserved for internal test harnesses and cannot be published.`
+    );
+  } else if (id >= 100) {
+    if (!record.sourceType || typeof record.sourceType !== "string") {
+      throw new Error(
+        `assertPublicEditIntegrity failed: curated public edit ID ${id} requires an explicit 'sourceType'`
+      );
+    }
+    if (!record.format || typeof record.format !== "string") {
+      throw new Error(
+        `assertPublicEditIntegrity failed: curated public edit ID ${id} requires an explicit 'format'`
+      );
+    }
+
+    const partitionCheck = validateSourceAndId(record, {
+      isNewBatch: false,
+      isLiveCatalog: true,
+      requireCuratedFields: true,
+    });
+    if (!partitionCheck.valid) {
+      throw new Error(
+        `assertPublicEditIntegrity failed: ID partition check failed for edit ID ${id}: ${partitionCheck.errors.join("; ")}`
+      );
+    }
+  }
+
+  if (record.sourceType === "youtube_embed") {
+    if (!record.youtubeVideoId || typeof record.youtubeVideoId !== "string" || !/^[a-zA-Z0-9_-]{11}$/.test(record.youtubeVideoId)) {
+      throw new Error(
+        `assertPublicEditIntegrity failed: 'youtubeVideoId' must be 11 characters, got '${record.youtubeVideoId}' in edit ID ${id}`
+      );
+    }
+  } else if (record.youtubeVideoId !== undefined && record.youtubeVideoId !== null) {
+    throw new Error(
+      `assertPublicEditIntegrity failed: 'youtubeVideoId' is only allowed for youtube_embed sources, got '${record.sourceType}' in edit ID ${id}`
+    );
+  }
+
+  if (record.channelTitle !== undefined && record.channelTitle !== null) {
+    if (typeof record.channelTitle !== "string" || record.channelTitle.length > 100) {
+      throw new Error(
+        `assertPublicEditIntegrity failed: 'channelTitle' must be string up to 100 characters in edit ID ${id}`
+      );
+    }
+  }
+
+  if (record.channelId !== undefined && record.channelId !== null) {
+    if (typeof record.channelId !== "string" || record.channelId.length > 100) {
+      throw new Error(
+        `assertPublicEditIntegrity failed: 'channelId' must be string up to 100 characters in edit ID ${id}`
+      );
+    }
+  }
+
+  if (record.sourceUrl !== undefined && record.sourceUrl !== null) {
+    if (typeof record.sourceUrl !== "string" || !record.sourceUrl.startsWith("https://")) {
+      throw new Error(
+        `assertPublicEditIntegrity failed: 'sourceUrl' must be a valid HTTPS URL in edit ID ${id}`
+      );
+    }
+    const sourceUrlCheck = validateMediaUrlOrigin(record.sourceUrl, {
+      sourceType: record.sourceType || "youtube_embed",
+      kind: "source",
+      format: record.format,
+      expectedVideoId: record.youtubeVideoId,
+      approvedOrigins: options.approvedOrigins,
+    });
+    if (!sourceUrlCheck.valid) {
+      throw new Error(
+        `assertPublicEditIntegrity failed: sourceUrl validation failed in edit ID ${id}: ${sourceUrlCheck.error}`
+      );
+    }
+  }
+
+  // 6. URL validation for curated content based on explicit sourceType
+  if (id >= 100) {
+    if (record.sourceType === "youtube_embed") {
+      const sourceUrlCheck = validateMediaUrlOrigin(record.source, {
+        sourceType: "youtube_embed",
+        kind: "source",
+        format: record.format,
+        expectedVideoId: record.youtubeVideoId,
+        approvedOrigins: options.approvedOrigins,
+      });
+      if (!sourceUrlCheck.valid) {
+        throw new Error(
+          `assertPublicEditIntegrity failed: source URL validation failed in edit ID ${id}: ${sourceUrlCheck.error}`
+        );
+      }
+
+      const posterUrlCheck = validateMediaUrlOrigin(record.poster, {
+        sourceType: "youtube_embed",
+        kind: "poster",
+        format: record.format,
+        expectedVideoId: record.youtubeVideoId,
+        approvedOrigins: options.approvedOrigins,
+      });
+      if (!posterUrlCheck.valid) {
+        throw new Error(
+          `assertPublicEditIntegrity failed: poster URL validation failed in edit ID ${id}: ${posterUrlCheck.error}`
+        );
+      }
+    } else if (record.sourceType === "licensed_local_media") {
+      const sourceUrlCheck = validateMediaUrlOrigin(record.source, {
+        sourceType: "licensed_local_media",
+        kind: "source",
+        format: record.format,
+        approvedOrigins: options.approvedOrigins,
+      });
+      if (!sourceUrlCheck.valid) {
+        throw new Error(
+          `assertPublicEditIntegrity failed: source URL validation failed in edit ID ${id}: ${sourceUrlCheck.error}`
+        );
+      }
+
+      const posterUrlCheck = validateMediaUrlOrigin(record.poster, {
+        sourceType: "licensed_local_media",
+        kind: "poster",
+        format: record.format,
+        approvedOrigins: options.approvedOrigins,
+      });
+      if (!posterUrlCheck.valid) {
+        throw new Error(
+          `assertPublicEditIntegrity failed: poster URL validation failed in edit ID ${id}: ${posterUrlCheck.error}`
+        );
+      }
+    }
+  }
+
+  // 7. Leakage / Secret scan (recursive for strings and string arrays)
+  function scanValueForSecrets(val, path) {
+    if (typeof val === "string") {
+      for (const pat of SECRET_PATTERNS) {
+        if (pat.test(val)) {
+          throw new Error(
+            `assertPublicEditIntegrity failed: secret/leakage pattern detected in field '${path}' of edit ID ${id}`
+          );
+        }
+      }
+    } else if (Array.isArray(val)) {
+      for (let i = 0; i < val.length; i++) {
+        scanValueForSecrets(val[i], `${path}[${i}]`);
+      }
+    }
+  }
+
+  for (const [k, val] of Object.entries(record)) {
+    scanValueForSecrets(val, k);
+  }
+
+  return true;
+}const schemaPath = resolve(projectRoot, "content/manifest.schema.json");
 export const manifestSchema = JSON.parse(readFileSync(schemaPath, "utf-8"));
 export const contentRecordSchema = manifestSchema.definitions.ContentRecord;
 
-/**
- * Validate RFC 3339 / ISO date-time string with strict calendar validity (handling month lengths and leap years).
- */
 export function isValidDateTime(val) {
   if (typeof val !== "string") return false;
   const match = val.match(
@@ -130,8 +1108,6 @@ export function isValidDateTime(val) {
   if (day < 1 || day > 31) return false;
   if (hour > 23 || min > 59 || sec > 59) return false;
 
-  // Calendar validation for days in month (handling leap years)
-  // Date.UTC(year, month, 0) returns the last day of the given 1-indexed month
   const maxDays = new Date(Date.UTC(year, month, 0)).getUTCDate();
   if (day > maxDays) return false;
 
@@ -139,9 +1115,6 @@ export function isValidDateTime(val) {
   return !isNaN(timestamp);
 }
 
-/**
- * Normalize codec names across formats and containers (e.g. avc1 -> h264).
- */
 export function normalizeCodec(name) {
   if (!name) return "";
   const lower = name.toLowerCase().trim();
@@ -153,13 +1126,8 @@ export function normalizeCodec(name) {
   return lower;
 }
 
-/**
- * Authoritative JSON Schema validator (Draft-07 compliant for manifest schema).
- * Returns array of structured validation error strings.
- */
 export function validateJsonSchema(data, schema, rootSchema = schema, path = "") {
   const errors = [];
-
   if (!schema || typeof schema !== "object") return errors;
 
   if (schema.$ref) {
@@ -171,13 +1139,11 @@ export function validateJsonSchema(data, schema, rootSchema = schema, path = "")
     return validateJsonSchema(data, refSchema, rootSchema, path);
   }
 
-  // Reject explicit nulls for non-null types
   if (data === null) {
     errors.push(`Property '${path || "value"}' cannot be null`);
     return errors;
   }
 
-  // Type check
   if (schema.type) {
     const types = Array.isArray(schema.type) ? schema.type : [schema.type];
     let matchesType = false;
@@ -196,14 +1162,12 @@ export function validateJsonSchema(data, schema, rootSchema = schema, path = "")
     }
   }
 
-  // Enum check
   if (schema.enum && !schema.enum.includes(data)) {
     errors.push(
       `Property '${path || "value"}' must be one of allowed values: ${schema.enum.join(", ")}, got ${JSON.stringify(data)}`
     );
   }
 
-  // String checks
   if (typeof data === "string") {
     if (schema.minLength !== undefined && data.length < schema.minLength) {
       errors.push(`Property '${path}' length must be at least ${schema.minLength} chars, got ${data.length}`);
@@ -219,7 +1183,6 @@ export function validateJsonSchema(data, schema, rootSchema = schema, path = "")
     }
   }
 
-  // Number checks
   if (typeof data === "number") {
     if (schema.minimum !== undefined && data < schema.minimum) {
       errors.push(`Property '${path}' must be >= ${schema.minimum}, got ${data}`);
@@ -229,7 +1192,6 @@ export function validateJsonSchema(data, schema, rootSchema = schema, path = "")
     }
   }
 
-  // Array checks
   if (Array.isArray(data)) {
     if (schema.minItems !== undefined && data.length < schema.minItems) {
       errors.push(`Property '${path}' must contain at least ${schema.minItems} items, got ${data.length}`);
@@ -242,7 +1204,6 @@ export function validateJsonSchema(data, schema, rootSchema = schema, path = "")
     }
   }
 
-  // Object checks
   if (typeof data === "object" && data !== null && !Array.isArray(data)) {
     if (schema.required) {
       for (const reqKey of schema.required) {
@@ -268,9 +1229,6 @@ export function validateJsonSchema(data, schema, rootSchema = schema, path = "")
   return errors;
 }
 
-/**
- * Check if ffprobe is installed and executable in PATH.
- */
 export function isFFprobeAvailable() {
   try {
     const res = spawnSync("ffprobe", ["-version"], { stdio: "ignore" });
@@ -280,10 +1238,6 @@ export function isFFprobeAvailable() {
   }
 }
 
-/**
- * Inspect actual video and audio streams using ffprobe when available.
- * Queries stream metadata and container format information (for container-level duration fallback).
- */
 export function inspectVideoWithFFprobe(filePath) {
   if (!isFFprobeAvailable()) {
     return { available: false, ok: false, error: "ffprobe is not installed in the execution environment" };
@@ -349,7 +1303,6 @@ export function inspectVideoWithFFprobe(filePath) {
       return { available: true, ok: false, error: "Failed to decode valid stream dimensions from video" };
     }
 
-    // Container format duration fallback when stream duration is missing (e.g. WebM/Matroska)
     const streamDuration = videoStream.duration ? parseFloat(videoStream.duration) : null;
     const formatDuration = data.format?.duration ? parseFloat(data.format.duration) : null;
     const durationSec =
@@ -359,7 +1312,6 @@ export function inspectVideoWithFFprobe(filePath) {
         ? formatDuration
         : null;
 
-    // Audio stream inspection
     const audioStream = streams.find((s) => s.codec_type === "audio");
     const hasAudio = !!audioStream;
     const audioCodec = audioStream?.codec_name ? audioStream.codec_name.toLowerCase().trim() : null;
@@ -381,9 +1333,6 @@ export function inspectVideoWithFFprobe(filePath) {
   }
 }
 
-/**
- * Check if ffmpeg is installed and executable in PATH.
- */
 export function isFFmpegAvailable() {
   try {
     const res = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" });
@@ -465,10 +1414,6 @@ export function verifyVideoDecodeIntegrityWithFFmpeg(filePath) {
   }
 }
 
-/**
- * Verify asset file headers and magic bytes without reading entire file into memory.
- * Reads a fixed-size header buffer (up to 64KB).
- */
 export function verifyAssetBytesStreaming(filePath) {
   if (!existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
@@ -520,12 +1465,6 @@ export function verifyAssetBytesStreaming(filePath) {
       }
       break;
 
-    case ".webm":
-      if (buffer.subarray(0, 4).toString("hex") !== "1a45dfa3") {
-        throw new Error("Invalid WebM header signature (expected 1a45dfa3)");
-      }
-      break;
-
     case ".mp4":
     case ".m4v":
       if (buffer.length < 12 || buffer.subarray(4, 8).toString("ascii") !== "ftyp") {
@@ -533,16 +1472,19 @@ export function verifyAssetBytesStreaming(filePath) {
       }
       break;
 
-    default:
+    case ".webm":
+      if (buffer.subarray(0, 4).toString("hex") !== "1a45dfa3") {
+        throw new Error("Invalid WebM container signature (expected EBML 1a45dfa3)");
+      }
       break;
+
+    default:
+      throw new Error(`Unsupported media extension: ${ext}`);
   }
 
   return { bytes: info.size, extension: ext };
 }
 
-/**
- * Verify asset path containment against symlink escapes and directory traversal.
- */
 export function verifyAssetPathContainment(targetFile, publicDir) {
   const mediaDir = resolve(publicDir, "media");
   const brandDir = resolve(publicDir, "brand");
@@ -557,7 +1499,6 @@ export function verifyAssetPathContainment(targetFile, publicDir) {
     throw new Error(`File not found: ${targetFile}`);
   }
 
-  // Check if target is a symbolic link escaping permitted directories
   const realTarget = realpathSync(targetFile);
   const realMediaDir = existsSync(mediaDir) ? realpathSync(mediaDir) : mediaDir;
   const realBrandDir = existsSync(brandDir) ? realpathSync(brandDir) : brandDir;
@@ -572,17 +1513,12 @@ export function verifyAssetPathContainment(targetFile, publicDir) {
   }
 
   return realTarget;
-}
-
-/**
- * Validate an individual content record.
- */
-export function validateContentRecord(record, options = {}) {
+}export function validateContentRecord(record, options = {}) {
   const {
     seenIds = new Set(),
     isNewBatch = false,
     fandomRegistry = [],
-    mode = "metadata", // "metadata" | "assets" | "publish"
+    mode = "metadata",
     publicDir = resolve(projectRoot, "public"),
     videoInspector = inspectVideoWithFFprobe,
     decodeVerifier = verifyVideoDecodeIntegrityWithFFmpeg,
@@ -599,7 +1535,6 @@ export function validateContentRecord(record, options = {}) {
     };
   }
 
-  // Handle malformed item root types
   if (!record || typeof record !== "object" || Array.isArray(record)) {
     return {
       valid: false,
@@ -612,14 +1547,12 @@ export function validateContentRecord(record, options = {}) {
 
   const isLiveCatalog = options.isLiveCatalog ?? !isNewBatch;
 
-  // Schema Rule: Reject explicit nulls for any defined property
   for (const [k, v] of Object.entries(record)) {
     if (v === null) {
       errors.push(`Property '${k}' cannot be null`);
     }
   }
 
-  // Schema Rule: Check unexpected properties (additionalProperties: false)
   const allowedKeys = isLiveCatalog
     ? [
         ...ALLOWED_RECORD_KEYS,
@@ -637,7 +1570,6 @@ export function validateContentRecord(record, options = {}) {
     }
   }
 
-  // Schema Rule: Check required fields
   const requiredKeys = isLiveCatalog
     ? REQUIRED_RECORD_KEYS.filter((k) => k !== "format")
     : REQUIRED_RECORD_KEYS;
@@ -647,42 +1579,16 @@ export function validateContentRecord(record, options = {}) {
     }
   }
 
-  // 1. Validate ID
-  const id = record.id;
-  if (typeof id !== "number" || !Number.isInteger(id) || id < 0) {
-    if ("id" in record && record.id !== null) {
-      errors.push(`Invalid ID: ${JSON.stringify(id)} (must be non-negative integer)`);
-    }
-  } else {
-    if (seenIds.has(id)) {
-      errors.push(`Duplicate ID: ${id} is already assigned in this catalog/manifest`);
-    } else {
-      seenIds.add(id);
-    }
-
-    if (isNewBatch) {
-      if (id >= 0 && id <= 16) {
-        errors.push(
-          `Reserved ID conflict: ID ${id} is reserved for baseline demo edits (0-16). New curated content must use IDs >= 100.`
-        );
-      } else if (id >= 17 && id <= 99) {
-        errors.push(
-          `Reserved ID conflict: ID ${id} is reserved for internal test harnesses (17-99). Use 100-199 for landscape videos or 200-299 for portrait shorts.`
-        );
-      } else {
-        // Enforce documented ID range policy
-        const format = record.format;
-        if (format === "video" && (id < 100 || id > 199)) {
-          errors.push(
-            `ID range mismatch: Landscape video ID ${id} must be in range 100-199 according to documented allocation policy.`
-          );
-        } else if (format === "short" && (id < 200 || id > 299)) {
-          errors.push(
-            `ID range mismatch: Curated Short ID ${id} must be in range 200-299 according to documented allocation policy.`
-          );
-        }
-      }
-    }
+  // 1. Validate ID & Partition Consistency
+  const sourceAndIdCheck = validateSourceAndId(record, {
+    isNewBatch,
+    isLiveCatalog,
+    allowTestHarness: false,
+    checkFileChecksum: false,
+    seenIds,
+  });
+  if (!sourceAndIdCheck.valid) {
+    errors.push(...sourceAndIdCheck.errors);
   }
 
   // 2. Validate Format
@@ -769,34 +1675,43 @@ export function validateContentRecord(record, options = {}) {
     }
   }
 
-  // 7. Validate Tags (Strict lower-case regex match)
+  // 7. Validate Tags
   if (record.tags !== undefined && record.tags !== null) {
-    if (!Array.isArray(record.tags) || record.tags.length === 0) {
-      errors.push("Missing or empty tags array (at least 1 tag required)");
+    if (!Array.isArray(record.tags)) {
+      errors.push("tags must be an array of strings");
+    } else if (record.tags.length === 0) {
+      errors.push("tags array must contain at least one tag");
     } else {
-      for (const tag of record.tags) {
-        if (typeof tag !== "string" || !tag.trim()) {
-          errors.push(`Invalid tag: ${JSON.stringify(tag)}`);
-        } else {
-          const trimmedTag = tag.trim();
-          if (trimmedTag.startsWith("#")) {
-            errors.push(`Tag "${tag}" must not include leading '#' symbol`);
-          }
-          if (!VALID_TAG_REGEX.test(trimmedTag)) {
-            errors.push(
-              `Tag "${tag}" contains invalid characters or uppercase letters (must match /^[a-z0-9_-]+$/)`
-            );
-          }
+      const tagSet = new Set();
+      for (const t of record.tags) {
+        if (typeof t !== "string" || !t.trim()) {
+          errors.push(`Invalid tag: ${JSON.stringify(t)} (must be a non-empty string)`);
+          continue;
         }
+        const trimmedTag = t.trim();
+        if (trimmedTag.startsWith("#")) {
+          errors.push(`Tag "${t}" must not include leading '#' symbol`);
+        }
+        if (!VALID_TAG_REGEX.test(trimmedTag)) {
+          errors.push(
+            `Tag "${t}" contains invalid characters or uppercase letters (must match /^[a-z0-9_-]+$/)`
+          );
+        }
+        if (tagSet.has(trimmedTag)) {
+          errors.push(`Duplicate tag detected: "${trimmedTag}"`);
+        }
+        tagSet.add(trimmedTag);
       }
     }
   }
 
   // 8. Validate Duration
   if (record.duration !== undefined && record.duration !== null) {
-    if (typeof record.duration !== "string" || !DURATION_REGEX.test(record.duration.trim())) {
+    if (typeof record.duration !== "string" || !record.duration.trim()) {
+      errors.push("Duration must be a non-empty string");
+    } else if (!DURATION_REGEX.test(record.duration.trim())) {
       errors.push(
-        `Invalid duration: "${record.duration}" (expected format M:SS or MM:SS, e.g. "0:24", "1:45")`
+        `Duration format invalid: "${record.duration}". Must match M:SS or MM:SS (e.g. "0:24", "1:45")`
       );
     }
   }
@@ -805,52 +1720,40 @@ export function validateContentRecord(record, options = {}) {
     if (
       typeof record.durationMs !== "number" ||
       !Number.isInteger(record.durationMs) ||
-      record.durationMs <= 0 ||
+      record.durationMs < 1 ||
       record.durationMs > 3600000
     ) {
-      errors.push(`Invalid durationMs: ${record.durationMs} (must be positive integer <= 3600000)`);
-    }
-  }
-
-  // Cross-check record.duration vs record.durationMs (tolerance: ±1.0s)
-  if (
-    record.duration &&
-    typeof record.duration === "string" &&
-    DURATION_REGEX.test(record.duration.trim()) &&
-    typeof record.durationMs === "number" &&
-    Number.isInteger(record.durationMs) &&
-    record.durationMs > 0
-  ) {
-    const [minStr, secStr] = record.duration.split(":");
-    const declaredSec = parseInt(minStr, 10) * 60 + parseInt(secStr, 10);
-    const msSec = record.durationMs / 1000;
-    if (Math.abs(declaredSec - msSec) > 1.0) {
       errors.push(
-        `Contradictory duration values: declared duration '${record.duration}' (${declaredSec}s) contradicts durationMs (${record.durationMs}ms / ${msSec.toFixed(1)}s) by more than 1s tolerance`
+        `durationMs must be an integer between 1 and 3,600,000 (1 hour max), got ${record.durationMs}`
       );
+    } else if (record.duration && DURATION_REGEX.test(record.duration.trim())) {
+      const [minStr, secStr] = record.duration.split(":");
+      const declaredSec = parseInt(minStr, 10) * 60 + parseInt(secStr, 10);
+      const msSec = record.durationMs / 1000;
+      if (Math.abs(declaredSec - msSec) > 1.0) {
+        errors.push(
+          `Contradictory duration values: declared duration '${record.duration}' (${declaredSec}s) contradicts durationMs (${record.durationMs}ms / ${msSec.toFixed(1)}s) by more than 1s tolerance`
+        );
+      }
     }
-  }
-
-  // Validate trending boolean
+  }  // Validate trending boolean
   if (record.trending !== undefined && record.trending !== null) {
     if (typeof record.trending !== "boolean") {
       errors.push(`Property 'trending' must be a boolean, got ${typeof record.trending}`);
     }
   }
 
-  // 9. Validate Media Details & Consistency (Schema & Aspect Ratio)
+  // 9. Validate Media Technical Metadata
   if (record.media !== undefined && record.media !== null) {
     if (typeof record.media !== "object" || Array.isArray(record.media)) {
       errors.push("media property must be an object");
     } else {
-      // Reject explicit nulls inside media
       for (const [mK, mV] of Object.entries(record.media)) {
         if (mV === null) {
           errors.push(`media.${mK} cannot be null`);
         }
       }
 
-      // Check additionalProperties: false on media
       for (const mKey of Object.keys(record.media)) {
         if (!ALLOWED_MEDIA_KEYS.includes(mKey)) {
           errors.push(`Unexpected media property '${mKey}' (schema forbids additionalProperties)`);
@@ -860,19 +1763,19 @@ export function validateContentRecord(record, options = {}) {
       const { aspectRatio, width, height, codec, audioCodec, frameRate, bitrateKbps, loudnessLkfs } =
         record.media;
 
-      if (aspectRatio !== undefined && aspectRatio !== null) {
-        if (!ALLOWED_ASPECT_RATIOS.includes(aspectRatio)) {
-          errors.push(
-            `Invalid aspectRatio '${aspectRatio}'. Allowed: ${ALLOWED_ASPECT_RATIOS.join(", ")}`
-          );
-        }
+      if (aspectRatio !== undefined && aspectRatio !== null && !ALLOWED_ASPECT_RATIOS.includes(aspectRatio)) {
+        errors.push(
+          `Invalid media.aspectRatio '${aspectRatio}'. Allowed: ${ALLOWED_ASPECT_RATIOS.join(", ")}`
+        );
       }
 
-      if (codec !== undefined && codec !== null && !ALLOWED_CODECS.includes(codec)) {
-        errors.push(`Unsupported codec '${codec}'. Allowed: ${ALLOWED_CODECS.join(", ")}`);
+      if (codec !== undefined && codec !== null && !ALLOWED_CODECS.includes(normalizeCodec(codec))) {
+        errors.push(
+          `Unsupported codec '${codec}'. Allowed: ${ALLOWED_CODECS.join(", ")}`
+        );
       }
 
-      if (audioCodec !== undefined && audioCodec !== null && !ALLOWED_AUDIO_CODECS.includes(audioCodec)) {
+      if (audioCodec !== undefined && audioCodec !== null && !ALLOWED_AUDIO_CODECS.includes(normalizeCodec(audioCodec))) {
         errors.push(
           `Unsupported audioCodec '${audioCodec}'. Allowed: ${ALLOWED_AUDIO_CODECS.join(", ")}`
         );
@@ -917,7 +1820,6 @@ export function validateContentRecord(record, options = {}) {
         }
       }
 
-      // Cross-check declared aspectRatio against declared width and height
       if (aspectRatio && typeof width === "number" && typeof height === "number" && width > 0 && height > 0) {
         const declaredRatio = width / height;
         let matchesDeclared = false;
@@ -943,7 +1845,6 @@ export function validateContentRecord(record, options = {}) {
         }
       }
 
-      // Aspect ratio consistency
       if (format === "video") {
         if (aspectRatio === "9:16") {
           errors.push(`Format "video" (landscape) cannot declare vertical aspect ratio "9:16"`);
@@ -971,8 +1872,24 @@ export function validateContentRecord(record, options = {}) {
     if (typeof record.poster !== "string" || !record.poster.trim()) {
       errors.push("Poster must be a non-empty string");
     } else if (record.sourceType === "youtube_embed") {
-      if (!record.poster.startsWith("https://") && !record.poster.startsWith("http://")) {
-        errors.push(`YouTube embed poster must be a valid URL, got '${record.poster}'`);
+      const urlCheck = validateMediaUrlOrigin(record.poster, {
+        sourceType: "youtube_embed",
+        kind: "poster",
+        format: record.format,
+        expectedVideoId: record.youtubeVideoId,
+      });
+      if (!urlCheck.valid) {
+        errors.push(`YouTube embed poster validation error: ${urlCheck.error}`);
+      }
+    } else if (record.sourceType === "licensed_local_media" && (record.poster.startsWith("http://") || record.poster.startsWith("https://"))) {
+      const urlCheck = validateMediaUrlOrigin(record.poster, {
+        sourceType: "licensed_local_media",
+        kind: "poster",
+        format: record.format,
+        approvedOrigins: options.approvedOrigins,
+      });
+      if (!urlCheck.valid) {
+        errors.push(`Hosted media poster validation error: ${urlCheck.error}`);
       }
     } else if (!POSTER_PATH_REGEX.test(record.poster.trim())) {
       errors.push(
@@ -1003,14 +1920,24 @@ export function validateContentRecord(record, options = {}) {
     if (typeof record.source !== "string" || !record.source.trim()) {
       errors.push("Source video must be a non-empty string");
     } else if (record.sourceType === "youtube_embed") {
-      if (
-        !/^https:\/\/(www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}/.test(record.source) &&
-        !/^https:\/\/youtu\.be\/[a-zA-Z0-9_-]{11}/.test(record.source)
-      ) {
-        errors.push(`YouTube embed source must be a valid YouTube URL, got '${record.source}'`);
+      const urlCheck = validateMediaUrlOrigin(record.source, {
+        sourceType: "youtube_embed",
+        kind: "source",
+        format: record.format,
+        expectedVideoId: record.youtubeVideoId,
+      });
+      if (!urlCheck.valid) {
+        errors.push(`YouTube embed source validation error: ${urlCheck.error}`);
       }
-      if (record.youtubeVideoId && !/^[a-zA-Z0-9_-]{11}$/.test(record.youtubeVideoId)) {
-        errors.push(`Invalid YouTube video ID '${record.youtubeVideoId}'`);
+    } else if (record.sourceType === "licensed_local_media" && (record.source.startsWith("http://") || record.source.startsWith("https://"))) {
+      const urlCheck = validateMediaUrlOrigin(record.source, {
+        sourceType: "licensed_local_media",
+        kind: "source",
+        format: record.format,
+        approvedOrigins: options.approvedOrigins,
+      });
+      if (!urlCheck.valid) {
+        errors.push(`Hosted media source validation error: ${urlCheck.error}`);
       }
     } else if (!VIDEO_PATH_REGEX.test(record.source.trim())) {
       errors.push(
@@ -1028,7 +1955,6 @@ export function validateContentRecord(record, options = {}) {
           const realTarget = verifyAssetPathContainment(targetFile, publicDir);
           verifyAssetBytesStreaming(realTarget);
 
-          // Deep stream inspection with ffprobe (or injected inspector)
           if (videoInspector) {
             inspectedStreamResult = videoInspector(realTarget);
 
@@ -1043,7 +1969,6 @@ export function validateContentRecord(record, options = {}) {
                 );
               }
             } else if (!inspectedStreamResult.ok) {
-              // ffprobe failed on the media stream
               if (mode === "publish") {
                 errors.push(
                   `Source video stream inspection failed (${record.source}): ${inspectedStreamResult.error}`
@@ -1054,22 +1979,21 @@ export function validateContentRecord(record, options = {}) {
                 );
               }
             } else {
-              // Successful stream inspection: validate actual dimensions, aspect ratio, codec, audio presence/codec, duration, frame rate
-              const { width, height, codec, durationSec, frameRate, hasAudio, audioCodec } = inspectedStreamResult;
+              const { width, height, codec, durationSec, frameRate, hasAudio, audioCodec } =
+                inspectedStreamResult;
 
-              // Validate dimensions against declared media metadata if declared
               if (record.media?.width && width && record.media.width !== width) {
                 errors.push(
                   `Actual stream width (${width}px) does not match declared media.width (${record.media.width}px)`
                 );
               }
+
               if (record.media?.height && height && record.media.height !== height) {
                 errors.push(
                   `Actual stream height (${height}px) does not match declared media.height (${record.media.height}px)`
                 );
               }
 
-              // Validate declared media.aspectRatio against actual stream dimensions
               if (record.media?.aspectRatio && width && height) {
                 const streamRatio = width / height;
                 const declaredAR = record.media.aspectRatio;
@@ -1126,7 +2050,6 @@ export function validateContentRecord(record, options = {}) {
                 }
               }
 
-              // Validate codec if declared in media metadata
               if (record.media?.codec && codec) {
                 const normalizedStreamCodec = normalizeCodec(codec);
                 const declaredCodec = normalizeCodec(record.media.codec);
@@ -1137,7 +2060,6 @@ export function validateContentRecord(record, options = {}) {
                 }
               }
 
-              // Validate audio stream presence and codec when declared
               if (record.media?.audioCodec) {
                 const declaredAudio = normalizeCodec(record.media.audioCodec);
                 if (declaredAudio === "none") {
@@ -1162,7 +2084,6 @@ export function validateContentRecord(record, options = {}) {
                 }
               }
 
-              // Validate frame rate if declared in media metadata (documented tolerance: ±0.5 fps)
               if (record.media?.frameRate && typeof frameRate === "number") {
                 if (Math.abs(frameRate - record.media.frameRate) > 0.5) {
                   errors.push(
@@ -1171,7 +2092,6 @@ export function validateContentRecord(record, options = {}) {
                 }
               }
 
-              // Cross-check physical duration (measured duration)
               if (typeof durationSec === "number" && durationSec > 0) {
                 if (record.duration) {
                   const [minStr, secStr] = record.duration.split(":");
@@ -1198,7 +2118,6 @@ export function validateContentRecord(record, options = {}) {
             }
           }
 
-          // Full decode playback-integrity verification with ffmpeg (or injected decode verifier)
           if (decodeVerifier) {
             verifiedDecodeResult = decodeVerifier(realTarget);
 
@@ -1231,19 +2150,17 @@ export function validateContentRecord(record, options = {}) {
     }
   }
 
-  // 11. Validate Editorial & Publication Requirements (FIX C)
+  // 11. Validate Editorial & Publication Requirements
   if (record.editorial !== undefined && record.editorial !== null) {
     if (typeof record.editorial !== "object" || Array.isArray(record.editorial)) {
       errors.push("editorial property must be an object");
     } else {
-      // Reject explicit nulls inside editorial
       for (const [eK, eV] of Object.entries(record.editorial)) {
         if (eV === null) {
           errors.push(`editorial.${eK} cannot be null`);
         }
       }
 
-      // Check additionalProperties: false on editorial
       for (const eKey of Object.keys(record.editorial)) {
         if (!ALLOWED_EDITORIAL_KEYS.includes(eKey)) {
           errors.push(
@@ -1285,23 +2202,33 @@ export function validateContentRecord(record, options = {}) {
     }
   }
 
-  // Publication Readiness Enforcement (FIX A & FIX C)
   if (mode === "publish") {
-    if (!record.editorial) {
-      errors.push(
-        `Publication requirement failed for ID ${id}: Missing editorial review block. Approved review and documented rights clearance are mandatory for publication.`
-      );
-    } else {
-      const status = record.editorial.reviewStatus;
+    const id = record.id;
+    const isYouTube = record.sourceType === "youtube_embed";
+    if (isYouTube) {
+      const status = record.editorial?.reviewStatus || record.contentReviewStatus || record.reviewStatus;
       if (status !== "approved" && status !== "published") {
         errors.push(
           `Publication requirement failed for ID ${id}: reviewStatus is "${status}". Only "approved" or "published" records may be published.`
         );
       }
-      if (record.editorial.rightsCleared !== true) {
+    } else {
+      if (!record.editorial) {
         errors.push(
-          `Publication requirement failed for ID ${id}: rightsCleared is not true. Documented rights clearance is mandatory for publication.`
+          `Publication requirement failed for ID ${id}: Missing editorial review block. Approved review and documented rights clearance are mandatory for publication.`
         );
+      } else {
+        const status = record.editorial.reviewStatus;
+        if (status !== "approved" && status !== "published") {
+          errors.push(
+            `Publication requirement failed for ID ${id}: reviewStatus is "${status}". Only "approved" or "published" records may be published.`
+          );
+        }
+        if (record.editorial.rightsCleared !== true) {
+          errors.push(
+            `Publication requirement failed for ID ${id}: rightsCleared is not true. Documented rights clearance is mandatory for publication.`
+          );
+        }
       }
     }
   }
@@ -1314,17 +2241,355 @@ export function validateContentRecord(record, options = {}) {
     verifiedDecode: verifiedDecodeResult,
   };
 }
+export function hasSyntheticMarker(record) {
+  if (!record || typeof record !== "object") return false;
+  if (record.isMock === true) return true;
+  if (Boolean(record.syntheticOrigin)) return true;
+  if (record.provenance === "synthetic_mock") return true;
+  if (typeof record.provenance === "string" && record.provenance.toLowerCase().includes("synthetic")) return true;
+  if (typeof record.channelId === "string" && record.channelId.startsWith("UC_SYNTHETIC")) return true;
+  if (record.metadata && typeof record.metadata === "object") {
+    if (record.metadata.isMock === true) return true;
+    if (Boolean(record.metadata.syntheticOrigin)) return true;
+    if (record.metadata.provenance === "synthetic_mock") return true;
+    if (typeof record.metadata.provenance === "string" && record.metadata.provenance.toLowerCase().includes("synthetic")) return true;
+    if (typeof record.metadata.channelId === "string" && record.metadata.channelId.startsWith("UC_SYNTHETIC")) return true;
+  }
+  return false;
+}
+export function resolveItemAuditEvidence(item, options = {}) {
+  if (!item || typeof item !== "object") return null;
 
-/**
- * Validate a full content manifest.
- */
-export function validateContentManifest(manifest, options = {}) {
+  const id = item.id ?? item.assignedLolixcoId;
+  let publicVideoId = item.youtubeVideoId;
+  if (!publicVideoId && typeof item.source === "string") {
+    const match = /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(item.source);
+    if (match) publicVideoId = match[1];
+  }
+  if (!publicVideoId && typeof item.canonicalVideoId === "string") {
+    publicVideoId = item.canonicalVideoId;
+  }
+
+  if (Array.isArray(options.auditRecords)) {
+    const idMatches = typeof id === "number"
+      ? options.auditRecords.filter((a) => a && (a.assignedLolixcoId === id || a.id === id))
+      : [];
+    const videoMatches = typeof publicVideoId === "string" && publicVideoId
+      ? options.auditRecords.filter((a) => a && (a.canonicalVideoId === publicVideoId || a.youtubeVideoId === publicVideoId))
+      : [];
+
+    if (idMatches.length > 1) {
+      return { error: `Ambiguous audit match: multiple audit records (${idMatches.length}) match candidate ID ${id}.` };
+    }
+    if (videoMatches.length > 1) {
+      return { error: `Ambiguous audit match: multiple audit records (${videoMatches.length}) match video ID '${publicVideoId}'.` };
+    }
+
+    if (idMatches.length === 1 && videoMatches.length === 1 && idMatches[0] !== videoMatches[0]) {
+      return { error: `Conflicting audit match: audit record for candidate ID ${id} differs from audit record for video ID '${publicVideoId}'.` };
+    }
+
+    const matched = idMatches[0] || videoMatches[0];
+    if (matched) return { evidence: matched };
+    return null;
+  }
+
+  if (options.auditContext) {
+    if (typeof options.auditContext.getAuditForRecord === "function") {
+      const res = options.auditContext.getAuditForRecord(item);
+      return res ? { evidence: res } : null;
+    }
+    if (typeof options.auditContext === "function") {
+      const res = options.auditContext(item);
+      return res ? { evidence: res } : null;
+    }
+    if (typeof options.auditContext === "object") {
+      const idMatch = typeof id === "number" ? options.auditContext[id] : null;
+      const videoMatch = typeof publicVideoId === "string" && publicVideoId ? options.auditContext[publicVideoId] : null;
+
+      if (idMatch && videoMatch && idMatch !== videoMatch) {
+        return { error: `Conflicting audit match in auditContext: record for ID ${id} differs from record for video ID '${publicVideoId}'.` };
+      }
+
+      const matched = idMatch || videoMatch;
+      if (matched) return { evidence: matched };
+    }
+  }
+
+  return null;
+}
+export function verifyProductionPublicationEligibility(item, options = {}) {
+  const errors = [];
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    return { valid: false, errors: ["Record must be an object"] };
+  }
+
+  // Preview or bypass options strictly forbidden during production publication
+  if (options.allowDraft || options.strict === false || options.allowSyntheticAudit) {
+    return {
+      valid: false,
+      errors: [
+        "Production publication aborted: preview or bypass options (allowDraft: true, strict: false, or allowSyntheticAudit: true) are strictly forbidden for production output."
+      ],
+    };
+  }
+
+  const id = item.id ?? item.assignedLolixcoId;
+  const sourceType = item.sourceType;
+
+  // 1. Frozen Demos (0-16)
+  if (typeof id === "number" && id >= 0 && id <= 16) {
+    if (!isBaselineDemoRecord(item, { ...options, checkFileChecksum: true, enforceChecksum: true, forProduction: true })) {
+      errors.push(`Demo ID ${id} failed baseline demo verification anchored to pinned checksum.`);
+    }
+    return { valid: errors.length === 0, errors };
+  }
+
+  // 2. YouTube Embeds (100-299 or sourceType === "youtube_embed")
+  if (sourceType === "youtube_embed" || (typeof id === "number" && id >= 100 && id <= 299)) {
+    // Resolve audit evidence explicitly WITHOUT overwriting candidate intake record
+    let audit = options.auditEvidence || options.auditRecord;
+    if (!audit) {
+      const resolution = resolveItemAuditEvidence(item, options);
+      if (resolution?.error) {
+        errors.push(`YouTube edit ID ${id}: ${resolution.error}`);
+        return { valid: false, errors };
+      }
+      if (resolution?.evidence) {
+        audit = resolution.evidence;
+      } else if (item.metadata && typeof item.metadata === "object") {
+        // Direct caller supplied record with audit metadata
+        audit = item;
+      }
+    }
+
+    if (!audit || typeof audit !== "object") {
+      errors.push(`YouTube edit ID ${id}: missing provenance or audit evidence for YouTube embed publication.`);
+      return { valid: false, errors };
+    }
+
+    // Resolve public video ID
+    let publicVideoId = item.youtubeVideoId;
+    if (!publicVideoId && typeof item.source === "string") {
+      const match = /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(item.source);
+      if (match) publicVideoId = match[1];
+    }
+    if (!publicVideoId && typeof audit.canonicalVideoId === "string") {
+      publicVideoId = audit.canonicalVideoId;
+    }
+
+    if (!publicVideoId || typeof publicVideoId !== "string" || !/^[a-zA-Z0-9_-]{11}$/.test(publicVideoId)) {
+      errors.push(`YouTube edit ID ${id}: missing or invalid 11-character YouTube video ID.`);
+    } else {
+      // Candidate URL integrity: candidate source and poster must match public video ID
+      if (typeof item.source === "string" && item.source.includes("youtube.com")) {
+        const sMatch = /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(item.source);
+        if (!sMatch || sMatch[1] !== publicVideoId) {
+          errors.push(
+            `YouTube edit ID ${id}: source URL video ID '${sMatch ? sMatch[1] : ""}' does not match public video ID '${publicVideoId}'.`
+          );
+        }
+      }
+      if (typeof item.poster === "string" && item.poster.includes("ytimg.com")) {
+        const pMatch = /\/vi\/([a-zA-Z0-9_-]{11})\//.exec(item.poster);
+        if (!pMatch || pMatch[1] !== publicVideoId) {
+          errors.push(
+            `YouTube edit ID ${id}: poster thumbnail video ID '${pMatch ? pMatch[1] : ""}' does not match public video ID '${publicVideoId}'.`
+          );
+        }
+      }
+
+      // Audit evidence binding against candidate intake identity (audit fields must not overwrite candidate)
+      // Positive allocation check: Production publication requires a valid historically assigned catalog ID
+      const allocatedId = audit.assignedLolixcoId ?? audit.id;
+      if (typeof id !== "number" || typeof allocatedId !== "number" || allocatedId !== id) {
+        if (typeof id === "number" && typeof allocatedId === "number" && allocatedId !== id) {
+          if (audit.assignedLolixcoId !== undefined && audit.assignedLolixcoId !== null) {
+            errors.push(
+              `YouTube edit ID ${id}: audit evidence assignedLolixcoId (${audit.assignedLolixcoId}) does not match candidate catalog ID (${id}).`
+            );
+          } else {
+            errors.push(
+              `YouTube edit ID ${id}: audit evidence ID (${audit.id}) does not match candidate catalog ID (${id}).`
+            );
+          }
+        } else {
+          errors.push(
+            `YouTube edit ID ${id}: missing historically assigned catalog ID in audit evidence (assignedLolixcoId: ${audit.assignedLolixcoId ?? "unallocated"}).`
+          );
+        }
+      }
+      if (typeof audit.assignedLolixcoId === "number" && typeof audit.id === "number" && audit.assignedLolixcoId !== audit.id) {
+        errors.push(
+          `YouTube edit ID ${id}: conflicting catalog IDs in audit evidence (assignedLolixcoId: ${audit.assignedLolixcoId}, id: ${audit.id}).`
+        );
+      }
+
+      // Positive video identity check: Production publication requires positive canonical video IDs in evidence and metadata
+      if (!audit.canonicalVideoId || typeof audit.canonicalVideoId !== "string" || !/^[a-zA-Z0-9_-]{11}$/.test(audit.canonicalVideoId)) {
+        errors.push(
+          `YouTube edit ID ${id}: missing or invalid canonical YouTube video ID in audit evidence ('${audit.canonicalVideoId ?? ""}').`
+        );
+      } else if (audit.canonicalVideoId !== publicVideoId) {
+        errors.push(
+          `YouTube edit ID ${id}: canonical YouTube ID mismatch between evidence record ('${audit.canonicalVideoId}') and candidate video ID ('${publicVideoId}').`
+        );
+      }
+
+      if (!audit.metadata?.canonicalVideoId || typeof audit.metadata.canonicalVideoId !== "string" || !/^[a-zA-Z0-9_-]{11}$/.test(audit.metadata.canonicalVideoId)) {
+        errors.push(
+          `YouTube edit ID ${id}: missing or invalid canonical YouTube video ID in metadata payload ('${audit.metadata?.canonicalVideoId ?? ""}').`
+        );
+      } else if (audit.metadata.canonicalVideoId !== publicVideoId) {
+        errors.push(
+          `YouTube edit ID ${id}: canonical YouTube ID mismatch between metadata payload ('${audit.metadata.canonicalVideoId}') and candidate video ID ('${publicVideoId}').`
+        );
+      }
+
+      if (typeof audit.canonicalUrl === "string") {
+        const cMatch = /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(audit.canonicalUrl);
+        if (!cMatch || cMatch[1] !== publicVideoId) {
+          errors.push(
+            `YouTube edit ID ${id}: audit canonicalUrl video ID does not match candidate video ID '${publicVideoId}'.`
+          );
+        }
+      }
+    }
+
+    // Format verification against intake candidate (audit fields must not overwrite candidate format)
+    const candidateFormat = item.format || (typeof id === "number" && id >= 200 && id <= 299 ? "short" : "video");
+    if (audit.format && audit.format !== candidateFormat) {
+      errors.push(
+        `YouTube edit ID ${id}: format contradiction between candidate format ('${candidateFormat}') and audit record format ('${audit.format}').`
+      );
+    }
+    if (candidateFormat === "video") {
+      if (audit.confirmedFormat === "short") {
+        errors.push(
+          `YouTube edit ID ${id}: contradictory format confirmation. Format is 'video' but audit confirmedFormat is 'short'.`
+        );
+      }
+      if (audit.formatConfirmed === true && audit.confirmedFormat !== "video") {
+        errors.push(
+          `YouTube edit ID ${id}: contradictory format confirmation. Format is 'video' but audit confirmedFormat is '${audit.confirmedFormat}'.`
+        );
+      }
+    } else if (candidateFormat === "short") {
+      if (audit.confirmedFormat === "video") {
+        errors.push(
+          `YouTube edit ID ${id}: contradictory format confirmation. Format is 'short' but audit confirmedFormat is 'video'.`
+        );
+      }
+      if (audit.formatConfirmed !== true || audit.confirmedFormat !== "short") {
+        errors.push(
+          `YouTube edit ID ${id}: candidate portrait Short requires positive format confirmation (formatConfirmed: true and confirmedFormat: 'short'). Explicit editorial format confirmation is required before publication.`
+        );
+      }
+    }
+
+    // Review status check: Authoritative review authorization MUST come from the trusted matched audit record.
+    // Candidate intake declarations must never supply missing authorization or override a rejected/non-approved audit state.
+    const auditStatus = audit.contentReviewStatus || audit.reviewStatus || audit.editorial?.reviewStatus;
+    if (auditStatus !== "approved" && auditStatus !== "published") {
+      errors.push(`YouTube edit ID ${id} requires authoritative audit review status 'approved' or 'published', got '${auditStatus ?? "missing"}'`);
+    }
+
+    // Candidate intake record, if declaring a review status, cannot contradict publication authorization
+    const candidateStatus = item.contentReviewStatus || item.editorial?.reviewStatus || item.reviewStatus;
+    if (candidateStatus && candidateStatus !== "approved" && candidateStatus !== "published") {
+      errors.push(`YouTube edit ID ${id}: candidate review status '${candidateStatus}' contradicts publication authorization.`);
+    }
+
+    // Provenance and synthetic mock validation (Point 1 & Point 3: No synthetic bypass; candidate & evidence markers checked)
+    const isMock = hasSyntheticMarker(audit) || hasSyntheticMarker(item);
+
+    if (isMock) {
+      errors.push(
+        `YouTube edit ID ${id}: synthetic mock metadata is prohibited from production catalog publication. Real YouTube API metadata is required.`
+      );
+    }
+
+    if (audit.provenance !== "youtube_data_api_v3" || audit.metadata?.provenance !== "youtube_data_api_v3") {
+      errors.push(
+        `YouTube edit ID ${id}: missing or unverified API provenance ('${audit.provenance}'). Positive evidence of genuine YouTube Data API v3 retrieval is required for production publication.`
+      );
+    }
+
+    if (audit.metadataFetchStatus !== "fetched") {
+      errors.push(
+        `YouTube edit ID ${id}: unverified metadata retrieval status '${audit.metadataFetchStatus}'. Positive evidence of successful API retrieval ('fetched') is required for production publication.`
+      );
+    }
+
+    // Metadata completeness requirements (matching compiler lines 575-589)
+    if (!audit.metadata || typeof audit.metadata !== "object") {
+      errors.push(`YouTube edit ID ${id}: missing metadata payload.`);
+    } else {
+      if (audit.metadata.privacyStatus !== "public") {
+        errors.push(`YouTube edit ID ${id}: video is not public on YouTube (privacyStatus: '${audit.metadata.privacyStatus}').`);
+      }
+      if (audit.metadata.embeddable !== true) {
+        errors.push(`YouTube edit ID ${id}: embedded playback is disabled or restricted on YouTube.`);
+      }
+
+      // Completeness: Real title and creator attribution (compiler lines 575-589; candidate display fields do NOT rescue)
+      const title = (audit.metadata.title || "").trim();
+      if (!title || title.startsWith("Curated Edit") || title.startsWith("YouTube Video")) {
+        errors.push(`YouTube edit ID ${id}: missing genuine title metadata.`);
+      }
+
+      const channelTitle = (audit.metadata.channelTitle || "").trim();
+      if (!channelTitle || channelTitle === "Unknown Creator" || channelTitle === "YouTube Creator") {
+        errors.push(`YouTube edit ID ${id}: missing genuine channel creator attribution.`);
+      }
+
+      // Duration: finite positive numeric duration (compiler lines 585-589; candidate duration string does NOT rescue)
+      const durationSec = audit.metadata.durationSec ?? audit.metadata.durationSeconds;
+      if (typeof durationSec !== "number" || !Number.isFinite(durationSec) || durationSec <= 0) {
+        errors.push(`YouTube edit ID ${id}: invalid or missing duration metadata.`);
+      }
+    }
+
+    // Freshness check
+    const verificationTimestamp = audit.lastMetadataVerification;
+    if (!verificationTimestamp || isNaN(Date.parse(verificationTimestamp))) {
+      errors.push(`YouTube edit ID ${id}: missing or invalid lastMetadataVerification timestamp.`);
+    } else {
+      const verifiedTime = new Date(verificationTimestamp).getTime();
+      const currentTime = options.now ? new Date(options.now).getTime() : Date.now();
+      const effectiveMaxAgeMs = typeof options.maxMetadataAgeMs === "number"
+        ? options.maxMetadataAgeMs
+        : (options.maxMetadataAgeDays || 30) * 24 * 60 * 60 * 1000;
+
+      if (verifiedTime > currentTime + 5 * 60 * 1000) {
+        errors.push(`YouTube edit ID ${id}: future-dated verification timestamp '${verificationTimestamp}' is invalid.`);
+      } else if (currentTime - verifiedTime > effectiveMaxAgeMs) {
+        errors.push(`YouTube edit ID ${id}: metadata verification is stale. Fresh YouTube API verification is required before publication.`);
+      }
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+
+  // 3. Hosted media (300-499 or sourceType === "licensed_local_media")
+  if (sourceType === "licensed_local_media" || (typeof id === "number" && id >= 300 && id <= 499)) {
+    errors.push(
+      `Cannot project hosted item ${id} for production: hosted production publication requires verified media inspection, decode playback verification, and documented rights clearance; hosted publication evidence is not implemented.`
+    );
+    return { valid: false, errors };
+  }
+
+  errors.push(`Item ${id}: unknown sourceType or unallocated ID partition for production publication.`);
+  return { valid: false, errors };
+}
+export function validateContentManifest(manifestData, options = {}) {
   const {
+    fandomRegistry = [],
+    existingCatalog = [],
     mode = "metadata",
     isNewBatch = true,
-    existingCatalog = [],
-    existingCatalogIds = [],
   } = options;
+
   const errors = [];
   const warnings = [];
 
@@ -1336,78 +2601,51 @@ export function validateContentManifest(manifest, options = {}) {
       warnings: [],
       mode,
       summary: { total: 0, videos: 0, shorts: 0 },
+      assetVerification: "SKIPPED (Metadata preparation mode)",
+      streamInspection: "SKIPPED (Metadata preparation mode)",
+      decodeVerification: "SKIPPED (Metadata preparation mode)",
     };
   }
 
-  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
-    return {
-      valid: false,
-      errors: ["Manifest root must be a JSON object"],
-      warnings: [],
-      mode,
-      summary: { total: 0, videos: 0, shorts: 0 },
-    };
-  }
+  const schemaErrors = validateJsonSchema(manifestData, manifestSchema);
+  errors.push(...schemaErrors);
 
-  // 1. Authoritative Draft-07 JSON Schema Validation
-  const schemaErrors = validateJsonSchema(manifest, manifestSchema, manifestSchema, "");
-  for (const sErr of schemaErrors) {
-    if (!errors.includes(sErr)) {
-      errors.push(`Manifest schema error: ${sErr}`);
+  if (manifestData && typeof manifestData === "object" && !Array.isArray(manifestData)) {
+    for (const key of Object.keys(manifestData)) {
+      if (!ALLOWED_ROOT_KEYS.includes(key)) {
+        errors.push(`Unexpected root property '${key}' (schema forbids additionalProperties)`);
+      }
     }
   }
 
-  // Check unexpected root keys
-  for (const rKey of Object.keys(manifest)) {
-    if (!ALLOWED_ROOT_KEYS.includes(rKey)) {
-      const errStr = `Unexpected root property '${rKey}' (schema forbids additionalProperties)`;
+  if (manifestData?.generatedAt !== undefined) {
+    if (!isValidDateTime(manifestData.generatedAt)) {
+      const errStr = `Manifest 'generatedAt' must be a valid RFC 3339 / ISO 8601 date-time string (e.g. '2026-10-18T12:00:00Z'), got '${manifestData.generatedAt}'`;
       if (!errors.includes(errStr)) {
         errors.push(errStr);
       }
     }
   }
 
-  if (manifest.generatedAt !== undefined) {
-    if (!isValidDateTime(manifest.generatedAt)) {
-      const errStr = `Manifest 'generatedAt' must be a valid RFC 3339 / ISO 8601 date-time string (e.g. '2026-10-18T12:00:00Z'), got '${manifest.generatedAt}'`;
-      if (!errors.includes(errStr)) {
-        errors.push(errStr);
-      }
-    }
-  }
-
-  if (typeof manifest.manifestVersion !== "string" || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(manifest.manifestVersion)) {
+  if (typeof manifestData?.manifestVersion !== "string" || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(manifestData.manifestVersion)) {
     const errStr = "Manifest missing valid 'manifestVersion' semantic version string (e.g. '1.0.0')";
     if (!errors.includes(errStr)) {
       errors.push(errStr);
     }
   }
-  if (typeof manifest.catalogVersion !== "string" || !/^[a-zA-Z0-9_-]+$/.test(manifest.catalogVersion)) {
+  if (typeof manifestData?.catalogVersion !== "string" || !/^[a-zA-Z0-9_-]+$/.test(manifestData.catalogVersion)) {
     const errStr = "Manifest missing valid 'catalogVersion' string (e.g. 'catalog-v2')";
     if (!errors.includes(errStr)) {
       errors.push(errStr);
     }
   }
-  if (!Array.isArray(manifest.items)) {
-    const errStr = "Manifest missing 'items' array";
-    if (!errors.includes(errStr)) {
-      errors.push(errStr);
-    }
-    return {
-      valid: false,
-      errors,
-      warnings,
-      mode,
-      summary: { total: 0, videos: 0, shorts: 0 },
-    };
-  }
 
-  const seenIds = new Set([
-    ...existingCatalogIds,
-    ...existingCatalog.map((item) => item?.id).filter((id) => typeof id === "number"),
-  ]);
+  const items = Array.isArray(manifestData?.items) ? manifestData.items : [];
+  const seenIds = new Set(existingCatalog.map((e) => e.id));
+
   let videoCount = 0;
   let shortCount = 0;
+  let localMediaCount = 0;
   let inspectedStreamCount = 0;
   let streamErrors = 0;
   let unavailableStreams = 0;
@@ -1415,48 +2653,87 @@ export function validateContentManifest(manifest, options = {}) {
   let decodeErrors = 0;
   let unavailableDecoders = 0;
 
-  for (let idx = 0; idx < manifest.items.length; idx++) {
-    const item = manifest.items[idx];
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
     const itemResult = validateContentRecord(item, {
       ...options,
       seenIds,
       isNewBatch,
+      fandomRegistry,
       mode,
+      publicDir: options.publicDir,
+      approvedOrigins: options.approvedOrigins,
+      videoInspector: options.videoInspector,
+      decodeVerifier: options.decodeVerifier,
     });
 
-    if (item && typeof item === "object" && !Array.isArray(item)) {
-      if (item.format === "short") {
-        shortCount++;
-      } else {
-        videoCount++;
-      }
-    }
-
-    if (itemResult.inspectedStream) {
-      if (itemResult.inspectedStream.ok) {
-        inspectedStreamCount++;
-      } else if (!itemResult.inspectedStream.available) {
-        unavailableStreams++;
-      } else {
-        streamErrors++;
-      }
-    }
-
-    if (itemResult.verifiedDecode) {
-      if (itemResult.verifiedDecode.ok) {
-        decodedStreamCount++;
-      } else if (!itemResult.verifiedDecode.available) {
-        unavailableDecoders++;
-      } else {
-        decodeErrors++;
-      }
-    }
-
     for (const err of itemResult.errors) {
-      errors.push(`Item [index ${idx}${item?.id !== undefined ? `, id ${item.id}` : ""}]: ${err}`);
+      errors.push(`Item #${i + 1} (ID ${item?.id ?? "unknown"}): ${err}`);
     }
     for (const warn of itemResult.warnings) {
-      warnings.push(`Item [index ${idx}${item?.id !== undefined ? `, id ${item.id}` : ""}]: ${warn}`);
+      warnings.push(`Item #${i + 1} (ID ${item?.id ?? "unknown"}): ${warn}`);
+    }
+
+    if (item?.format === "short") {
+      shortCount++;
+    } else if (item?.format === "video") {
+      videoCount++;
+    }
+
+    const isItemYouTube = item?.sourceType === "youtube_embed" || (typeof item?.id === "number" && item.id >= 100 && item.id <= 299 && item?.source?.includes("youtube.com"));
+    if (!isItemYouTube) {
+      localMediaCount++;
+      if (itemResult.inspectedStream) {
+        if (itemResult.inspectedStream.available) {
+          if (itemResult.inspectedStream.ok) {
+            inspectedStreamCount++;
+          } else {
+            streamErrors++;
+          }
+        } else {
+          unavailableStreams++;
+        }
+      }
+
+      if (itemResult.verifiedDecode) {
+        if (itemResult.verifiedDecode.available) {
+          if (itemResult.verifiedDecode.ok) {
+            decodedStreamCount++;
+          } else {
+            decodeErrors++;
+          }
+        } else {
+          unavailableDecoders++;
+        }
+      }
+    }
+
+    // In publish mode: verify production publication eligibility for each item
+    if (mode === "publish") {
+      let elig;
+      if (isItemYouTube) {
+        const auditRes = resolveItemAuditEvidence(item, options);
+        if (auditRes?.error) {
+          errors.push(`Item #${i + 1} (ID ${item?.id ?? "unknown"}): ${auditRes.error}`);
+          continue;
+        }
+        if (!auditRes?.evidence) {
+          errors.push(`Item #${i + 1} (ID ${item?.id ?? "unknown"}): missing provenance or audit evidence for YouTube embed publication.`);
+          continue;
+        }
+        elig = verifyProductionPublicationEligibility(item, {
+          ...options,
+          auditEvidence: auditRes.evidence,
+        });
+      } else {
+        elig = verifyProductionPublicationEligibility(item, options);
+      }
+
+      if (!elig.valid) {
+        for (const e of elig.errors) {
+          errors.push(`Item #${i + 1} (ID ${item?.id ?? "unknown"}): ${e}`);
+        }
+      }
     }
   }
 
@@ -1465,41 +2742,46 @@ export function validateContentManifest(manifest, options = {}) {
   let decodeVerification = "SKIPPED (Metadata preparation mode)";
 
   if (mode === "publish") {
-    if ((!isFFprobeAvailable() && !options.videoInspector) || unavailableStreams > 0) {
-      streamInspection = "INCOMPLETE (ffprobe unavailable in environment; publication blocked)";
-      if (!errors.some((e) => e.includes("ffprobe is not installed"))) {
-        errors.push(
-          "Publication requirement failed: ffprobe is not installed in the environment. Physical stream verification is mandatory for publication readiness."
-        );
-      }
-    } else if (streamErrors > 0) {
-      streamInspection = `FAILED (${streamErrors} streams undecodable or failed inspection)`;
-    } else if (inspectedStreamCount === manifest.items.length && manifest.items.length > 0) {
-      streamInspection = `VERIFIED (${inspectedStreamCount} video streams certified)`;
+    if (localMediaCount === 0) {
+      streamInspection = "NOT_APPLICABLE (All items are YouTube embeds verified via API evidence)";
+      decodeVerification = "NOT_APPLICABLE (All items are YouTube embeds verified via API evidence)";
     } else {
-      streamInspection = "INCOMPLETE (Streams not fully verified)";
-      errors.push("Publication readiness requirement failed: All media streams must be verified.");
-    }
+      if ((!isFFprobeAvailable() && !options.videoInspector) || unavailableStreams > 0) {
+        streamInspection = "INCOMPLETE (ffprobe unavailable in environment; publication blocked)";
+        if (!errors.some((e) => e.includes("ffprobe is not installed"))) {
+          errors.push(
+            "Publication requirement failed: ffprobe is not installed in the environment. Physical stream verification is mandatory for publication readiness."
+          );
+        }
+      } else if (streamErrors > 0) {
+        streamInspection = `FAILED (${streamErrors} streams undecodable or failed inspection)`;
+      } else if (inspectedStreamCount === localMediaCount) {
+        streamInspection = `VERIFIED (${inspectedStreamCount} video streams certified)`;
+      } else {
+        streamInspection = "INCOMPLETE (Streams not fully verified)";
+        errors.push("Publication readiness requirement failed: All media streams must be verified.");
+      }
 
-    if ((!isFFmpegAvailable() && !options.decodeVerifier) || unavailableDecoders > 0) {
-      decodeVerification = "INCOMPLETE (ffmpeg unavailable in environment; publication blocked)";
-      if (!errors.some((e) => e.includes("ffmpeg is not installed"))) {
-        errors.push(
-          "Publication requirement failed: ffmpeg is not installed in the environment. Full decode playback-integrity verification is mandatory for publication readiness."
-        );
+      if ((!isFFmpegAvailable() && !options.decodeVerifier) || unavailableDecoders > 0) {
+        decodeVerification = "INCOMPLETE (ffmpeg unavailable in environment; publication blocked)";
+        if (!errors.some((e) => e.includes("ffmpeg is not installed"))) {
+          errors.push(
+            "Publication requirement failed: ffmpeg is not installed in the environment. Full decode playback-integrity verification is mandatory for publication readiness."
+          );
+        }
+      } else if (decodeErrors > 0) {
+        decodeVerification = `FAILED (${decodeErrors} streams failed playback decode integrity verification)`;
+      } else if (decodedStreamCount === localMediaCount) {
+        decodeVerification = `VERIFIED (${decodedStreamCount} video streams decoded and playback-certified)`;
+      } else {
+        decodeVerification = "INCOMPLETE (Streams not fully verified for playback decode integrity)";
+        errors.push("Publication readiness requirement failed: All media streams must pass playback decode verification.");
       }
-    } else if (decodeErrors > 0) {
-      decodeVerification = `FAILED (${decodeErrors} streams failed playback decode integrity verification)`;
-    } else if (decodedStreamCount === manifest.items.length && manifest.items.length > 0) {
-      decodeVerification = `VERIFIED (${decodedStreamCount} video streams decoded and playback-certified)`;
-    } else {
-      decodeVerification = "INCOMPLETE (Streams not fully verified for playback decode integrity)";
-      errors.push("Publication readiness requirement failed: All media streams must pass playback decode verification.");
     }
   } else if (mode === "assets") {
     if (inspectedStreamCount > 0) {
       streamInspection = `VERIFIED (${inspectedStreamCount} streams inspected)`;
-    } else if (!isFFprobeAvailable() || unavailableStreams > 0) {
+    } else if ((!isFFprobeAvailable() && !options.videoInspector) || unavailableStreams > 0) {
       streamInspection = "INCOMPLETE (ffprobe unavailable; technical stream inspection incomplete)";
     } else {
       streamInspection = "INCOMPLETE (no video streams inspected)";
@@ -1507,7 +2789,7 @@ export function validateContentManifest(manifest, options = {}) {
 
     if (decodedStreamCount > 0) {
       decodeVerification = `VERIFIED (${decodedStreamCount} streams decoded)`;
-    } else if (!isFFmpegAvailable() || unavailableDecoders > 0) {
+    } else if ((!isFFmpegAvailable() && !options.decodeVerifier) || unavailableDecoders > 0) {
       decodeVerification = "INCOMPLETE (ffmpeg unavailable; playback integrity verification incomplete)";
     } else {
       decodeVerification = "INCOMPLETE (no video streams decoded)";
@@ -1530,36 +2812,57 @@ export function validateContentManifest(manifest, options = {}) {
     streamInspection,
     decodeVerification,
     summary: {
-      total: manifest.items.length,
+      total: items.length,
       videos: videoCount,
       shorts: shortCount,
     },
   };
 }
 
-/**
- * Validate the live TypeScript production catalog in src/data/edits.ts
- */
 export async function validateLiveCatalog(root = projectRoot, options = {}) {
-  const editsModule = await import(resolve(root, "src/data/edits.ts"));
-  const fandomsModule = await import(resolve(root, "src/data/fandoms.ts"));
-
-  const edits = editsModule.edits;
-  const fandomRegistry = fandomsModule.FANDOM_REGISTRY;
-
+  const { allowExpandedCatalog = false, approvedOrigins } = options;
   const errors = [];
   const warnings = [];
 
-  const allowExpanded = options.allowExpandedCatalog ?? false;
-  const isExpanded = allowExpanded || (Array.isArray(edits) && edits.length > 17);
+  const editsPath = resolve(root, "src/data/edits.ts");
+  if (!existsSync(editsPath)) {
+    return {
+      valid: false,
+      errors: [`Production catalog not found at ${editsPath}`],
+      warnings: [],
+      summary: { total: 0, videos: 0, shorts: 0 },
+    };
+  }
 
-  // Invariant 1: Exactly 17 demo edits (or >= 17 if expanded)
+  let editsModule;
+  try {
+    editsModule = await import(editsPath);
+  } catch (err) {
+    return {
+      valid: false,
+      errors: [`Failed to load production catalog: ${err.message}`],
+      warnings: [],
+      summary: { total: 0, videos: 0, shorts: 0 },
+    };
+  }
+
+  const edits = editsModule.edits;
+  const isExpanded = allowExpandedCatalog;
+
   if (!Array.isArray(edits)) {
     errors.push(`Live catalog edit count violation: expected array of edits, got ${typeof edits}`);
   } else if (!isExpanded && edits.length !== 17) {
     errors.push(`Live catalog edit count violation: expected exactly 17 edits, got ${edits.length}`);
   } else if (isExpanded && edits.length < 17) {
     errors.push(`Expanded catalog must preserve at least the 17 baseline demo edits, got ${edits.length}`);
+  }
+
+  let fandomRegistry = [];
+  try {
+    const fandomsModule = await import(resolve(root, "src/data/fandoms.ts"));
+    fandomRegistry = fandomsModule.FANDOM_REGISTRY || [];
+  } catch {
+    fandomRegistry = [];
   }
 
   const seenIds = new Set();
@@ -1572,6 +2875,20 @@ export async function validateLiveCatalog(root = projectRoot, options = {}) {
       shortCount++;
     } else {
       videoCount++;
+    }
+
+    if (i < 17) {
+      if (!isBaselineDemoRecord(edit, { checkFileChecksum: true })) {
+        errors.push(
+          `Baseline demo edit ID ${edit.id} at index ${i} does not match trusted unforgeable reference anchored to pinned checksum.`
+        );
+      }
+    } else {
+      try {
+        assertPublicEditIntegrity(edit, { approvedOrigins });
+      } catch (err) {
+        errors.push(`Live Edit ID ${edit.id}: ${err.message}`);
+      }
     }
 
     const itemResult = validateContentRecord(edit, {
@@ -1590,28 +2907,22 @@ export async function validateLiveCatalog(root = projectRoot, options = {}) {
       warnings.push(`Live Edit ID ${edit.id}: ${warn}`);
     }
 
-    // For expanded catalog: enforce ID range policy for curated items beyond demo baseline
     if (isExpanded && i >= 17) {
-      if (edit.format === "short") {
-        if (edit.id < 200 || edit.id > 299) {
-          errors.push(`Curated short ID ${edit.id} outside allowed range [200..299]`);
-        }
-      } else {
-        if (edit.id < 100 || edit.id > 199) {
-          errors.push(`Curated video ID ${edit.id} outside allowed range [100..199]`);
+      const partCheck = validateSourceAndId(edit, { isNewBatch: false, isLiveCatalog: true });
+      if (!partCheck.valid) {
+        for (const err of partCheck.errors) {
+          errors.push(`Live Edit ID ${edit.id}: ${err}`);
         }
       }
     }
   }
 
-  // Invariant 2: Production contains zero fabricated Shorts (unless expanded catalog allows genuine shorts)
   if (!isExpanded && shortCount !== 0) {
     errors.push(
       `Production catalog contains ${shortCount} Shorts. Invariant requires exactly 0 Shorts until owner media is received.`
     );
   }
 
-  // Invariant 3: Baseline demo IDs must be exactly 0 to 16
   for (let expectedId = 0; expectedId < 17; expectedId++) {
     if (!seenIds.has(expectedId)) {
       errors.push(`Missing expected demo edit ID: ${expectedId}`);
@@ -1630,28 +2941,95 @@ export async function validateLiveCatalog(root = projectRoot, options = {}) {
   };
 }
 
-/**
- * Strip private editorial metadata for public client projection.
- * SAFE BY DEFAULT: Rejects unapproved or uncleared records unless allowDraft: true is explicitly provided.
- */
-export function projectToPublicEdit(item, { allowDraft = false, strict = true } = {}) {
+export function projectToPublicEdit(item, options = {}) {
+  const {
+    allowDraft = false,
+    strict = true,
+    forProduction = false,
+    isTargetingProduction = false,
+    approvedOrigins = [],
+  } = options;
+
   if (!item || typeof item !== "object" || Array.isArray(item)) {
     throw new Error("Cannot project non-object to public edit");
   }
 
-  const reviewStatus = item.editorial?.reviewStatus;
-  const rightsCleared = item.editorial?.rightsCleared;
+  const isTargetingProd = Boolean(isTargetingProduction || forProduction);
 
-  if (!allowDraft && strict !== false) {
-    if (reviewStatus !== "approved" && reviewStatus !== "published") {
+  // Preview or bypass options strictly forbidden during production publication
+  if (isTargetingProd) {
+    if (allowDraft || strict === false) {
       throw new Error(
-        `Cannot project item ${item.id} to public catalog: editorial reviewStatus must be 'approved' or 'published', got '${reviewStatus}'`
+        "Production publication aborted: preview options (allowDraft: true or strict: false) are strictly forbidden for production output."
       );
     }
-    if (rightsCleared !== true) {
+    if (options.allowSyntheticAudit) {
       throw new Error(
-        `Cannot project item ${item.id} to public catalog: editorial rightsCleared must be true`
+        "Production publication aborted: synthetic bypass options (allowSyntheticAudit: true) are strictly forbidden for production output."
       );
+    }
+    const productionOptions = {
+      ...options,
+      forProduction: true,
+      isTargetingProduction: true,
+      allowDraft: false,
+      strict: true,
+      allowSyntheticAudit: false,
+      checkFileChecksum: true,
+      enforceChecksum: true,
+      allowTestHarness: false,
+      approvedOrigins,
+    };
+    const elig = verifyProductionPublicationEligibility(item, productionOptions);
+    if (!elig.valid) {
+      throw new Error(`Cannot project item ${item.id ?? item.assignedLolixcoId}: production publication eligibility failed: ${elig.errors.join("; ")}`);
+    }
+  } else if (!allowDraft && strict !== false) {
+    const isYouTube = item.sourceType === "youtube_embed";
+    if (isYouTube) {
+      const status = item.contentReviewStatus || item.editorial?.reviewStatus || item.reviewStatus;
+      if (status !== "approved" && status !== "published") {
+        throw new Error(
+          `Cannot project YouTube item ${item.id} to public catalog: review status must be 'approved' or 'published', got '${status}'`
+        );
+      }
+      const isMock = hasSyntheticMarker(item) || (options.auditEvidence && hasSyntheticMarker(options.auditEvidence));
+      if (isMock) {
+        throw new Error(
+          `Cannot project YouTube item ${item.id} to public catalog: synthetic mock metadata is prohibited`
+        );
+      }
+      if (item.provenance !== "youtube_data_api_v3" && item.metadata?.provenance !== "youtube_data_api_v3") {
+        throw new Error(
+          `Cannot project YouTube item ${item.id} to public catalog: missing positive API provenance`
+        );
+      }
+      if (item.format === "short") {
+        if (item.formatConfirmed !== true && item.confirmedFormat !== "short") {
+          throw new Error(
+            `Cannot project portrait Short ${item.id} to public catalog: format confirmation required`
+          );
+        }
+      }
+    } else if (item.id >= 0 && item.id <= 16) {
+      if (!isBaselineDemoRecord(item, options)) {
+        throw new Error(
+          `Cannot project item ${item.id}: record does not match trusted baseline demo record`
+        );
+      }
+    } else {
+      const reviewStatus = item.editorial?.reviewStatus || item.contentReviewStatus;
+      const rightsCleared = item.editorial?.rightsCleared ?? item.rightsCleared;
+      if (reviewStatus !== "approved" && reviewStatus !== "published") {
+        throw new Error(
+          `Cannot project item ${item.id} to public catalog: editorial reviewStatus must be 'approved' or 'published', got '${reviewStatus}'`
+        );
+      }
+      if (rightsCleared !== true) {
+        throw new Error(
+          `Cannot project item ${item.id} to public catalog: editorial rightsCleared must be true`
+        );
+      }
     }
   }
 
@@ -1675,25 +3053,54 @@ export function projectToPublicEdit(item, { allowDraft = false, strict = true } 
     category,
     tags: Array.isArray(tags) ? [...tags] : [],
     description,
-    creator: "Lolixco curated",
+    creator: item.creator || (item.channelTitle ? item.channelTitle : "Lolixco curated"),
     poster,
     source,
     duration,
     trending: !!trending,
-    format,
   };
 
+  if (item.format !== undefined) {
+    publicRecord.format = item.format;
+  }
   if (fandomIds && Array.isArray(fandomIds) && fandomIds.length > 0) {
     publicRecord.fandomIds = [...fandomIds];
+  }
+  if (item.sourceType) {
+    publicRecord.sourceType = item.sourceType;
+  }
+  if (item.youtubeVideoId) {
+    publicRecord.youtubeVideoId = item.youtubeVideoId;
+  }
+  if (item.channelTitle) {
+    publicRecord.channelTitle = item.channelTitle;
+  }
+  if (item.channelId) {
+    publicRecord.channelId = item.channelId;
+  }
+  if (item.sourceUrl) {
+    publicRecord.sourceUrl = item.sourceUrl;
+  }
+
+  if (!allowDraft) {
+    const assertionOptions = isTargetingProd
+      ? {
+          ...options,
+          forProduction: true,
+          isTargetingProduction: true,
+          checkFileChecksum: true,
+          enforceChecksum: true,
+          allowDraft: false,
+          strict: true,
+          allowTestHarness: false,
+        }
+      : options;
+    assertPublicEditIntegrity(publicRecord, assertionOptions);
   }
 
   return publicRecord;
 }
 
-/**
- * Non-public preview projection function.
- * Explicitly allows draft and unreviewed items for development preview only.
- */
 export function projectToPreviewEdit(item) {
   return projectToPublicEdit(item, { allowDraft: true });
 }
@@ -1736,7 +3143,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       manifestPath = resolve(args[i]);
       checkLive = false;
     } else {
-      console.error(`Error: Unrecognized option '${args[i]}'. Allowed options: --manifest <path>, --mode <${VALID_MODES.join("|")}>, --publish, --assets, --metadata, --allow-expanded`);
+      console.error(
+        `Error: Unrecognized option '${args[i]}'. Allowed options: --manifest <path>, --mode <${VALID_MODES.join("|")}>, --publish, --assets, --metadata, --allow-expanded`
+      );
       process.exit(1);
     }
   }
