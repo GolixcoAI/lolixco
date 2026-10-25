@@ -142,6 +142,9 @@ class EditItemPayload(StrictBaseModel):
     fandomIds: Optional[List[str]] = None
     sourceType: Optional[Literal["local_demo", "youtube_embed", "licensed_local_media"]] = "local_demo"
     youtubeVideoId: Optional[str] = None
+    channelTitle: Optional[str] = None
+    channelId: Optional[str] = None
+    sourceUrl: Optional[str] = None
 
 
 class RecommendedItemModel(StrictBaseModel):
@@ -435,6 +438,9 @@ def create_app(
                         fandomIds=list(item.edit.fandom_ids) if item.edit.fandom_ids else None,
                         sourceType=item.edit.source_type,
                         youtubeVideoId=item.edit.youtube_video_id if item.edit.youtube_video_id else None,
+                        channelTitle=item.edit.channel_title,
+                        channelId=item.edit.channel_id,
+                        sourceUrl=item.edit.source_url,
                     ),
                 )
             )

@@ -60,6 +60,8 @@ def fetch_edits_from_source(repo_root: Path) -> List[Dict[str, Any]]:
 
 def generate_snapshot_payload(edits: List[Dict[str, Any]], version: str = "demo-catalog-v1") -> Dict[str, Any]:
     """Wrap edits in a versioned snapshot envelope."""
+    from .catalog import Catalog
+    Catalog.from_dict_list(edits)
     return {
         "catalog_version": version,
         "total_edits": len(edits),
@@ -69,6 +71,8 @@ def generate_snapshot_payload(edits: List[Dict[str, Any]], version: str = "demo-
 
 def sync_catalog(repo_root: Path, output_file: Path) -> Dict[str, Any]:
     """Fetch live edits from TypeScript source and write snapshot JSON."""
+    if output_file.resolve() == (get_repo_root() / "server/recsys/catalog_snapshot.json").resolve():
+        raise ValueError("Independent production snapshot writes are retired; use scripts/compile-catalog.mjs for paired publication")
     edits = fetch_edits_from_source(repo_root)
     payload = generate_snapshot_payload(edits)
 
@@ -98,6 +102,9 @@ ALLOWED_RECORD_FIELDS = {
     "fandomIds",
     "sourceType",
     "youtubeVideoId",
+    "channelTitle",
+    "channelId",
+    "sourceUrl",
 }
 REQUIRED_RECORD_FIELDS = {
     "id",
@@ -160,6 +167,13 @@ def check_catalog_drift(
         diffs.append(f"Snapshot missing valid 'edits' list, got {type(snapshot_edits).__name__}")
         return False, diffs
 
+    # Same runtime shapes as serving: an allowlisted name alone is insufficient.
+    try:
+        from .catalog import Catalog
+        Catalog.from_dict_list(snapshot_edits)
+    except (TypeError, ValueError) as error:
+        diffs.append(f"Snapshot record validation failed: {error}")
+
     total_edits_declared = snapshot_data.get("total_edits")
     if type(total_edits_declared) is not int or total_edits_declared < 0:
         diffs.append(
@@ -173,6 +187,8 @@ def check_catalog_drift(
     # 2. Live source comparison
     try:
         live_edits = fetch_edits_from_source(repo_root)
+        from .catalog import Catalog
+        Catalog.from_dict_list(live_edits)
     except Exception as e:
         return False, [f"Failed to fetch live edits: {e}"]
 
@@ -236,6 +252,9 @@ def check_catalog_drift(
                 "fandomIds",
                 "sourceType",
                 "youtubeVideoId",
+                "channelTitle",
+                "channelId",
+                "sourceUrl",
             ]:
                 live_val = live_item.get(field)
                 snap_val = snap_item.get(field)
