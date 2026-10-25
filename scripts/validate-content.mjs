@@ -2224,29 +2224,61 @@ export function verifyAssetPathContainment(targetFile, publicDir) {
 }
 export function resolveItemAuditEvidence(item, options = {}) {
   if (!item || typeof item !== "object") return null;
-  const publicVideoId = item.youtubeVideoId || (typeof item.source === "string" ? (/[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(item.source) || [])[1] : null);
-  const id = item.id ?? item.assignedLolixcoId;
 
-  if (options.auditContext) {
-    if (typeof options.auditContext === "function") {
-      return options.auditContext(item) || null;
-    }
-    if (typeof options.auditContext === "object") {
-      if (id !== undefined && options.auditContext[id]) return options.auditContext[id];
-      if (publicVideoId && options.auditContext[publicVideoId]) return options.auditContext[publicVideoId];
-      if (item.canonicalVideoId && options.auditContext[item.canonicalVideoId]) return options.auditContext[item.canonicalVideoId];
-    }
+  const id = item.id ?? item.assignedLolixcoId;
+  let publicVideoId = item.youtubeVideoId;
+  if (!publicVideoId && typeof item.source === "string") {
+    const match = /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(item.source);
+    if (match) publicVideoId = match[1];
+  }
+  if (!publicVideoId && typeof item.canonicalVideoId === "string") {
+    publicVideoId = item.canonicalVideoId;
   }
 
   if (Array.isArray(options.auditRecords)) {
-    const found = options.auditRecords.find((a) => {
-      if (!a || typeof a !== "object") return false;
-      if (id !== undefined && (a.assignedLolixcoId === id || a.id === id)) return true;
-      if (publicVideoId && (a.canonicalVideoId === publicVideoId || a.youtubeVideoId === publicVideoId)) return true;
-      if (item.canonicalVideoId && (a.canonicalVideoId === item.canonicalVideoId || a.youtubeVideoId === item.canonicalVideoId)) return true;
-      return false;
-    });
-    if (found) return found;
+    const idMatches = typeof id === "number"
+      ? options.auditRecords.filter((a) => a && (a.assignedLolixcoId === id || a.id === id))
+      : [];
+    const videoMatches = typeof publicVideoId === "string" && publicVideoId
+      ? options.auditRecords.filter((a) => a && (a.canonicalVideoId === publicVideoId || a.youtubeVideoId === publicVideoId))
+      : [];
+
+    if (idMatches.length > 1) {
+      return { error: `Ambiguous audit match: multiple audit records (${idMatches.length}) match candidate ID ${id}.` };
+    }
+    if (videoMatches.length > 1) {
+      return { error: `Ambiguous audit match: multiple audit records (${videoMatches.length}) match video ID '${publicVideoId}'.` };
+    }
+
+    if (idMatches.length === 1 && videoMatches.length === 1 && idMatches[0] !== videoMatches[0]) {
+      return { error: `Conflicting audit match: audit record for candidate ID ${id} differs from audit record for video ID '${publicVideoId}'.` };
+    }
+
+    const matched = idMatches[0] || videoMatches[0];
+    if (matched) return { evidence: matched };
+    return null;
+  }
+
+  if (options.auditContext) {
+    if (typeof options.auditContext.getAuditForRecord === "function") {
+      const res = options.auditContext.getAuditForRecord(item);
+      return res ? { evidence: res } : null;
+    }
+    if (typeof options.auditContext === "function") {
+      const res = options.auditContext(item);
+      return res ? { evidence: res } : null;
+    }
+    if (typeof options.auditContext === "object") {
+      const idMatch = typeof id === "number" ? options.auditContext[id] : null;
+      const videoMatch = typeof publicVideoId === "string" && publicVideoId ? options.auditContext[publicVideoId] : null;
+
+      if (idMatch && videoMatch && idMatch !== videoMatch) {
+        return { error: `Conflicting audit match in auditContext: record for ID ${id} differs from record for video ID '${publicVideoId}'.` };
+      }
+
+      const matched = idMatch || videoMatch;
+      if (matched) return { evidence: matched };
+    }
   }
 
   return null;
@@ -2257,12 +2289,22 @@ export function verifyProductionPublicationEligibility(item, options = {}) {
     return { valid: false, errors: ["Record must be an object"] };
   }
 
+  // Preview or bypass options strictly forbidden during production publication
+  if (options.allowDraft || options.strict === false || options.allowSyntheticAudit) {
+    return {
+      valid: false,
+      errors: [
+        "Production publication aborted: preview or bypass options (allowDraft: true, strict: false, or allowSyntheticAudit: true) are strictly forbidden for production output."
+      ],
+    };
+  }
+
   const id = item.id ?? item.assignedLolixcoId;
   const sourceType = item.sourceType;
 
   // 1. Frozen Demos (0-16)
   if (typeof id === "number" && id >= 0 && id <= 16) {
-    if (!isBaselineDemoRecord(item, { ...options, checkFileChecksum: true, forProduction: true })) {
+    if (!isBaselineDemoRecord(item, { ...options, checkFileChecksum: true, enforceChecksum: true, forProduction: true })) {
       errors.push(`Demo ID ${id} failed baseline demo verification anchored to pinned checksum.`);
     }
     return { valid: errors.length === 0, errors };
@@ -2270,123 +2312,190 @@ export function verifyProductionPublicationEligibility(item, options = {}) {
 
   // 2. YouTube Embeds (100-299 or sourceType === "youtube_embed")
   if (sourceType === "youtube_embed" || (typeof id === "number" && id >= 100 && id <= 299)) {
-    const status = item.contentReviewStatus || item.editorial?.reviewStatus || item.reviewStatus;
-    if (status !== "approved" && status !== "published") {
-      errors.push(`YouTube edit ID ${id} requires 'approved' or 'published' review status, got '${status}'`);
+    // Resolve audit evidence explicitly WITHOUT overwriting candidate intake record
+    let audit = options.auditEvidence || options.auditRecord;
+    if (!audit) {
+      const resolution = resolveItemAuditEvidence(item, options);
+      if (resolution?.error) {
+        errors.push(`YouTube edit ID ${id}: ${resolution.error}`);
+        return { valid: false, errors };
+      }
+      if (resolution?.evidence) {
+        audit = resolution.evidence;
+      } else if (item.metadata && typeof item.metadata === "object") {
+        // Direct caller supplied record with audit metadata
+        audit = item;
+      }
     }
 
-    // Resolve public video ID and enforce exact 11-char identity binding
+    if (!audit || typeof audit !== "object") {
+      errors.push(`YouTube edit ID ${id}: missing provenance or audit evidence for YouTube embed publication.`);
+      return { valid: false, errors };
+    }
+
+    // Resolve public video ID
     let publicVideoId = item.youtubeVideoId;
     if (!publicVideoId && typeof item.source === "string") {
       const match = /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(item.source);
       if (match) publicVideoId = match[1];
     }
-    if (!publicVideoId && typeof item.canonicalVideoId === "string") {
-      publicVideoId = item.canonicalVideoId;
+    if (!publicVideoId && typeof audit.canonicalVideoId === "string") {
+      publicVideoId = audit.canonicalVideoId;
     }
 
     if (!publicVideoId || typeof publicVideoId !== "string" || !/^[a-zA-Z0-9_-]{11}$/.test(publicVideoId)) {
       errors.push(`YouTube edit ID ${id}: missing or invalid 11-character YouTube video ID.`);
     } else {
-      // Evidence identity binding: tie item.canonicalVideoId, metadata.canonicalVideoId, canonicalUrl, source, poster to public ID
-      if (item.canonicalVideoId && item.canonicalVideoId !== publicVideoId) {
-        errors.push(
-          `YouTube edit ID ${id}: canonical YouTube ID mismatch between evidence record ('${item.canonicalVideoId}') and public video ID ('${publicVideoId}').`
-        );
-      }
-      if (item.metadata?.canonicalVideoId && item.metadata.canonicalVideoId !== publicVideoId) {
-        errors.push(
-          `YouTube edit ID ${id}: canonical YouTube ID mismatch between metadata payload ('${item.metadata.canonicalVideoId}') and public video ID ('${publicVideoId}').`
-        );
-      }
-      if (typeof item.canonicalUrl === "string") {
-        const cMatch = /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(item.canonicalUrl);
-        if (!cMatch || cMatch[1] !== publicVideoId) {
-          errors.push(
-            `YouTube edit ID ${id}: canonicalUrl video ID does not match public video ID '${publicVideoId}'.`
-          );
-        }
-      }
+      // Candidate URL integrity: candidate source and poster must match public video ID
       if (typeof item.source === "string" && item.source.includes("youtube.com")) {
         const sMatch = /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(item.source);
-        if (sMatch && sMatch[1] !== publicVideoId) {
+        if (!sMatch || sMatch[1] !== publicVideoId) {
           errors.push(
-            `YouTube edit ID ${id}: source URL video ID '${sMatch[1]}' does not match public video ID '${publicVideoId}'.`
+            `YouTube edit ID ${id}: source URL video ID '${sMatch ? sMatch[1] : ""}' does not match public video ID '${publicVideoId}'.`
           );
         }
       }
       if (typeof item.poster === "string" && item.poster.includes("ytimg.com")) {
         const pMatch = /\/vi\/([a-zA-Z0-9_-]{11})\//.exec(item.poster);
-        if (pMatch && pMatch[1] !== publicVideoId) {
+        if (!pMatch || pMatch[1] !== publicVideoId) {
           errors.push(
-            `YouTube edit ID ${id}: poster thumbnail video ID '${pMatch[1]}' does not match public video ID '${publicVideoId}'.`
+            `YouTube edit ID ${id}: poster thumbnail video ID '${pMatch ? pMatch[1] : ""}' does not match public video ID '${publicVideoId}'.`
+          );
+        }
+      }
+
+      // Audit evidence binding against candidate intake identity (audit fields must not overwrite candidate)
+      if (audit.assignedLolixcoId !== undefined && audit.assignedLolixcoId !== null && typeof id === "number" && audit.assignedLolixcoId !== id) {
+        errors.push(
+          `YouTube edit ID ${id}: audit evidence assignedLolixcoId (${audit.assignedLolixcoId}) does not match candidate catalog ID (${id}).`
+        );
+      }
+      if (audit.id !== undefined && audit.id !== null && typeof id === "number" && audit.id !== id) {
+        errors.push(
+          `YouTube edit ID ${id}: audit evidence ID (${audit.id}) does not match candidate catalog ID (${id}).`
+        );
+      }
+
+      if (audit.canonicalVideoId && audit.canonicalVideoId !== publicVideoId) {
+        errors.push(
+          `YouTube edit ID ${id}: canonical YouTube ID mismatch between evidence record ('${audit.canonicalVideoId}') and candidate video ID ('${publicVideoId}').`
+        );
+      }
+      if (audit.metadata?.canonicalVideoId && audit.metadata.canonicalVideoId !== publicVideoId) {
+        errors.push(
+          `YouTube edit ID ${id}: canonical YouTube ID mismatch between metadata payload ('${audit.metadata.canonicalVideoId}') and candidate video ID ('${publicVideoId}').`
+        );
+      }
+      if (typeof audit.canonicalUrl === "string") {
+        const cMatch = /[?&]v=([a-zA-Z0-9_-]{11})(?:&|$)/.exec(audit.canonicalUrl);
+        if (!cMatch || cMatch[1] !== publicVideoId) {
+          errors.push(
+            `YouTube edit ID ${id}: audit canonicalUrl video ID does not match candidate video ID '${publicVideoId}'.`
           );
         }
       }
     }
 
-    // Provenance and synthetic mock validation
-    const isMock =
-      item.isMock === true ||
-      item.metadata?.isMock === true ||
-      item.provenance === "synthetic_mock" ||
-      item.metadata?.provenance === "synthetic_mock" ||
-      Boolean(item.syntheticOrigin) ||
-      Boolean(item.metadata?.syntheticOrigin) ||
-      String(item.provenance || "").includes("synthetic") ||
-      String(item.metadata?.provenance || "").includes("synthetic");
+    // Format verification against intake candidate (audit fields must not overwrite candidate format)
+    const candidateFormat = item.format || (typeof id === "number" && id >= 200 && id <= 299 ? "short" : "video");
+    if (audit.format && audit.format !== candidateFormat) {
+      errors.push(
+        `YouTube edit ID ${id}: format contradiction between candidate format ('${candidateFormat}') and audit record format ('${audit.format}').`
+      );
+    }
+    if (candidateFormat === "video") {
+      if (audit.confirmedFormat === "short") {
+        errors.push(
+          `YouTube edit ID ${id}: contradictory format confirmation. Format is 'video' but audit confirmedFormat is 'short'.`
+        );
+      }
+      if (audit.formatConfirmed === true && audit.confirmedFormat !== "video") {
+        errors.push(
+          `YouTube edit ID ${id}: contradictory format confirmation. Format is 'video' but audit confirmedFormat is '${audit.confirmedFormat}'.`
+        );
+      }
+    } else if (candidateFormat === "short") {
+      if (audit.confirmedFormat === "video") {
+        errors.push(
+          `YouTube edit ID ${id}: contradictory format confirmation. Format is 'short' but audit confirmedFormat is 'video'.`
+        );
+      }
+      if (audit.formatConfirmed !== true || audit.confirmedFormat !== "short") {
+        errors.push(
+          `YouTube edit ID ${id}: candidate portrait Short requires positive format confirmation (formatConfirmed: true and confirmedFormat: 'short'). Explicit editorial format confirmation is required before publication.`
+        );
+      }
+    }
 
-    if (isMock && !options.allowSyntheticAudit) {
+    // Review status check
+    const status = item.contentReviewStatus || item.editorial?.reviewStatus || item.reviewStatus || audit.contentReviewStatus || audit.reviewStatus || audit.editorial?.reviewStatus;
+    if (status !== "approved" && status !== "published") {
+      errors.push(`YouTube edit ID ${id} requires 'approved' or 'published' review status, got '${status}'`);
+    }
+
+    // Provenance and synthetic mock validation (Point 1: No synthetic bypass)
+    const isMock =
+      audit.isMock === true ||
+      audit.metadata?.isMock === true ||
+      audit.provenance === "synthetic_mock" ||
+      audit.metadata?.provenance === "synthetic_mock" ||
+      Boolean(audit.syntheticOrigin) ||
+      Boolean(audit.metadata?.syntheticOrigin) ||
+      String(audit.provenance || "").includes("synthetic") ||
+      String(audit.metadata?.provenance || "").includes("synthetic") ||
+      String(audit.metadata?.channelId || "").startsWith("UC_SYNTHETIC") ||
+      item.isMock === true ||
+      item.provenance === "synthetic_mock";
+
+    if (isMock) {
       errors.push(
         `YouTube edit ID ${id}: synthetic mock metadata is prohibited from production catalog publication. Real YouTube API metadata is required.`
       );
     }
 
-    if (!options.allowSyntheticAudit) {
-      if (item.provenance !== "youtube_data_api_v3" || item.metadata?.provenance !== "youtube_data_api_v3") {
-        errors.push(
-          `YouTube edit ID ${id}: missing or unverified API provenance ('${item.provenance}'). Positive evidence of genuine YouTube Data API v3 retrieval is required for production publication.`
-        );
-      }
-
-      // Positive allowlisting for genuine successful retrieval
-      if (item.metadataFetchStatus !== "fetched") {
-        errors.push(
-          `YouTube edit ID ${id}: unverified metadata retrieval status '${item.metadataFetchStatus}'. Positive evidence of successful API retrieval ('fetched') is required for production publication.`
-        );
-      }
+    if (audit.provenance !== "youtube_data_api_v3" || audit.metadata?.provenance !== "youtube_data_api_v3") {
+      errors.push(
+        `YouTube edit ID ${id}: missing or unverified API provenance ('${audit.provenance}'). Positive evidence of genuine YouTube Data API v3 retrieval is required for production publication.`
+      );
     }
 
-    if (!item.metadata) {
+    if (audit.metadataFetchStatus !== "fetched") {
+      errors.push(
+        `YouTube edit ID ${id}: unverified metadata retrieval status '${audit.metadataFetchStatus}'. Positive evidence of successful API retrieval ('fetched') is required for production publication.`
+      );
+    }
+
+    // Metadata completeness requirements (matching compiler lines 575-589)
+    if (!audit.metadata || typeof audit.metadata !== "object") {
       errors.push(`YouTube edit ID ${id}: missing metadata payload.`);
     } else {
-      if (item.metadata.privacyStatus !== "public") {
-        errors.push(`YouTube edit ID ${id}: video is not public on YouTube (privacyStatus: '${item.metadata.privacyStatus}').`);
+      if (audit.metadata.privacyStatus !== "public") {
+        errors.push(`YouTube edit ID ${id}: video is not public on YouTube (privacyStatus: '${audit.metadata.privacyStatus}').`);
       }
-      if (item.metadata.embeddable !== true) {
+      if (audit.metadata.embeddable !== true) {
         errors.push(`YouTube edit ID ${id}: embedded playback is disabled or restricted on YouTube.`);
       }
 
-      // Completeness: Real title and creator attribution (compiler lines 575-589)
-      const title = (item.metadata.title || item.title || "").trim();
+      // Completeness: Real title and creator attribution (compiler lines 575-589; candidate display fields do NOT rescue)
+      const title = (audit.metadata.title || "").trim();
       if (!title || title.startsWith("Curated Edit") || title.startsWith("YouTube Video")) {
         errors.push(`YouTube edit ID ${id}: missing genuine title metadata.`);
       }
 
-      const channelTitle = (item.metadata.channelTitle || item.creator || "").trim();
+      const channelTitle = (audit.metadata.channelTitle || "").trim();
       if (!channelTitle || channelTitle === "Unknown Creator" || channelTitle === "YouTube Creator") {
         errors.push(`YouTube edit ID ${id}: missing genuine channel creator attribution.`);
       }
 
-      const durationSec = item.metadata.durationSec ?? item.metadata.durationSeconds;
-      const hasDurationString = typeof item.metadata.durationFormatted === "string" || typeof item.duration === "string";
-      if ((durationSec === undefined || durationSec === null || typeof durationSec !== "number" || durationSec <= 0) && !hasDurationString) {
+      // Duration: finite positive numeric duration (compiler lines 585-589; candidate duration string does NOT rescue)
+      const durationSec = audit.metadata.durationSec ?? audit.metadata.durationSeconds;
+      if (typeof durationSec !== "number" || !Number.isFinite(durationSec) || durationSec <= 0) {
         errors.push(`YouTube edit ID ${id}: invalid or missing duration metadata.`);
       }
     }
 
     // Freshness check
-    const verificationTimestamp = item.lastMetadataVerification;
+    const verificationTimestamp = audit.lastMetadataVerification;
     if (!verificationTimestamp || isNaN(Date.parse(verificationTimestamp))) {
       errors.push(`YouTube edit ID ${id}: missing or invalid lastMetadataVerification timestamp.`);
     } else {
@@ -2403,38 +2512,11 @@ export function verifyProductionPublicationEligibility(item, options = {}) {
       }
     }
 
-    // Format and contradictory format confirmation guard (compiler lines 620-647)
-    const effectiveFormat = item.format || (typeof id === "number" && id >= 200 && id <= 299 ? "short" : "video");
-    if (effectiveFormat === "short") {
-      if (item.formatConfirmed !== true) {
-        errors.push(
-          `YouTube edit ID ${id}: candidate portrait short requires positive format confirmation (formatConfirmed: true). Explicit editorial format confirmation is required before publication.`
-        );
-      }
-      if (item.confirmedFormat !== "short") {
-        errors.push(
-          `YouTube edit ID ${id}: candidate portrait short requires confirmedFormat: 'short'. Explicit editorial format confirmation is required before publication.`
-        );
-      }
-    } else if (effectiveFormat === "video") {
-      if (item.formatConfirmed === true && item.confirmedFormat !== "video") {
-        errors.push(
-          `YouTube edit ID ${id}: contradictory format confirmation. Format is 'video' but confirmedFormat is '${item.confirmedFormat}'.`
-        );
-      }
-      if (item.confirmedFormat === "short") {
-        errors.push(
-          `YouTube edit ID ${id}: contradictory format confirmation. Format is 'video' but confirmedFormat is 'short'.`
-        );
-      }
-    }
-
     return { valid: errors.length === 0, errors };
   }
 
   // 3. Hosted media (300-499 or sourceType === "licensed_local_media")
   if (sourceType === "licensed_local_media" || (typeof id === "number" && id >= 300 && id <= 499)) {
-    // Fail closed:
     errors.push(
       `Cannot project hosted item ${id} for production: hosted production publication requires verified media inspection, decode playback verification, and documented rights clearance; hosted publication evidence is not implemented.`
     );
@@ -2444,7 +2526,6 @@ export function verifyProductionPublicationEligibility(item, options = {}) {
   errors.push(`Item ${id}: unknown sourceType or unallocated ID partition for production publication.`);
   return { valid: false, errors };
 }
-
 export function validateContentManifest(manifestData, options = {}) {
   const {
     fandomRegistry = [],
@@ -2573,14 +2654,25 @@ export function validateContentManifest(manifestData, options = {}) {
 
     // In publish mode: verify production publication eligibility for each item
     if (mode === "publish") {
-      let itemForEligibility = item;
+      let elig;
       if (isItemYouTube) {
-        const audit = resolveItemAuditEvidence(item, options);
-        if (audit) {
-          itemForEligibility = { ...item, ...audit, id: item.id };
+        const auditRes = resolveItemAuditEvidence(item, options);
+        if (auditRes?.error) {
+          errors.push(`Item #${i + 1} (ID ${item?.id ?? "unknown"}): ${auditRes.error}`);
+          continue;
         }
+        if (!auditRes?.evidence) {
+          errors.push(`Item #${i + 1} (ID ${item?.id ?? "unknown"}): missing provenance or audit evidence for YouTube embed publication.`);
+          continue;
+        }
+        elig = verifyProductionPublicationEligibility(item, {
+          ...options,
+          auditEvidence: auditRes.evidence,
+        });
+      } else {
+        elig = verifyProductionPublicationEligibility(item, options);
       }
-      const elig = verifyProductionPublicationEligibility(itemForEligibility, options);
+
       if (!elig.valid) {
         for (const e of elig.errors) {
           errors.push(`Item #${i + 1} (ID ${item?.id ?? "unknown"}): ${e}`);
@@ -2806,14 +2898,33 @@ export function projectToPublicEdit(item, options = {}) {
     throw new Error("Cannot project non-object to public edit");
   }
 
-  // Preview options strictly forbidden during production publication
-  if (isTargetingProduction || forProduction) {
+  const isTargetingProd = Boolean(isTargetingProduction || forProduction);
+
+  // Preview or bypass options strictly forbidden during production publication
+  if (isTargetingProd) {
     if (allowDraft || strict === false) {
       throw new Error(
         "Production publication aborted: preview options (allowDraft: true or strict: false) are strictly forbidden for production output."
       );
     }
-    const elig = verifyProductionPublicationEligibility(item, { ...options, approvedOrigins });
+    if (options.allowSyntheticAudit) {
+      throw new Error(
+        "Production publication aborted: synthetic bypass options (allowSyntheticAudit: true) are strictly forbidden for production output."
+      );
+    }
+    const productionOptions = {
+      ...options,
+      forProduction: true,
+      isTargetingProduction: true,
+      allowDraft: false,
+      strict: true,
+      allowSyntheticAudit: false,
+      checkFileChecksum: true,
+      enforceChecksum: true,
+      allowTestHarness: false,
+      approvedOrigins,
+    };
+    const elig = verifyProductionPublicationEligibility(item, productionOptions);
     if (!elig.valid) {
       throw new Error(`Cannot project item ${item.id ?? item.assignedLolixcoId}: production publication eligibility failed: ${elig.errors.join("; ")}`);
     }
@@ -2922,7 +3033,19 @@ export function projectToPublicEdit(item, options = {}) {
   }
 
   if (!allowDraft) {
-    assertPublicEditIntegrity(publicRecord, options);
+    const assertionOptions = isTargetingProd
+      ? {
+          ...options,
+          forProduction: true,
+          isTargetingProduction: true,
+          checkFileChecksum: true,
+          enforceChecksum: true,
+          allowDraft: false,
+          strict: true,
+          allowTestHarness: false,
+        }
+      : options;
+    assertPublicEditIntegrity(publicRecord, assertionOptions);
   }
 
   return publicRecord;

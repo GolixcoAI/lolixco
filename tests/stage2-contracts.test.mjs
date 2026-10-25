@@ -919,11 +919,12 @@ test("Stage 2 R5: compiler projects multiword and hashtag tags deterministically
 });
 
 // ============================================================================
-// 10. STAGE 2 CORRECTIONS (V2 REVIEW): IDENTITY BINDING, FORMAT GUARDS,
-//     MANIFEST AUDIT PUBLICATION PATH, AND EXACT DEMO LOCAL BASE
+// ============================================================================
+// 10. STAGE 2 FINAL CORRECTIONS (V3): NO SYNTHETIC BYPASS, EXPLICIT EVIDENCE BINDING
+//     WITHOUT OVERWRITING, STRICT COMPILER COMPLETENESS & FORWARDED OPTION INTEGRITY
 // ============================================================================
 
-test("Stage 2 P2: Demo identity rejects unconfigured local asset bases but accepts configured base paths", () => {
+test("Stage 2 V3: Demo identity rejects unconfigured local bases; forwarded options cannot disable checksum or production integrity", () => {
   const baseline = BASELINE_DEMO_RECORDS[0];
   const unconfiguredDemo = {
     id: 0,
@@ -938,13 +939,13 @@ test("Stage 2 P2: Demo identity rejects unconfigured local asset bases but accep
     trending: baseline.trending,
   };
 
-  // Default supported bases (["", "/", "./", "/app/", "/lolixco/"]) must reject unconfigured local prefix
+  // 1. Default supported bases (["", "/", "./", "/app/", "/lolixco/"]) must reject unconfigured local prefix
   assert.equal(isBaselineDemoRecord(unconfiguredDemo), false);
   assert.throws(() => {
     projectToPublicEdit(unconfiguredDemo, { forProduction: true });
   }, /failed baseline demo verification|Not recognized as genuine baseline demo item/i);
 
-  // When configured with the custom base, it is accepted
+  // 2. Exact configured base allows legitimate custom deployment base
   assert.equal(
     isBaselineDemoRecord(unconfiguredDemo, { supportedBases: ["/unconfigured/"] }),
     true
@@ -955,63 +956,41 @@ test("Stage 2 P2: Demo identity rejects unconfigured local asset bases but accep
   });
   assert.equal(projected.id, 0);
   assert.equal(projected.poster, "/unconfigured/media/art-0.svg");
-});
 
-test("Stage 2 P1: Production projection binds evidence identity and rejects mismatching video IDs", () => {
-  const item = {
-    id: 105,
-    title: "Valid Anime Edit",
-    category: "Anime",
-    format: "video",
-    sourceType: "youtube_embed",
-    source: "https://www.youtube.com/watch?v=12345678901",
-    poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
-    youtubeVideoId: "12345678901",
-    tags: ["anime"],
-    editorial: {
-      reviewStatus: "approved",
-      rightsCleared: true,
-    },
-    publicationStatus: "published",
-    // Evidence with mismatching canonicalVideoId
-    canonicalVideoId: "abcdefghijk",
-    provenance: "youtube_data_api_v3",
-    metadataFetchStatus: "fetched",
-    lastMetadataVerification: "2026-10-23T12:00:00Z",
-    metadata: {
-      canonicalVideoId: "abcdefghijk",
-      title: "Valid Anime Edit",
-      channelTitle: "Creator Channel",
-      channelId: "UC_TEST",
-      durationSec: 120,
-      privacyStatus: "public",
-      embeddable: true,
-      formatConfirmed: true,
-      confirmedFormat: "video",
-      provenance: "youtube_data_api_v3",
-    },
+  // 3. Forwarded options CANNOT disable checksum check or preview options during production projection
+  const genuine = {
+    id: 0,
+    title: baseline.title,
+    category: baseline.category,
+    tags: [...baseline.tags],
+    description: baseline.description,
+    creator: baseline.creator,
+    poster: `./${baseline.posterSuffix}`,
+    source: `./${baseline.sourceSuffix}`,
+    duration: baseline.duration,
+    trending: baseline.trending,
   };
 
-  // Mismatching canonical ID must fail production eligibility
-  const eligibility = verifyProductionPublicationEligibility(item, { allowSyntheticAudit: true });
-  assert.equal(eligibility.valid, false);
-  assert.match(
-    eligibility.errors.join("; "),
-    /canonical YouTube ID mismatch between evidence record/i
-  );
-
+  // Attempting to pass allowDraft: true to production projection must be rejected
   assert.throws(() => {
-    projectToPublicEdit(item, { forProduction: true, allowSyntheticAudit: true });
-  }, /canonical YouTube ID mismatch between evidence record/i);
+    projectToPublicEdit(genuine, { forProduction: true, allowDraft: true });
+  }, /preview options.*strictly forbidden for production output/i);
+
+  // Attempting to pass strict: false to production projection must be rejected
+  assert.throws(() => {
+    projectToPublicEdit(genuine, { forProduction: true, strict: false });
+  }, /preview options.*strictly forbidden for production output/i);
 });
 
-test("Stage 2 P1: Production projection enforces landscape contradictory-confirmation guards and metadata completeness", () => {
-  // 1. Contradictory format confirmation (format: video with confirmedFormat: short)
-  const contradictoryItem = {
+test("Stage 2 V3: Production projection and publish mode strictly reject synthetic evidence without any bypass flag", () => {
+  const syntheticItem = {
     id: 105,
-    title: "Landscape Video",
+    title: "Synthetic Video Edit",
+    description: "A test item with synthetic mock evidence.",
+    creator: "Synthetic Studio",
     category: "Anime",
     format: "video",
+    duration: "1:30",
     sourceType: "youtube_embed",
     source: "https://www.youtube.com/watch?v=12345678901",
     poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
@@ -1023,40 +1002,75 @@ test("Stage 2 P1: Production projection enforces landscape contradictory-confirm
     },
     publicationStatus: "published",
     canonicalVideoId: "12345678901",
-    provenance: "youtube_data_api_v3",
+    canonicalUrl: "https://www.youtube.com/watch?v=12345678901",
+    provenance: "synthetic_mock",
     metadataFetchStatus: "fetched",
     lastMetadataVerification: "2026-10-23T12:00:00Z",
-    formatConfirmed: true,
-    confirmedFormat: "short",
     metadata: {
       canonicalVideoId: "12345678901",
-      title: "Landscape Video",
-      channelTitle: "Creator",
-      channelId: "UC_TEST",
-      durationSec: 60,
+      title: "Synthetic Video Edit",
+      channelTitle: "Synthetic Studio",
+      channelId: "UC_SYNTHETIC_CHANNEL",
+      durationSec: 90,
       privacyStatus: "public",
       embeddable: true,
       formatConfirmed: true,
-      confirmedFormat: "short",
-      provenance: "youtube_data_api_v3",
+      confirmedFormat: "video",
+      provenance: "synthetic_mock",
     },
   };
 
+  // 1. Attempting to enable allowSyntheticAudit: true in projectToPublicEdit({ forProduction: true }) MUST THROW
   assert.throws(() => {
-    projectToPublicEdit(contradictoryItem, { forProduction: true, allowSyntheticAudit: true });
-  }, /contradictory format confirmation/i);
+    projectToPublicEdit(syntheticItem, { forProduction: true, allowSyntheticAudit: true });
+  }, /synthetic bypass options.*allowSyntheticAudit.*strictly forbidden/i);
 
-  // 2. Metadata completeness: missing title / channel / durationSec <= 0
-  const incompleteItem = {
-    ...contradictoryItem,
-    formatConfirmed: true,
-    confirmedFormat: "video",
+  // 2. Production eligibility without options also fails closed
+  const elig = verifyProductionPublicationEligibility(syntheticItem);
+  assert.equal(elig.valid, false);
+  assert.match(elig.errors.join("; "), /synthetic mock metadata is prohibited/i);
+
+  // 3. Synthetic preview behavior remains separate: projectToPreviewEdit allows previewing drafts/mocks
+  const preview = projectToPreviewEdit(syntheticItem);
+  assert.equal(preview.id, 105);
+  assert.equal(preview.title, "Synthetic Video Edit");
+});
+
+test("Stage 2 V3: Audit evidence binding compares without overwriting candidate intake identity, URLs, or format", () => {
+  // Candidate intake record
+  const candidate = {
+    id: 105,
+    title: "Candidate Intake Title",
+    description: "An authentic intake description.",
+    creator: "Candidate Intake Creator",
+    category: "Anime",
+    format: "video",
+    duration: "2:00",
+    sourceType: "youtube_embed",
+    source: "https://www.youtube.com/watch?v=12345678901",
+    poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+    youtubeVideoId: "12345678901",
+    tags: ["anime"],
+    editorial: {
+      reviewStatus: "approved",
+      rightsCleared: true,
+    },
+  };
+
+  // 1. Audit evidence with mismatched video ID cannot overwrite candidate URL/identity and fails
+  const mismatchedVideoAudit = {
+    assignedLolixcoId: 105,
+    canonicalVideoId: "abcdefghijk",
+    canonicalUrl: "https://www.youtube.com/watch?v=abcdefghijk",
+    provenance: "youtube_data_api_v3",
+    metadataFetchStatus: "fetched",
+    lastMetadataVerification: "2026-10-23T12:00:00Z",
     metadata: {
-      canonicalVideoId: "12345678901",
-      title: "",
-      channelTitle: "",
-      channelId: "UC_TEST",
-      durationSec: 0,
+      canonicalVideoId: "abcdefghijk",
+      title: "Real Evidence Title",
+      channelTitle: "Real Creator",
+      channelId: "UC_REAL_CREATOR",
+      durationSec: 120,
       privacyStatus: "public",
       embeddable: true,
       formatConfirmed: true,
@@ -1065,17 +1079,160 @@ test("Stage 2 P1: Production projection enforces landscape contradictory-confirm
     },
   };
 
-  assert.throws(() => {
-    projectToPublicEdit(incompleteItem, { forProduction: true, allowSyntheticAudit: true });
-  }, /missing genuine channel creator attribution|invalid or missing duration metadata/i);
+  const res1 = verifyProductionPublicationEligibility(candidate, { auditEvidence: mismatchedVideoAudit });
+  assert.equal(res1.valid, false);
+  assert.match(res1.errors.join("; "), /canonical YouTube ID mismatch between evidence record.*and candidate video ID/i);
+
+  // 2. Audit evidence with mismatched assigned catalog ID fails
+  const mismatchedIdAudit = {
+    ...mismatchedVideoAudit,
+    assignedLolixcoId: 106,
+    canonicalVideoId: "12345678901",
+    canonicalUrl: "https://www.youtube.com/watch?v=12345678901",
+    metadata: {
+      ...mismatchedVideoAudit.metadata,
+      canonicalVideoId: "12345678901",
+    },
+  };
+  const res2 = verifyProductionPublicationEligibility(candidate, { auditEvidence: mismatchedIdAudit });
+  assert.equal(res2.valid, false);
+  assert.match(res2.errors.join("; "), /audit evidence assignedLolixcoId \(106\) does not match candidate catalog ID \(105\)/i);
+
+  // 3. Audit evidence with conflicting format cannot overwrite candidate format and fails
+  const conflictingFormatAudit = {
+    ...mismatchedIdAudit,
+    assignedLolixcoId: 105,
+    format: "short",
+    confirmedFormat: "short",
+    metadata: {
+      ...mismatchedIdAudit.metadata,
+      confirmedFormat: "short",
+    },
+  };
+  const res3 = verifyProductionPublicationEligibility(candidate, { auditEvidence: conflictingFormatAudit });
+  assert.equal(res3.valid, false);
+  assert.match(res3.errors.join("; "), /format contradiction|contradictory format confirmation/i);
+
+  // 4. Ambiguous audit matches in auditRecords (multiple matching records) fail
+  const ambiguousOptions = {
+    auditRecords: [
+      { assignedLolixcoId: 105, canonicalVideoId: "12345678901" },
+      { assignedLolixcoId: 105, canonicalVideoId: "12345678901" },
+    ],
+  };
+  const ambiguousRes = resolveItemAuditEvidence(candidate, ambiguousOptions);
+  assert.match(ambiguousRes.error, /Ambiguous audit match: multiple audit records/i);
+
+  // 5. Conflicting audit matches (record for ID differs from record for video ID) fail
+  const conflictingOptions = {
+    auditRecords: [
+      { assignedLolixcoId: 105, canonicalVideoId: "OTHER_ID_00" },
+      { assignedLolixcoId: 999, canonicalVideoId: "12345678901" },
+    ],
+  };
+  const conflictingRes = resolveItemAuditEvidence(candidate, conflictingOptions);
+  assert.match(conflictingRes.error, /Conflicting audit match/i);
 });
 
-test("Stage 2 P1: Positive synthetic offline fixtures matching approved AND published compiler contracts pass", () => {
-  const validYouTubeItem = {
+test("Stage 2 V3: Completeness requires genuine metadata title, channel attribution, and finite positive numeric duration", () => {
+  const baseCandidate = {
     id: 105,
-    title: "Genuine Curated Anime Edit",
-    description: "An offline synthetic fixture matching compiler contracts and public schema.",
-    creator: "Studio Creator",
+    title: "Display Title Set On Intake",
+    description: "An authentic intake description.",
+    creator: "Display Creator Set On Intake",
+    category: "Anime",
+    format: "video",
+    duration: "2:00",
+    sourceType: "youtube_embed",
+    source: "https://www.youtube.com/watch?v=12345678901",
+    poster: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
+    youtubeVideoId: "12345678901",
+    tags: ["anime"],
+    editorial: {
+      reviewStatus: "approved",
+      rightsCleared: true,
+    },
+  };
+
+  const validEvidence = {
+    assignedLolixcoId: 105,
+    canonicalVideoId: "12345678901",
+    canonicalUrl: "https://www.youtube.com/watch?v=12345678901",
+    provenance: "youtube_data_api_v3",
+    metadataFetchStatus: "fetched",
+    lastMetadataVerification: "2026-10-23T12:00:00Z",
+    metadata: {
+      canonicalVideoId: "12345678901",
+      title: "Genuine Real Title From YouTube",
+      channelTitle: "Genuine Real Creator Studio",
+      channelId: "UC_GENUINE_CREATOR",
+      durationSec: 120,
+      privacyStatus: "public",
+      embeddable: true,
+      formatConfirmed: true,
+      confirmedFormat: "video",
+      provenance: "youtube_data_api_v3",
+    },
+  };
+
+  // 1. Public duration string (duration: '2:00') must NOT rescue missing or invalid API durationSec
+  const missingDurationAudit = {
+    ...validEvidence,
+    metadata: { ...validEvidence.metadata, durationSec: undefined, durationSeconds: undefined },
+  };
+  const res1 = verifyProductionPublicationEligibility(baseCandidate, { auditEvidence: missingDurationAudit });
+  assert.equal(res1.valid, false);
+  assert.match(res1.errors.join("; "), /invalid or missing duration metadata/i);
+
+  const zeroDurationAudit = {
+    ...validEvidence,
+    metadata: { ...validEvidence.metadata, durationSec: 0, durationSeconds: 0 },
+  };
+  const res2 = verifyProductionPublicationEligibility(baseCandidate, { auditEvidence: zeroDurationAudit });
+  assert.equal(res2.valid, false);
+  assert.match(res2.errors.join("; "), /invalid or missing duration metadata/i);
+
+  const negativeDurationAudit = {
+    ...validEvidence,
+    metadata: { ...validEvidence.metadata, durationSec: -30, durationSeconds: -30 },
+  };
+  const res3 = verifyProductionPublicationEligibility(baseCandidate, { auditEvidence: negativeDurationAudit });
+  assert.equal(res3.valid, false);
+  assert.match(res3.errors.join("; "), /invalid or missing duration metadata/i);
+
+  const stringDurationAudit = {
+    ...validEvidence,
+    metadata: { ...validEvidence.metadata, durationSec: "120", durationSeconds: "120" },
+  };
+  const res4 = verifyProductionPublicationEligibility(baseCandidate, { auditEvidence: stringDurationAudit });
+  assert.equal(res4.valid, false);
+  assert.match(res4.errors.join("; "), /invalid or missing duration metadata/i);
+
+  // 2. Candidate title must NOT rescue missing or generic metadata title
+  const genericTitleAudit = {
+    ...validEvidence,
+    metadata: { ...validEvidence.metadata, title: "Curated Edit #105" },
+  };
+  const res5 = verifyProductionPublicationEligibility(baseCandidate, { auditEvidence: genericTitleAudit });
+  assert.equal(res5.valid, false);
+  assert.match(res5.errors.join("; "), /missing genuine title metadata/i);
+
+  // 3. Candidate creator must NOT rescue missing or generic channelTitle
+  const genericChannelAudit = {
+    ...validEvidence,
+    metadata: { ...validEvidence.metadata, channelTitle: "YouTube Creator" },
+  };
+  const res6 = verifyProductionPublicationEligibility(baseCandidate, { auditEvidence: genericChannelAudit });
+  assert.equal(res6.valid, false);
+  assert.match(res6.errors.join("; "), /missing genuine channel creator attribution/i);
+});
+
+test("Stage 2 V3: Positive offline fixtures exercise production contract cleanly without any bypass flags", () => {
+  const genuineYouTubeItem = {
+    id: 105,
+    title: "Authentic Trigger Anime Edit",
+    description: "An offline genuine production fixture matching existing historical compiler contracts.",
+    creator: "Studio Trigger",
     category: "Anime",
     format: "video",
     duration: "1:35",
@@ -1091,15 +1248,15 @@ test("Stage 2 P1: Positive synthetic offline fixtures matching approved AND publ
     publicationStatus: "published",
     canonicalVideoId: "12345678901",
     canonicalUrl: "https://www.youtube.com/watch?v=12345678901",
-    provenance: "youtube_api_v3_synthetic_fixture",
+    provenance: "youtube_data_api_v3",
     metadataFetchStatus: "fetched",
     lastMetadataVerification: "2026-10-23T12:00:00Z",
     metadata: {
       canonicalVideoId: "12345678901",
-      title: "Genuine Curated Anime Edit",
-      description: "An offline synthetic fixture matching compiler contracts",
-      channelTitle: "Studio Creator",
-      channelId: "UC_SYNTHETIC_OFFLINE",
+      title: "Authentic Trigger Anime Edit",
+      description: "Official publication metadata from YouTube Data API v3",
+      channelTitle: "Studio Trigger Official",
+      channelId: "UC_TRIGGER_OFFICIAL_1234",
       durationSec: 95,
       durationFormatted: "1:35",
       privacyStatus: "public",
@@ -1107,24 +1264,21 @@ test("Stage 2 P1: Positive synthetic offline fixtures matching approved AND publ
       thumbnailUrl: "https://i.ytimg.com/vi/12345678901/hqdefault.jpg",
       formatConfirmed: true,
       confirmedFormat: "video",
-      provenance: "youtube_api_v3_synthetic_fixture",
+      provenance: "youtube_data_api_v3",
     },
   };
 
-  const projected = projectToPublicEdit(validYouTubeItem, {
-    forProduction: true,
-    allowSyntheticAudit: true,
-  });
-
+  // Direct production projection succeeds cleanly WITHOUT any allowSyntheticAudit or bypass flag
+  const projected = projectToPublicEdit(genuineYouTubeItem, { forProduction: true });
   assert.equal(projected.id, 105);
-  assert.equal(projected.title, "Genuine Curated Anime Edit");
+  assert.equal(projected.title, "Authentic Trigger Anime Edit");
   assert.equal(projected.youtubeVideoId, "12345678901");
   assert.equal(projected.format, "video");
   assert.equal(projected.sourceType, "youtube_embed");
   assert.equal(assertPublicEditIntegrity(projected), true);
 });
 
-test("Stage 2 P1: Manifest publication succeeds with schema-valid intake record + matched trusted audit context", () => {
+test("Stage 2 V3: Manifest publication succeeds with schema-valid intake record + matched trusted audit context (no bypass flags)", () => {
   // Schema-valid intake manifest: NO private audit properties in JSON (respects additionalProperties: false)
   const manifest = {
     manifestVersion: "1.0.0",
@@ -1151,7 +1305,7 @@ test("Stage 2 P1: Manifest publication succeeds with schema-valid intake record 
     ],
   };
 
-  // Trusted caller provides audit context separately
+  // Trusted caller provides genuine audit context separately (no synthetic bypass)
   const auditRecords = [
     {
       assignedLolixcoId: 105,
@@ -1166,7 +1320,7 @@ test("Stage 2 P1: Manifest publication succeeds with schema-valid intake record 
         canonicalVideoId: "12345678901",
         title: "Verified Curated Anime Edit",
         description: "Official publication metadata",
-        channelTitle: "Studio Creator",
+        channelTitle: "Studio Trigger Official",
         channelId: "UC_GENUINE_CREATOR",
         durationSec: 120,
         durationFormatted: "2:00",
@@ -1180,7 +1334,7 @@ test("Stage 2 P1: Manifest publication succeeds with schema-valid intake record 
     },
   ];
 
-  // 1. Publish validation WITH matched audit context passes without requiring local media decode
+  // 1. Publish validation WITH matched genuine audit context passes without requiring local media decode
   const successRes = validateContentManifest(manifest, {
     mode: "publish",
     auditRecords,
@@ -1195,8 +1349,7 @@ test("Stage 2 P1: Manifest publication succeeds with schema-valid intake record 
     mode: "publish",
   });
   assert.equal(failMissingRes.valid, false);
-  assert.match(failMissingRes.errors.join("; "), /missing or unverified API provenance/i);
-  // Ensure no spurious ffmpeg decode errors
+  assert.match(failMissingRes.errors.join("; "), /missing provenance or audit evidence/i);
   const decodeErrors = failMissingRes.errors.filter((e) => e.includes("decode") || e.includes("FFmpeg"));
   assert.equal(decodeErrors.length, 0);
 
@@ -1207,8 +1360,9 @@ test("Stage 2 P1: Manifest publication succeeds with schema-valid intake record 
     auditRecords: mismatchedAudit,
   });
   assert.equal(failMismatchRes.valid, false);
+  assert.match(failMismatchRes.errors.join("; "), /canonical YouTube ID mismatch/i);
 
-  // 4. Actual production validation strictly forbids synthetic markers
+  // 4. Publish validation with synthetic evidence strictly fails, EVEN IF caller passes allowSyntheticAudit: true
   const syntheticAudit = [
     {
       ...auditRecords[0],
@@ -1222,10 +1376,10 @@ test("Stage 2 P1: Manifest publication succeeds with schema-valid intake record 
   const failSyntheticRes = validateContentManifest(manifest, {
     mode: "publish",
     auditRecords: syntheticAudit,
-    allowSyntheticAudit: false, // Default production posture
+    allowSyntheticAudit: true, // Cannot bypass production checks
   });
   assert.equal(failSyntheticRes.valid, false);
-  assert.match(failSyntheticRes.errors.join("; "), /synthetic mock metadata is prohibited/i);
+  assert.match(failSyntheticRes.errors.join("; "), /synthetic mock metadata is prohibited|strictly forbidden/i);
 
   // 5. Hosted media remains fail-closed in publish mode
   const hostedManifest = {
