@@ -73,11 +73,15 @@ def generate_snapshot_payload(edits: List[Dict[str, Any]], version: str = "demo-
 
 def sync_catalog(repo_root: Path, output_file: Path) -> Dict[str, Any]:
     """Fetch live edits from TypeScript source and write snapshot JSON."""
-    target = output_file.resolve()
     protected_root = get_repo_root()
-    if (target == (protected_root / "server/recsys/catalog_snapshot.json").resolve()
-            or target.is_relative_to((protected_root / "src/data").resolve())
-            or target.is_relative_to((protected_root / "content").resolve())):
+    def protected(path: Path) -> bool:
+        return (path == protected_root / "server/recsys/catalog_snapshot.json"
+                or path.is_relative_to(protected_root / "src/data")
+                or path.is_relative_to(protected_root / "content"))
+    # Reject canonical private/content destinations before filesystem resolution.
+    if protected(Path(os.path.abspath(output_file))):
+        raise ValueError("Independent production snapshot writes are retired; use scripts/compile-catalog.mjs for paired publication")
+    if protected(output_file.resolve()):
         raise ValueError("Independent production snapshot writes are retired; use scripts/compile-catalog.mjs for paired publication")
     if output_file.suffix != ".json":
         raise ValueError("Fixture snapshot exports require a JSON output path")

@@ -90,5 +90,17 @@ class TestPublicChannelMetadata(unittest.TestCase):
         from dataclasses import replace
         with self.assertRaises(TypeError): replace(item,channel_title=7)
 
+    def test_fixture_export_replaces_alias_without_truncating_original_inode(self):
+        import os
+        with tempfile.TemporaryDirectory() as directory:
+            original = Path(directory) / 'original.json'
+            alias = Path(directory) / 'snapshot.json'
+            original.write_text('previous fixture bytes')
+            os.link(original, alias)
+            with patch('server.recsys.export_catalog.fetch_edits_from_source', return_value=self.demo+[self.record]):
+                sync_catalog(get_repo_root(), alias)
+            self.assertEqual(original.read_text(), 'previous fixture bytes')
+            self.assertEqual(json.loads(alias.read_text())['total_edits'], 18)
+
 
 if __name__ == '__main__': unittest.main()
