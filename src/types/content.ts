@@ -161,6 +161,10 @@ export interface BaseAuditRecord {
     notes?: string | null;
   }> | null;
   curatorNotes?: string | null;
+  publicationRemoval?: {
+    approved: boolean; id: number; identity: string; status: string;
+    reason: string; approvedAt: string;
+  };
 }
 
 /**
@@ -214,6 +218,7 @@ export interface YouTubeAuditRecord extends BaseAuditRecord {
   editorial?: EditorialMetadata | null;
   media?: MediaMetadata | null;
   trending?: boolean | null;
+  playbackVerification?: PlaybackVerification | null;
 }
 
 /**
@@ -238,7 +243,26 @@ export interface HostedAuditRecord extends BaseAuditRecord {
   };
   deliveryUrl?: string;
   posterDeliveryUrl?: string;
+  provenance?: "owner_direct_upload";
+  title?: string;
+  description?: string;
+  creator?: string;
+  tags?: string[];
+  duration?: string;
+  trending?: boolean;
+  formatConfirmed?: boolean;
+  confirmedFormat?: ContentFormat;
+  rights?: { videoDistribution: boolean; audioDistribution: boolean; documentationRef: string };
+  mediaVerification?: {
+    assetRef: string; source: string; poster: string; format: ContentFormat;
+    sha256: string; decodeVerified: boolean; verifiedAt: string;
+    width: number; height: number; durationSec: number; codec: string; audioCodec: string;
+  };
+  playbackVerification?: PlaybackVerification;
 }
+
+/** Private evidence supplied by trusted owner intake, never public metadata. */
+export interface PlaybackVerification { identity: string; status: "passed" | "failed"; verifiedAt: string }
 
 /**
  * Union of all private audit records.
