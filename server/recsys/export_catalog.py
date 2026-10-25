@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import os
+import tempfile
 from typing import Any, Dict, List, Tuple
 
 
@@ -60,6 +62,8 @@ def fetch_edits_from_source(repo_root: Path) -> List[Dict[str, Any]]:
 
 def generate_snapshot_payload(edits: List[Dict[str, Any]], version: str = "demo-catalog-v1") -> Dict[str, Any]:
     """Wrap edits in a versioned snapshot envelope."""
+    from .catalog import Catalog
+    Catalog.from_dict_list(edits)
     return {
         "catalog_version": version,
         "total_edits": len(edits),
@@ -69,13 +73,35 @@ def generate_snapshot_payload(edits: List[Dict[str, Any]], version: str = "demo-
 
 def sync_catalog(repo_root: Path, output_file: Path) -> Dict[str, Any]:
     """Fetch live edits from TypeScript source and write snapshot JSON."""
+    protected_root = get_repo_root()
+    def protected(path: Path) -> bool:
+        return (path == protected_root / "server/recsys/catalog_snapshot.json"
+                or path.is_relative_to(protected_root / "src/data")
+                or path.is_relative_to(protected_root / "content"))
+    # Reject canonical private/content destinations before filesystem resolution.
+    if protected(Path(os.path.abspath(output_file))):
+        raise ValueError("Independent production snapshot writes are retired; use scripts/compile-catalog.mjs for paired publication")
+    if protected(output_file.resolve()):
+        raise ValueError("Independent production snapshot writes are retired; use scripts/compile-catalog.mjs for paired publication")
+    if output_file.suffix != ".json":
+        raise ValueError("Fixture snapshot exports require a JSON output path")
     edits = fetch_edits_from_source(repo_root)
     payload = generate_snapshot_payload(edits)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    with output_file.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
-        f.write("\n")
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=output_file.parent, delete=False) as f:
+            temp_path = Path(f.name)
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        # Replace a directory entry instead of truncating possible hard-link aliases.
+        os.replace(temp_path, output_file)
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
 
     return payload
 
@@ -98,6 +124,9 @@ ALLOWED_RECORD_FIELDS = {
     "fandomIds",
     "sourceType",
     "youtubeVideoId",
+    "channelTitle",
+    "channelId",
+    "sourceUrl",
 }
 REQUIRED_RECORD_FIELDS = {
     "id",
@@ -160,6 +189,13 @@ def check_catalog_drift(
         diffs.append(f"Snapshot missing valid 'edits' list, got {type(snapshot_edits).__name__}")
         return False, diffs
 
+    # Same runtime shapes as serving: an allowlisted name alone is insufficient.
+    try:
+        from .catalog import Catalog
+        Catalog.from_dict_list(snapshot_edits)
+    except (TypeError, ValueError) as error:
+        diffs.append(f"Snapshot record validation failed: {error}")
+
     total_edits_declared = snapshot_data.get("total_edits")
     if type(total_edits_declared) is not int or total_edits_declared < 0:
         diffs.append(
@@ -173,6 +209,8 @@ def check_catalog_drift(
     # 2. Live source comparison
     try:
         live_edits = fetch_edits_from_source(repo_root)
+        from .catalog import Catalog
+        Catalog.from_dict_list(live_edits)
     except Exception as e:
         return False, [f"Failed to fetch live edits: {e}"]
 
@@ -236,6 +274,9 @@ def check_catalog_drift(
                 "fandomIds",
                 "sourceType",
                 "youtubeVideoId",
+                "channelTitle",
+                "channelId",
+                "sourceUrl",
             ]:
                 live_val = live_item.get(field)
                 snap_val = snap_item.get(field)

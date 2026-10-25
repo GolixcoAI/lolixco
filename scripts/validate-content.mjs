@@ -359,7 +359,10 @@ export function isBaselineDemoRecord(candidate, options = {}) {
 
   if (shouldCheckChecksum) {
     try {
-      const editsTsPath = resolve(projectRoot, "src/data/edits.ts");
+      // Stage 3 keeps the exact frozen source as a fixed, checksum-pinned trust
+      // anchor. Generated catalogs may grow without letting candidates redefine
+      // demo identities or making later paired compilations impossible.
+      const editsTsPath = resolve(projectRoot, "content/baseline/edits.ts");
       if (!existsSync(editsTsPath)) return false;
       const fileBuffer = readFileSync(editsTsPath);
       const hash = createHash("sha256").update(fileBuffer).digest("hex");

@@ -1,3 +1,12 @@
+# Stage 3 publication notice
+
+The YouTube-only publication commands below are historical and retired. Use
+[`STAGE3_CATALOG_COMPILER.md`](../STAGE3_CATALOG_COMPILER.md) for the authoritative
+paired frontend/RecSys compiler. Do not execute old `--publish`/`--write` commands;
+the legacy CLI refuses them. Real publication requires separate owner approval.
+
+---
+
 # Owner Batch Intake & Operator Runbook
 
 ## 1. Overview

@@ -68,6 +68,9 @@ class EditItem:
     fandom_ids: tuple[str, ...] = ()
     source_type: str = "local_demo"
     youtube_video_id: str = ""
+    channel_title: Optional[str] = None
+    channel_id: Optional[str] = None
+    source_url: Optional[str] = None
 
     def __post_init__(self) -> None:
         # Strict integer check: Python booleans are subclasses of int, so reject bool explicitly
@@ -126,6 +129,20 @@ class EditItem:
 
         if type(self.youtube_video_id) is not str:
             raise TypeError(f"youtube_video_id must be string, got {type(self.youtube_video_id).__name__}")
+
+        for name in ("channel_title", "channel_id", "source_url"):
+            value = getattr(self, name)
+            if value is not None and (type(value) is not str or not value.strip()):
+                raise TypeError(f"{name} must be a non-empty string when present")
+        if any(getattr(self, name) is not None for name in ("channel_title", "channel_id", "source_url")) and self.source_type != "youtube_embed":
+            raise ValueError("YouTube channel metadata requires youtube_embed source")
+        if any(getattr(self, name) is not None for name in ("channel_title", "channel_id", "source_url")) and not re.fullmatch(r"[A-Za-z0-9_-]{11}", self.youtube_video_id):
+            raise ValueError("YouTube channel metadata requires a valid video identity")
+        if self.source_url is not None and self.source_url not in (
+            f"https://www.youtube.com/watch?v={self.youtube_video_id}",
+            f"https://youtube.com/watch?v={self.youtube_video_id}",
+        ):
+            raise ValueError("source_url must be a canonical watch URL matching youtube_video_id")
 
 
 @dataclass(frozen=True)

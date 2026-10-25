@@ -303,6 +303,17 @@ export const categoriesList = [
  * - Incomplete metadata rejection (no fabricated titles or creator fallbacks)
  */
 export async function compileYouTubeCatalog(options = {}) {
+  // Stage 3: preserve fixture/preview APIs, retire independent production writes.
+  const requestsWrite = !(options.dryRun === undefined ? true : options.dryRun);
+  const protectedTarget = requestsWrite && (!options.outputPath || isProtectedProductionPath(options.outputPath) || isCanonicalProductionCatalog(options.outputPath));
+  if (requestsWrite && (!isTestIsolationActive() || protectedTarget)) {
+    const reason = options.allowDraft
+      ? "'allowDraft' is strictly forbidden during catalog writes."
+      : protectedTarget && isTestIsolationActive()
+        ? "Legacy destination resolves to a protected production path under active test isolation."
+        : "Independent production catalog writes are disabled.";
+    return { success: false, errors: [`${reason} Legacy publication is retired; use scripts/compile-catalog.mjs for paired, source-aware publication.`], warnings: [], compiledCount: 0, compiledEdits: options.baseCatalog || [], dryRun: false };
+  }
   loadEnvConfig();
 
   const {
@@ -850,126 +861,14 @@ export async function compileYouTubeCatalog(options = {}) {
  * CLI Runner with explicit argument parsing, preview mode, and exit codes.
  */
 export async function runCompilerCli(args = process.argv.slice(2)) {
-  loadEnvConfig();
-
-  const options = {
-    auditFilePath: CANONICAL_AUDIT_PATH,
-    outputPath: CANONICAL_OUTPUT_PATH,
-    publish: false,
-    review: false,
-    allowDraft: false,
-  };
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--help" || arg === "-h") {
-      console.log(`
-Lolixco YouTube Catalog Compiler CLI
-
-Usage:
-  node scripts/compile-youtube-catalog.mjs [options]
-
-Modes:
-  (default)             Preview mode: Validates approved items and displays compilation preview without writing
-  --publish, --write    Explicit publication: Validates and writes compiled catalog to src/data/edits.ts
-  --review              Summary mode: Inspects audit log and prints review status breakdown
-
-Options:
-  --audit-file <path>   Audit file path (default: content/audit/youtube-intake-audit.json)
-  --output <path>       Target catalog file (default: src/data/edits.ts)
-  --allow-draft         Allow compiling draft items (embed_eligible) for staging tests
-  -h, --help            Show this help message
-`);
-      return 0;
-    } else if (arg === "--publish" || arg === "--write") {
-      options.publish = true;
-    } else if (arg === "--preview") {
-      options.publish = false;
-    } else if (arg === "--review") {
-      options.review = true;
-    } else if (arg === "--audit-file" && args[i + 1]) {
-      options.auditFilePath = resolve(args[++i]);
-    } else if (arg === "--output" && args[i + 1]) {
-      options.outputPath = resolve(args[++i]);
-    } else if (arg === "--allow-draft") {
-      options.allowDraft = true;
-    }
-  }
-
-  // FIX A: Disallow combining --publish with --allow-draft
-  if (options.publish && options.allowDraft) {
-    console.error("\n❌ Compilation aborted: Combining --publish with --allow-draft is prohibited. Production writes strictly require explicit 'approved' or 'published' review status.");
+  if ((args.includes("--publish") || args.includes("--write")) && args.includes("--allow-draft")) {
+    console.error("Combining --publish with --allow-draft is prohibited. Use scripts/compile-catalog.mjs.");
     return 1;
   }
-
-  if (options.review) {
-    if (!existsSync(options.auditFilePath)) {
-      console.log(`No audit file found at: ${options.auditFilePath}`);
-      return 0;
-    }
-    try {
-      const data = JSON.parse(readFileSync(options.auditFilePath, "utf-8"));
-      const items = Array.isArray(data.items) ? data.items : [];
-      console.log(`\n=== YouTube Intake Audit Summary (${items.length} total entries) ===`);
-      const counts = {};
-      for (const item of items) {
-        counts[item.contentReviewStatus] = (counts[item.contentReviewStatus] || 0) + 1;
-      }
-      for (const [st, c] of Object.entries(counts)) {
-        console.log(`  ${st.padEnd(20)}: ${c}`);
-      }
-      return 0;
-    } catch (err) {
-      console.error(`Failed to read audit file: ${err.message}`);
-      return 1;
-    }
-  }
-
-  console.log(`Compiling YouTube catalog from audit trail: ${options.auditFilePath}`);
-  console.log(`Target output: ${options.outputPath}`);
-  if (!options.publish) {
-    console.log("Mode: PREVIEW (pass --publish to write to production catalog)");
-  } else {
-    console.log("Mode: PUBLISH (writing approved edits to production catalog)");
-  }
-
-  if (isTestIsolationActive() && isProtectedAuditPath(options.auditFilePath)) {
-    console.error(`\n❌ Compilation aborted: Accessing canonical audit file '${options.auditFilePath}' is prohibited under active test isolation.`);
-    return 1;
-  }
-
-  if (options.publish && isTestIsolationActive() && isProtectedProductionPath(options.outputPath)) {
-    console.error(`\n❌ Compilation aborted: Production writes to '${options.outputPath}' are prohibited under active test isolation.`);
-    return 1;
-  }
-
-  const result = await compileYouTubeCatalog({
-    auditFilePath: options.auditFilePath,
-    outputPath: options.outputPath,
-    dryRun: !options.publish,
-    allowDraft: options.allowDraft,
-  });
-
-  if (!result.success) {
-    console.error("\n❌ Compilation aborted. Fail-closed validation errors:");
-    for (const err of result.errors) {
-      console.error(`  - ${err}`);
-    }
-    return 1;
-  }
-
-  console.log(`\n✔ Validation and compilation successful!`);
-  console.log(`  Baseline Demo Edits: 17`);
-  console.log(`  New Approved YouTube Edits: ${result.newCount}`);
-  console.log(`  Total Catalog Size: ${result.totalCount}`);
-
-  if (result.writtenTo) {
-    console.log(`  ✔ Written to: ${result.writtenTo}`);
-  } else {
-    console.log(`  [PREVIEW ONLY] Catalog validated cleanly. Run with --publish to write.`);
-  }
-
-  return 0;
+  const help = args.includes("--help") || args.includes("-h");
+  const message = "Legacy YouTube compiler CLI is retired; use scripts/compile-catalog.mjs --help. Reusable projections and isolated fixture APIs remain available.";
+  if (help) console.log(message); else console.error(message);
+  return help ? 0 : 1;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

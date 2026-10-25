@@ -134,6 +134,9 @@ class Catalog:
         "fandomIds",
         "sourceType",
         "youtubeVideoId",
+        "channelTitle",
+        "channelId",
+        "sourceUrl",
     }
     REQUIRED_FIELDS = {
         "id",
@@ -267,6 +270,10 @@ class Catalog:
                     f"Record at index {idx}: 'youtubeVideoId' must be string, got {type(raw_youtube_id).__name__}"
                 )
 
+            for field in ("channelTitle", "channelId", "sourceUrl"):
+                if field in raw and (type(raw[field]) is not str or not raw[field].strip()):
+                    raise TypeError(f"{field} must be a non-empty string when present")
+
             item = EditItem(
                 id=raw_id,
                 title=raw_title.strip(),
@@ -284,6 +291,9 @@ class Catalog:
                 fandom_ids=tuple(cleaned_fandom_ids),
                 source_type=raw_source_type,
                 youtube_video_id=raw_youtube_id,
+                channel_title=raw.get("channelTitle"),
+                channel_id=raw.get("channelId"),
+                source_url=raw.get("sourceUrl"),
             )
             items.append(item)
 

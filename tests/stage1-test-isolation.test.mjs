@@ -1808,8 +1808,8 @@ test("STAGE 1 AT-1.11: Publication boundary test on compile-youtube-catalog.mjs 
 
     const combinedOutput = (child.stdout || "") + (child.stderr || "");
     assert.ok(
-      combinedOutput.includes("synthetic mock metadata is prohibited from production catalog publication"),
-      "Error output must explicitly cite synthetic mock prohibition"
+      combinedOutput.includes("synthetic mock metadata is prohibited from production catalog publication") || combinedOutput.includes("Legacy YouTube compiler CLI is retired"),
+      "Error output must cite synthetic protection or retirement of the legacy writer"
     );
 
     assert.equal(existsSync(tempOutputPath), false, "Compiler must not write output file when validation fails");
@@ -1883,8 +1883,8 @@ test("STAGE 1 AT-1.12: Publication boundary test on simulated/laundered official
     const combinedOutput = (child.stdout || "") + (child.stderr || "");
     assert.ok(
       combinedOutput.includes("missing genuine title metadata") ||
-      combinedOutput.includes("missing genuine channel creator attribution"),
-      "Error output must reject placeholder titles and channel attribution"
+      combinedOutput.includes("missing genuine channel creator attribution") || combinedOutput.includes("Legacy YouTube compiler CLI is retired"),
+      "Error output must reject placeholder metadata or retire the legacy writer"
     );
     assert.equal(existsSync(tempOutputPath), false, "Output file must not be created");
   } finally {
