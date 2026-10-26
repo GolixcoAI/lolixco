@@ -9,8 +9,17 @@ import {
   advanceImmersionPrevious,
   skipUnavailableImmersionEdit,
 } from "../../utils/immersionQueue";
-import { playbackCoordinator } from "../../utils/playbackCoordinator";
-import YouTubePlayer, { type YouTubePlayerHandle } from "../video/YouTubePlayer";
+import {
+  allowsAutoplay,
+  useNativePlayback,
+} from "../../hooks/useNativePlayback";
+import {
+  usePlaybackDialog,
+  trapDialogTab,
+} from "../../hooks/usePlaybackDialog";
+import YouTubePlayer, {
+  type YouTubePlayerHandle,
+} from "../video/YouTubePlayer";
 import {
   X,
   Play,
@@ -46,7 +55,7 @@ export default function ImmersionViewer({
     state: ImmersionQueueState;
   }>(() => createImmersionSession(catalog, initialContext));
 
-  const [isPlaying, setIsPlaying] = useState<boolean>(true);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [consecutiveSkips, setConsecutiveSkips] = useState<number>(0);
   const [isExhausted, setIsExhausted] = useState<boolean>(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState<boolean>(false);
@@ -56,75 +65,75 @@ export default function ImmersionViewer({
 
   const currentEdit = session.currentEdit;
   const state = session.state;
-
-  // Single-active audio registration with playbackCoordinator
+  const scope = usePlaybackDialog(containerRef);
+  const [wantsPlayback, setWantsPlayback] = useState(allowsAutoplay);
+  const handledError = useRef(false);
+  const playback = useNativePlayback(
+    nativeVideoRef,
+    `${state.currentIndex}:${currentEdit?.id}:${currentEdit?.source}`,
+    {
+      enabled: !!currentEdit && !isYouTubeEmbed(currentEdit) && !isExhausted,
+      scope,
+      onPlaying: () => {
+        setIsPlaying(true);
+        setAutoplayBlocked(false);
+        setConsecutiveSkips(0);
+      },
+      onPaused: () => setIsPlaying(false),
+      onBlocked: () => {
+        setIsPlaying(false);
+        setAutoplayBlocked(true);
+      },
+    },
+  );
   useEffect(() => {
-    const unregister = playbackCoordinator.registerPlayer("immersion-player", () => {
-      setIsPlaying(false);
-      if (nativeVideoRef.current && !nativeVideoRef.current.paused) {
-        nativeVideoRef.current.pause();
-      }
-      if (ytPlayerRef.current) {
-        try {
-          ytPlayerRef.current.pauseVideo();
-        } catch {
-          // Guard against unmounted players
-        }
-      }
-    });
-
-    playbackCoordinator.notifyPlaying("immersion-player");
-
-    return () => {
-      unregister();
-    };
-  }, []);
+    handledError.current = false;
+    setIsPlaying(false);
+    setAutoplayBlocked(false);
+    setResumeError(null);
+    if (
+      currentEdit &&
+      !isYouTubeEmbed(currentEdit) &&
+      wantsPlayback &&
+      !isExhausted
+    ) {
+      void playback.play();
+    }
+  }, [currentEdit, state.currentIndex, isExhausted, playback.play]);
 
   // Request fullscreen on start if supported
   useEffect(() => {
+    const container = containerRef.current;
+    let disposed = false;
     try {
-      if (containerRef.current && document.fullscreenEnabled && !document.fullscreenElement) {
-        containerRef.current.requestFullscreen().catch(() => {
-          // Fullscreen request denied or not allowed by browser policy - graceful fallback
-        });
+      if (
+        containerRef.current &&
+        document.fullscreenEnabled &&
+        !document.fullscreenElement
+      ) {
+        containerRef.current
+          .requestFullscreen()
+          .then(() => {
+            if (disposed && document.fullscreenElement === container)
+              void document.exitFullscreen?.().catch(() => {});
+          })
+          .catch(() => {
+            // Fullscreen request denied or not allowed by browser policy - graceful fallback
+          });
       }
     } catch {
       // Ignored
     }
 
     function handleFullscreenChange() {
-      setIsFullscreen(!!document.fullscreenElement);
+      setIsFullscreen(document.fullscreenElement === container);
     }
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => {
+      disposed = true;
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
-      }
     };
-  }, []);
-
-  // Pause playback when page visibility changes (tab hidden or screen locked)
-  useEffect(() => {
-    function handleVisibility() {
-      if (document.hidden) {
-        setIsPlaying(false);
-        if (nativeVideoRef.current && !nativeVideoRef.current.paused) {
-          nativeVideoRef.current.pause();
-        }
-        if (ytPlayerRef.current) {
-          try {
-            ytPlayerRef.current.pauseVideo();
-          } catch {
-            // Guard against unmounted players
-          }
-        }
-      }
-    }
-
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, []);
 
   // Navigation: Next
@@ -138,7 +147,7 @@ export default function ImmersionViewer({
       return;
     }
     setSession({ currentEdit: nextEdit, state: nextState });
-    setIsPlaying(true);
+    setWantsPlayback(allowsAutoplay());
   }, [catalog, state]);
 
   // Navigation: Previous
@@ -148,96 +157,58 @@ export default function ImmersionViewer({
     const { prevEdit, nextState } = advanceImmersionPrevious(state);
     if (prevEdit) {
       setSession({ currentEdit: prevEdit, state: nextState });
-      setIsPlaying(true);
+      setWantsPlayback(allowsAutoplay());
       setIsExhausted(false);
     }
   }, [state]);
 
-  // Toggle Play / Pause
+  // UI state follows actual media events; intent never claims coordinator ownership.
   const handleTogglePlay = useCallback(() => {
     if (isPlaying) {
-      setIsPlaying(false);
-      playbackCoordinator.notifyPaused("immersion-player");
-      if (nativeVideoRef.current) nativeVideoRef.current.pause();
-      if (ytPlayerRef.current) {
-        try {
-          ytPlayerRef.current.pauseVideo();
-        } catch {
-          // Ignore
-        }
-      }
+      setWantsPlayback(false);
+      playback.pause();
+      ytPlayerRef.current?.pauseVideo();
     } else {
-      playbackCoordinator.notifyPlaying("immersion-player");
-      setIsPlaying(true);
+      setWantsPlayback(true);
       setAutoplayBlocked(false);
       setResumeError(null);
-      if (nativeVideoRef.current) nativeVideoRef.current.play().catch(() => {});
-      if (ytPlayerRef.current) {
-        try {
-          ytPlayerRef.current.playVideo();
-        } catch {
-          setAutoplayBlocked(true);
-        }
-      }
+      if (currentEdit && isYouTubeEmbed(currentEdit))
+        ytPlayerRef.current?.playVideo();
+      else void playback.play();
     }
-  }, [isPlaying]);
+  }, [isPlaying, currentEdit, playback.play, playback.pause]);
 
-  // Dedicated Resume Playback action for explicit user interaction after autoplay blockage (FIX G)
   const handleResumePlayback = useCallback(() => {
     setResumeError(null);
-    playbackCoordinator.notifyPlaying("immersion-player");
-    setIsPlaying(true);
+    setWantsPlayback(true);
     setAutoplayBlocked(false);
     setIsMuted(false);
-
     if (currentEdit && isYouTubeEmbed(currentEdit)) {
-      if (ytPlayerRef.current) {
-        try {
-          ytPlayerRef.current.unMute();
-          ytPlayerRef.current.playVideo();
-        } catch {
-          setAutoplayBlocked(true);
-          setResumeError("Playback could not be resumed. Tap or click directly on the video player.");
-        }
-      }
-    } else if (nativeVideoRef.current) {
-      nativeVideoRef.current.muted = false;
-      nativeVideoRef.current.play().catch(() => {
-        setAutoplayBlocked(true);
-        setResumeError("Playback could not be resumed. Please interact with the page to allow audio/video.");
-      });
+      ytPlayerRef.current?.unMute();
+      ytPlayerRef.current?.playVideo();
+    } else {
+      if (nativeVideoRef.current) nativeVideoRef.current.muted = false;
+      void playback.play();
     }
-  }, [currentEdit]);
+  }, [currentEdit, playback.play]);
 
   // User-controlled sound and unmute toggle
   const handleToggleMute = useCallback(() => {
-    setIsMuted((prev) => {
-      const next = !prev;
-      if (nativeVideoRef.current) {
-        nativeVideoRef.current.muted = next;
-      }
-      if (ytPlayerRef.current) {
-        try {
-          if (next) {
-            ytPlayerRef.current.mute();
-          } else {
-            ytPlayerRef.current.unMute();
-          }
-        } catch {
-          // Guard against unmounted player
-        }
-      }
-      return next;
-    });
+    setIsMuted((prev) => !prev);
   }, []);
 
   // Handle Playback Error with bounded skip retry
   const handlePlaybackError = useCallback(() => {
+    if (handledError.current) return;
+    handledError.current = true;
+    playback.pause();
+    ytPlayerRef.current?.pauseVideo();
+    setIsPlaying(false);
     const { nextEdit, nextState, exhausted } = skipUnavailableImmersionEdit(
       catalog,
       state,
       consecutiveSkips,
-      3
+      3,
     );
 
     if (exhausted || !nextEdit) {
@@ -245,23 +216,30 @@ export default function ImmersionViewer({
     } else {
       setConsecutiveSkips((prev) => prev + 1);
       setSession({ currentEdit: nextEdit, state: nextState });
-      setIsPlaying(true);
+      setWantsPlayback(allowsAutoplay());
     }
-  }, [catalog, consecutiveSkips, state]);
+  }, [catalog, consecutiveSkips, state, playback.pause]);
 
   // Toggle Fullscreen manually
   const handleToggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen().catch(() => {});
+      containerRef.current?.requestFullscreen?.().catch(() => {});
     } else {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen?.().catch(() => {});
     }
   }, []);
 
   // Keyboard navigation
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      trapDialogTab(e, containerRef.current);
+      if (e.defaultPrevented) return;
+      if (
+        e.key !== "Escape" &&
+        (e.target as HTMLElement)?.closest?.(
+          "button,a,input,textarea,select,[contenteditable]",
+        )
+      ) {
         return;
       }
 
@@ -299,12 +277,20 @@ export default function ImmersionViewer({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleNext, handlePrevious, handleToggleFullscreen, handleTogglePlay, handleToggleMute, onClose]);
+  }, [
+    handleNext,
+    handlePrevious,
+    handleToggleFullscreen,
+    handleTogglePlay,
+    handleToggleMute,
+    onClose,
+  ]);
 
   // Determine stage label
-  const stageLabel = state.openingQueue.length > 0 || state.currentIndex < 3
-    ? `Opening (${state.currentIndex + 1}/3)`
-    : `Discovery (${state.currentIndex + 1})`;
+  const stageLabel =
+    state.openingQueue.length > 0 || state.currentIndex < 3
+      ? `Opening (${state.currentIndex + 1}/3)`
+      : `Discovery (${state.currentIndex + 1})`;
 
   const isPortrait = currentEdit?.format === "short";
   const isEmbed = currentEdit ? isYouTubeEmbed(currentEdit) : false;
@@ -316,6 +302,7 @@ export default function ImmersionViewer({
       role="dialog"
       aria-label="Immersion Mode Viewer"
       aria-modal="true"
+      tabIndex={-1}
     >
       {/* Top Bar Navigation */}
       <header className="immersion-topbar">
@@ -323,7 +310,9 @@ export default function ImmersionViewer({
           <span className="immersion-badge">
             {currentEdit?.category || "IMMERSION"}
           </span>
-          <span className="immersion-stage-pill">{stageLabel}</span>
+          <span className="immersion-stage-pill" aria-live="polite">
+            {stageLabel}
+          </span>
           <div className="immersion-title-group">
             <span className="immersion-title">
               {currentEdit?.title || "Curated Edit"}
@@ -351,7 +340,9 @@ export default function ImmersionViewer({
             className="immersion-btn"
             onClick={handleToggleFullscreen}
             aria-label={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-            title={isFullscreen ? "Exit Fullscreen (f)" : "Enter Fullscreen (f)"}
+            title={
+              isFullscreen ? "Exit Fullscreen (f)" : "Enter Fullscreen (f)"
+            }
           >
             {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
           </button>
@@ -376,17 +367,19 @@ export default function ImmersionViewer({
               Queue Playback Complete
             </h2>
             <p style={{ color: "rgba(255, 255, 255, 0.7)", maxWidth: 440 }}>
-              No more eligible edits could be loaded. You can restart Immersion Mode
-              or return to normal browsing.
+              No more eligible edits could be loaded. You can restart Immersion
+              Mode or return to normal browsing.
             </p>
             <div style={{ display: "flex", gap: 12 }}>
               <button
                 type="button"
                 className="immersion-prompt-btn"
                 onClick={() => {
+                  setConsecutiveSkips(0);
+                  handledError.current = false;
                   setIsExhausted(false);
                   setSession(createImmersionSession(catalog, initialContext));
-                  setIsPlaying(true);
+                  setWantsPlayback(allowsAutoplay());
                 }}
               >
                 Restart Immersion
@@ -410,31 +403,33 @@ export default function ImmersionViewer({
             {isEmbed ? (
               <YouTubePlayer
                 ref={ytPlayerRef}
-                key={currentEdit.id}
+                key={`${state.currentIndex}:${currentEdit.id}`}
                 videoId={currentEdit.youtubeVideoId || ""}
                 title={currentEdit.title}
                 aspectRatio={isPortrait ? "9:16" : "16:9"}
-                autoPlay={isPlaying}
+                autoPlay={wantsPlayback}
                 muted={isMuted}
                 controls={true}
-                registerWithCoordinator={false}
+                playbackScope={scope}
                 onEnded={handleNext}
                 onError={() => handlePlaybackError()}
                 onPlay={() => {
                   setIsPlaying(true);
                   setAutoplayBlocked(false);
-                  playbackCoordinator.notifyPlaying("immersion-player");
+                  setConsecutiveSkips(0);
                 }}
                 onPause={() => setIsPlaying(false)}
-                onAutoplayBlocked={() => setAutoplayBlocked(true)}
+                onAutoplayBlocked={() => {
+                  setIsPlaying(false);
+                  setAutoplayBlocked(true);
+                }}
               />
             ) : (
               <video
                 ref={nativeVideoRef}
-                key={currentEdit.id}
+                key={`${state.currentIndex}:${currentEdit.id}`}
                 src={currentEdit.source}
                 poster={currentEdit.poster}
-                autoPlay={isPlaying}
                 muted={isMuted}
                 playsInline
                 style={{
@@ -445,17 +440,11 @@ export default function ImmersionViewer({
                 }}
                 onEnded={handleNext}
                 onError={handlePlaybackError}
-                onPlay={() => {
-                  setIsPlaying(true);
-                  setAutoplayBlocked(false);
-                  playbackCoordinator.notifyPlaying("immersion-player");
-                }}
-                onPause={() => setIsPlaying(false)}
               />
             )}
 
             {autoplayBlocked && (
-              <div className="immersion-prompt-overlay">
+              <div className="immersion-prompt-overlay" role="status">
                 <button
                   type="button"
                   className="immersion-prompt-btn"
@@ -464,7 +453,13 @@ export default function ImmersionViewer({
                   Continue Playback
                 </button>
                 {resumeError && (
-                  <p style={{ color: "#f87171", fontSize: "0.85rem", marginTop: 8 }}>
+                  <p
+                    style={{
+                      color: "#f87171",
+                      fontSize: "0.85rem",
+                      marginTop: 8,
+                    }}
+                  >
                     {resumeError}
                   </p>
                 )}

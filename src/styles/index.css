@@ -1812,7 +1812,7 @@ dialog .fine-print {
 }
 @media (max-width: 900px) {
   .shorts-vertical-nav {
-    display: none;
+    right: 12px;
   }
 }
 @media (max-width: 767px) {
@@ -2073,3 +2073,32 @@ dialog .fine-print {
   color: var(--yellow, #fff000);
 }
 
+
+/* Keep playback controls reachable without covering or clipping their labels. */
+@media (max-width: 767px) {
+  .immersion-topbar {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+  .immersion-meta-info {
+    max-width: 100%;
+    min-width: 0;
+  }
+  .immersion-title-group {
+    min-width: 0;
+  }
+  .immersion-bottombar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+  .immersion-controls {
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .immersion-tag-list {
+    max-width: 100%;
+  }
+}

@@ -14,11 +14,15 @@ import {
 import type { Edit } from "../../data/edits";
 import { validLoop, loopSeek } from "../../data/logic.js";
 import { YouTubePlayer } from "./YouTubePlayer";
+import {
+  allowsAutoplay,
+  useNativePlayback,
+} from "../../hooks/useNativePlayback";
 const time = (n: number) =>
   `${Math.floor(n / 60)}:${Math.floor(n % 60)
     .toString()
     .padStart(2, "0")}`;
-export default function VideoPlayer({
+function VideoPlayerSession({
   edit,
   isOverlayActive,
   onShuffle,
@@ -46,12 +50,27 @@ export default function VideoPlayer({
   state.current = { a, b, loop };
   const valid = a !== null && b !== null && validLoop(a, b, duration);
   const overlayActiveRef = useRef(!!isOverlayActive);
-  const playRequestId = useRef(0);
+  overlayActiveRef.current = !!isOverlayActive;
+  const isYouTube = edit.sourceType === "youtube_embed";
+  const playback = useNativePlayback(video, `${edit.id}:${edit.source}`, {
+    enabled: !isYouTube,
+    allowed: !isOverlayActive,
+    onPlaying: () => {
+      setPlaying(true);
+      setWaiting(false);
+      setNotice("");
+    },
+    onPaused: () => setPlaying(false),
+    onBlocked: () =>
+      setNotice("Playback could not start. Press Play to try again."),
+  });
 
   useEffect(() => {
-    const v = video.current!;
+    const v = video.current;
+    if (!v || isYouTube) return;
     let frame = 0;
     const update = () => {
+      if (v.paused) return;
       const s = state.current;
       const next = loopSeek(v.currentTime, s.a, s.b, s.loop);
       if (next !== v.currentTime) v.currentTime = next;
@@ -59,15 +78,16 @@ export default function VideoPlayer({
       frame = requestAnimationFrame(update);
     };
     const start = () => {
+      if (v.paused) return;
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(update);
     };
     const stop = () => cancelAnimationFrame(frame);
-    v.addEventListener("play", start);
+    v.addEventListener("playing", start);
     v.addEventListener("pause", stop);
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (!entry.isIntersecting) v.pause();
+        if (!entry.isIntersecting) playback.pause();
       },
       { threshold: 0.1 },
     );
@@ -80,40 +100,13 @@ export default function VideoPlayer({
       stop();
       observer.disconnect();
       document.removeEventListener("visibilitychange", hide);
-      v.removeEventListener("play", start);
+      v.removeEventListener("playing", start);
       v.removeEventListener("pause", stop);
     };
-  }, []);
-
-  // Guarantee background video pauses when modal overlay is active (e.g. ShortsViewer)
-  useEffect(() => {
-    overlayActiveRef.current = !!isOverlayActive;
-    if (isOverlayActive) {
-      playRequestId.current++;
-      if (video.current) {
-        video.current.pause();
-      }
-      setPlaying(false);
-    }
-  }, [isOverlayActive]);
+  }, [isYouTube, playback.pause]);
 
   async function play() {
-    if (isOverlayActive || overlayActiveRef.current) return;
-    const req = ++playRequestId.current;
-    try {
-      await video.current!.play();
-      if (req === playRequestId.current && !overlayActiveRef.current && !isOverlayActive) {
-        setNotice("");
-      } else if ((overlayActiveRef.current || isOverlayActive) && video.current) {
-        video.current.pause();
-      }
-    } catch {
-      if (req === playRequestId.current && !overlayActiveRef.current && !isOverlayActive) {
-        setNotice(
-          "Playback could not start. Try again or reload the local media.",
-        );
-      }
-    }
+    await playback.play();
   }
   function seek(n: number) {
     const v = video.current!;
@@ -140,7 +133,7 @@ export default function VideoPlayer({
       setNotice("Fullscreen is unavailable in this browser.");
     }
   }
-  if (edit.sourceType === "youtube_embed" && edit.youtubeVideoId) {
+  if (isYouTube) {
     return (
       <div
         ref={container}
@@ -149,11 +142,12 @@ export default function VideoPlayer({
         aria-label={`${edit.title} video player`}
       >
         <YouTubePlayer
-          videoId={edit.youtubeVideoId}
+          videoId={edit.youtubeVideoId || ""}
           title={edit.title}
           poster={edit.poster}
           aspectRatio="16:9"
-          autoPlay={!isOverlayActive}
+          autoPlay={allowsAutoplay()}
+          playbackAllowed={!isOverlayActive}
           controls={true}
         />
         <div className="player-shade" style={{ pointerEvents: "none" }} />
@@ -164,7 +158,12 @@ export default function VideoPlayer({
               <button
                 type="button"
                 className="shuffle-moment-btn"
-                style={{ pointerEvents: "auto", position: "relative", zIndex: 10, cursor: "pointer" }}
+                style={{
+                  pointerEvents: "auto",
+                  position: "relative",
+                  zIndex: 10,
+                  cursor: "pointer",
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   onShuffle();
@@ -192,6 +191,7 @@ export default function VideoPlayer({
       tabIndex={0}
       aria-label={`${edit.title} video player`}
       onKeyDown={(e) => {
+        if (isOverlayActive) return;
         if ((e.target as HTMLElement).closest("button,input,select")) return;
         if ([" ", "k", "m", "f", "ArrowLeft", "ArrowRight"].includes(e.key))
           e.preventDefault();
@@ -217,33 +217,7 @@ export default function VideoPlayer({
           const v = video.current!;
           setDuration(v.duration);
           setQuality(`${v.videoHeight}p · original source`);
-          const save = typeof navigator !== "undefined" && (
-            navigator as Navigator & { connection?: { saveData?: boolean } }
-          ).connection?.saveData;
-          if (
-            !isOverlayActive &&
-            !overlayActiveRef.current &&
-            !matchMedia("(prefers-reduced-motion: reduce)").matches &&
-            !save
-          ) {
-            const req = ++playRequestId.current;
-            v.play()
-              .then(() => {
-                if ((overlayActiveRef.current || isOverlayActive) && video.current) {
-                  video.current.pause();
-                }
-              })
-              .catch(() => {});
-          }
-        }}
-        onPlay={() => {
-          if (overlayActiveRef.current || isOverlayActive) {
-            video.current?.pause();
-            setPlaying(false);
-            return;
-          }
-          setPlaying(true);
-          setWaiting(false);
+          if (allowsAutoplay()) void play();
         }}
         onPause={() => setPlaying(false)}
         onVolumeChange={() => setMuted(video.current!.muted)}
@@ -279,7 +253,12 @@ export default function VideoPlayer({
             <button
               type="button"
               className="shuffle-moment-btn"
-              style={{ pointerEvents: "auto", position: "relative", zIndex: 10, cursor: "pointer" }}
+              style={{
+                pointerEvents: "auto",
+                position: "relative",
+                zIndex: 10,
+                cursor: "pointer",
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 onShuffle();
@@ -508,23 +487,24 @@ export default function VideoPlayer({
           >
             <Settings2 />
           </button>
-          {document.pictureInPictureEnabled && (
-            <button
-              className="icon-button pip"
-              aria-label="Picture in picture"
-              onClick={async () => {
-                try {
-                  if (document.pictureInPictureElement)
-                    await document.exitPictureInPicture();
-                  else await video.current!.requestPictureInPicture();
-                } catch {
-                  setNotice("Picture in picture is unavailable.");
-                }
-              }}
-            >
-              <PictureInPicture2 />
-            </button>
-          )}
+          {typeof document !== "undefined" &&
+            document.pictureInPictureEnabled && (
+              <button
+                className="icon-button pip"
+                aria-label="Picture in picture"
+                onClick={async () => {
+                  try {
+                    if (document.pictureInPictureElement)
+                      await document.exitPictureInPicture();
+                    else await video.current!.requestPictureInPicture();
+                  } catch {
+                    setNotice("Picture in picture is unavailable.");
+                  }
+                }}
+              >
+                <PictureInPicture2 />
+              </button>
+            )}
           <button
             className="icon-button"
             aria-label="Fullscreen"
@@ -536,5 +516,17 @@ export default function VideoPlayer({
         </div>
       </div>
     </div>
+  );
+}
+
+// A media identity owns its controls, markers, errors and pending operations.
+export default function VideoPlayer(
+  props: Parameters<typeof VideoPlayerSession>[0],
+) {
+  return (
+    <VideoPlayerSession
+      key={`${props.edit.id}:${props.edit.sourceType}:${props.edit.youtubeVideoId}:${props.edit.source}`}
+      {...props}
+    />
   );
 }

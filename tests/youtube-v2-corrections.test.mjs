@@ -765,7 +765,7 @@ test("V2 FIX 10: Immersion player handoff avoids self-pausing cycle", () => {
 
   assert.equal(playbackCoordinator.getActivePlayerId(), "immersion-player");
   assert.equal(immersionViewerPaused, false, "ImmersionViewer must NOT pause itself upon child playback!");
-  assert.equal(externalPlayerPaused, false);
+  assert.equal(externalPlayerPaused, true, "External pending starts must also be cancelled");
 
   // If another player notifies playing, Immersion MUST be paused
   playbackCoordinator.notifyPlaying("featured-player");
