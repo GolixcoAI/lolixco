@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { type Edit } from "../data/edits";
+import { edits as compiledEdits, type Edit } from "../data/edits";
 import {
   computeLocalFallback,
   fetchRecommendations,
@@ -20,6 +20,7 @@ export interface UseRecommendationsState {
 export function useRecommendations(
   params: RecommendationParams,
   enabled: boolean = true,
+  catalog: Edit[] = compiledEdits,
 ): UseRecommendationsState {
   const paramsKey = JSON.stringify({
     surface: params.surface,
@@ -32,8 +33,9 @@ export function useRecommendations(
   });
 
   const [state, setState] = useState(() => ({
+    catalog,
     key: paramsKey,
-    result: computeLocalFallback(params),
+    result: computeLocalFallback(params, catalog),
     loading: enabled,
   }));
 
@@ -45,8 +47,14 @@ export function useRecommendations(
   // 1. No currently selected edit in Up Next, even during loading or in the first render frame.
   // 2. Old recommendations from a previous edit are not displayed for the new selection.
   // 3. Telemetry truthfully reflects source: "fallback" until the new API response arrives.
-  const activeResult = state.key === paramsKey ? state.result : computeLocalFallback(params);
-  const isLoading = state.key === paramsKey ? state.loading : enabled;
+  const activeResult =
+    state.key === paramsKey && state.catalog === catalog
+      ? state.result
+      : computeLocalFallback(params, catalog);
+  const isLoading =
+    state.key === paramsKey && state.catalog === catalog
+      ? state.loading
+      : enabled;
 
   const refetch = () => {
     setNonce((n) => n + 1);
@@ -55,8 +63,9 @@ export function useRecommendations(
   useEffect(() => {
     if (!enabled) {
       setState({
+        catalog,
         key: paramsKey,
-        result: computeLocalFallback(params),
+        result: computeLocalFallback(params, catalog),
         loading: false,
       });
       return;
@@ -65,19 +74,21 @@ export function useRecommendations(
     const currentSeq = ++seqRef.current;
     const controller = new AbortController();
 
-    if (state.key !== paramsKey) {
+    if (state.key !== paramsKey || state.catalog !== catalog) {
       setState({
+        catalog,
         key: paramsKey,
-        result: computeLocalFallback(params),
+        result: computeLocalFallback(params, catalog),
         loading: true,
       });
     }
 
-    fetchRecommendations(params, controller.signal)
+    fetchRecommendations(params, controller.signal, catalog)
       .then((res) => {
         // Protect against out-of-order or superseded responses
-        if (currentSeq === seqRef.current) {
+        if (!controller.signal.aborted && currentSeq === seqRef.current) {
           setState({
+            catalog,
             key: paramsKey,
             result: res,
             loading: false,
@@ -88,10 +99,11 @@ export function useRecommendations(
         if (controller.signal.aborted) {
           return;
         }
-        if (currentSeq === seqRef.current) {
+        if (!controller.signal.aborted && currentSeq === seqRef.current) {
           setState({
+            catalog,
             key: paramsKey,
-            result: computeLocalFallback(params),
+            result: computeLocalFallback(params, catalog),
             loading: false,
           });
         }
@@ -100,7 +112,7 @@ export function useRecommendations(
     return () => {
       controller.abort();
     };
-  }, [paramsKey, nonce, enabled]);
+  }, [paramsKey, nonce, enabled, catalog]);
 
   return {
     items: activeResult.items,

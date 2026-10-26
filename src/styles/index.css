@@ -2102,3 +2102,15 @@ dialog .fine-print {
     max-width: 100%;
   }
 }
+
+/* Source-aware discovery retains the existing charcoal/yellow visual language. */
+.category-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 24px 16px; align-items: start; }
+.category-groups .video-grid { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 767px) {
+  .category-groups { grid-template-columns: repeat(auto-fill, minmax(min(100%, 155px), 1fr)); gap: 20px 10px; }
+}
+.category-heading { font-size: 15px; color: var(--text-muted, #aaa); margin: 0 0 12px; }
+.source-label { color: var(--text-muted, #aaa); }
+.source-attribution { display: block; overflow-wrap: anywhere; }
+.card-copy { min-width: 0; }
+.shorts-badge { max-width: 100%; }

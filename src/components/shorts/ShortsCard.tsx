@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Film } from "lucide-react";
 import type { Edit } from "../../data/edits";
+import { publicSource } from "../../utils/publicSource";
 import { getFandomById } from "../../data/fandoms";
 
 export interface ShortsCardProps {
@@ -18,6 +19,7 @@ export function ShortsCard({
 }: ShortsCardProps) {
   const [failedPoster, setFailedPoster] = useState<string | null>(null);
 
+  const source = publicSource(short);
   const fandomTitle = short.fandomIds?.[0]
     ? getFandomById(short.fandomIds[0])?.title
     : null;
@@ -34,7 +36,7 @@ export function ShortsCard({
         aria-label={`Watch short: ${short.title}`}
       >
         <div className="shorts-thumbnail">
-          {failedPoster === short.poster ? (
+          {!short.poster || failedPoster === short.poster ? (
             <span
               className="thumbnail-fallback portrait"
               role="img"
@@ -59,12 +61,15 @@ export function ShortsCard({
           )}
 
           <div className="shorts-card-info">
-            <span className="shorts-badge">Short</span>
+            <span className="shorts-badge">{source.label}</span>
             <h3>{short.title}</h3>
             <small>
               {fandomTitle ? `${fandomTitle} · ` : ""}
               {short.category}
             </small>
+            {source.attribution && (
+              <small className="source-attribution">{source.attribution}</small>
+            )}
           </div>
         </div>
       </button>

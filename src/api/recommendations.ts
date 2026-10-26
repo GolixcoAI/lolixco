@@ -65,9 +65,14 @@ export function isRecsysApiEnabled(): boolean {
   }
 
   // Node.js test environment support
-  const proc = typeof globalThis !== "undefined"
-    ? (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process
-    : undefined;
+  const proc =
+    typeof globalThis !== "undefined"
+      ? (
+          globalThis as unknown as {
+            process?: { env?: Record<string, string | undefined> };
+          }
+        ).process
+      : undefined;
 
   if (proc?.env) {
     if (proc.env.VITE_RECSYS_ENABLED === "false") return false;
@@ -82,7 +87,10 @@ export function isRecsysApiEnabled(): boolean {
  * Resolve the base API endpoint.
  */
 export function getRecsysApiBase(): string {
-  if (typeof import.meta !== "undefined" && import.meta.env?.VITE_RECSYS_API_URL) {
+  if (
+    typeof import.meta !== "undefined" &&
+    import.meta.env?.VITE_RECSYS_API_URL
+  ) {
     return import.meta.env.VITE_RECSYS_API_URL.replace(/\/$/, "");
   }
   return "/api/v1";
@@ -92,14 +100,20 @@ export function getRecsysApiBase(): string {
  * Compute deterministic fallback recommendations when backend is unavailable.
  * Ensures zero crashes, no blank screens, and accurate source telemetry.
  */
-export function computeLocalFallback(params: RecommendationParams): RecommendationResult {
-  const limit = Math.max(1, Math.min(50, params.limit ?? (params.surface === "up_next" ? 4 : 12)));
+export function computeLocalFallback(
+  params: RecommendationParams,
+  catalog: Edit[] = edits,
+): RecommendationResult {
+  const limit = Math.max(
+    1,
+    Math.min(50, params.limit ?? (params.surface === "up_next" ? 4 : 12)),
+  );
   const excluded = new Set<number>(params.excludeEditIds ?? []);
   if (params.surface === "up_next" && params.currentEditId !== undefined) {
     excluded.add(params.currentEditId);
   }
 
-  let pool = edits.filter((e) => !excluded.has(e.id));
+  let pool = catalog.filter((e) => !excluded.has(e.id));
 
   if (params.categoryFilter && params.categoryFilter !== "Featured") {
     const normCat = params.categoryFilter.toLowerCase();
@@ -141,9 +155,13 @@ export function computeLocalFallback(params: RecommendationParams): Recommendati
 
 export const EXPECTED_SCHEMA_VERSION = "1.0";
 export const EXPECTED_CATALOG_VERSION = "demo-catalog-v1";
-export const EXPECTED_CATALOG_VERSIONS: readonly string[] = [EXPECTED_CATALOG_VERSION, "catalog-v2"];
+export const EXPECTED_CATALOG_VERSIONS: readonly string[] = [
+  EXPECTED_CATALOG_VERSION,
+  "catalog-v2",
+];
 export const SUPPORTED_API_MODE = "baseline";
-export const ISO_TIMESTAMP_REGEX = /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$/;
+export const ISO_TIMESTAMP_REGEX =
+  /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$/;
 
 /**
  * Validate that a string conforms to RFC3339/ISO-8601 with a real calendar date.
@@ -172,9 +190,10 @@ export function isValidIsoTimestamp(str: unknown): str is string {
 export async function fetchRecommendations(
   params: RecommendationParams,
   signal?: AbortSignal,
+  catalog: Edit[] = edits,
 ): Promise<RecommendationResult> {
   if (!isRecsysApiEnabled()) {
-    return computeLocalFallback(params);
+    return computeLocalFallback(params, catalog);
   }
 
   const endpoint = `${getRecsysApiBase()}/recommendations`;
@@ -187,7 +206,7 @@ export async function fetchRecommendations(
 
   if (params.surface === "up_next") {
     if (params.currentEditId === undefined || params.currentEditId === null) {
-      return computeLocalFallback(params);
+      return computeLocalFallback(params, catalog);
     }
     payload.current_edit_id = params.currentEditId;
   }
@@ -217,11 +236,17 @@ export async function fetchRecommendations(
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   if (signal?.aborted) {
-    throw signal.reason || new DOMException("The operation was aborted", "AbortError");
+    throw (
+      signal.reason ||
+      new DOMException("The operation was aborted", "AbortError")
+    );
   }
 
   const abortListener = () => {
-    timeoutController.abort(signal?.reason || new DOMException("The operation was aborted", "AbortError"));
+    timeoutController.abort(
+      signal?.reason ||
+        new DOMException("The operation was aborted", "AbortError"),
+    );
   };
 
   if (signal) {
@@ -229,7 +254,9 @@ export async function fetchRecommendations(
   }
 
   timer = setTimeout(() => {
-    timeoutController.abort(new DOMException("Request timed out", "TimeoutError"));
+    timeoutController.abort(
+      new DOMException("Request timed out", "TimeoutError"),
+    );
   }, timeoutMs);
 
   try {
@@ -243,14 +270,14 @@ export async function fetchRecommendations(
     });
 
     if (!response.ok) {
-      return computeLocalFallback(params);
+      return computeLocalFallback(params, catalog);
     }
 
     const data: unknown = await response.json();
 
     // Strict response envelope validation
     if (!data || typeof data !== "object" || Array.isArray(data)) {
-      return computeLocalFallback(params);
+      return computeLocalFallback(params, catalog);
     }
 
     const envelope = data as Record<string, unknown>;
@@ -274,26 +301,30 @@ export async function fetchRecommendations(
       typeof envelope.diagnostics !== "object" ||
       Array.isArray(envelope.diagnostics)
     ) {
-      return computeLocalFallback(params);
+      return computeLocalFallback(params, catalog);
     }
 
     const rawDiagnostics = envelope.diagnostics as Record<string, unknown>;
     if (
       !Array.isArray(rawDiagnostics.warnings) ||
       !rawDiagnostics.warnings.every((w) => typeof w === "string") ||
-      (rawDiagnostics.fallback_reason !== null && typeof rawDiagnostics.fallback_reason !== "string")
+      (rawDiagnostics.fallback_reason !== null &&
+        typeof rawDiagnostics.fallback_reason !== "string")
     ) {
-      return computeLocalFallback(params);
+      return computeLocalFallback(params, catalog);
     }
 
     // Defense in depth: strict exclusion, limit truncation, & client-side catalog lookup
-    const effectiveLimit = Math.max(1, Math.min(50, params.limit ?? (params.surface === "up_next" ? 4 : 12)));
+    const effectiveLimit = Math.max(
+      1,
+      Math.min(50, params.limit ?? (params.surface === "up_next" ? 4 : 12)),
+    );
     const excludedIds = new Set<number>(params.excludeEditIds ?? []);
     if (params.surface === "up_next" && params.currentEditId !== undefined) {
       excludedIds.add(params.currentEditId);
     }
 
-    const editsById = new Map<number, Edit>(edits.map((e) => [e.id, e]));
+    const editsById = new Map<number, Edit>(catalog.map((e) => [e.id, e]));
     const mappedItems: RecommendedItem[] = [];
     const mappedEdits: Edit[] = [];
     const seenIds = new Set<number>();
@@ -374,11 +405,16 @@ export async function fetchRecommendations(
   } catch (error) {
     // If caller explicitly aborted, rethrow the cancellation
     if (signal?.aborted) {
-      throw signal.reason || (error instanceof Error ? error : new DOMException("The operation was aborted", "AbortError"));
+      throw (
+        signal.reason ||
+        (error instanceof Error
+          ? error
+          : new DOMException("The operation was aborted", "AbortError"))
+      );
     }
 
     // Network errors, timeouts, or unparseable JSON fall back cleanly
-    return computeLocalFallback(params);
+    return computeLocalFallback(params, catalog);
   } finally {
     if (timer) clearTimeout(timer);
     if (signal) signal.removeEventListener("abort", abortListener);

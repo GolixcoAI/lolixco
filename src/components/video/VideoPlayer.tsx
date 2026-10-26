@@ -1,3 +1,4 @@
+import { publicSource } from "../../utils/publicSource";
 import { useEffect, useRef, useState } from "react";
 import {
   Play,
@@ -177,7 +178,12 @@ function VideoPlayerSession({
           </span>
           <h1>{edit.title}</h1>
           <div className="hero-meta">
-            <span>{edit.category} · Curated edit</span>
+            <span>
+              {edit.category} · {publicSource(edit).label}
+              {publicSource(edit).attribution
+                ? ` · ${publicSource(edit).attribution}`
+                : ""}
+            </span>
           </div>
         </div>
       </div>
@@ -272,7 +278,12 @@ function VideoPlayerSession({
         </span>
         <h1>{edit.title}</h1>
         <div className="hero-meta">
-          <span>{edit.category} · Sample edit</span>
+          <span>
+            {edit.category} · {publicSource(edit).label}
+            {publicSource(edit).attribution
+              ? ` · ${publicSource(edit).attribution}`
+              : ""}
+          </span>
         </div>
         <button
           className="primary watch"

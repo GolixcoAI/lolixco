@@ -5,6 +5,7 @@ import {
   selectEditOfTheMoment,
   getUtcDaySeed,
 } from "../src/utils/editOfTheMoment.ts";
+import { youtube, hosted } from "./fixtures/stage5-public-catalog.ts";
 import { edits as baseEdits } from "../src/data/edits.ts";
 
 test("EDIT OF THE MOMENT: returns consistent, stable item across multiple calls on the same UTC day", () => {
@@ -20,8 +21,8 @@ test("EDIT OF THE MOMENT: avoids selecting identical edit on consecutive UTC day
   const day1 = new Date("2026-10-19T12:00:00Z");
   const day2 = new Date("2026-10-20T12:00:00Z");
 
-  const editDay1 = selectEditOfTheMoment(baseEdits, day1);
-  const editDay2 = selectEditOfTheMoment(baseEdits, day2);
+  const editDay1 = selectEditOfTheMoment([...youtube, ...hosted], day1);
+  const editDay2 = selectEditOfTheMoment([...youtube, ...hosted], day2);
 
   assert.ok(editDay1);
   assert.ok(editDay2);
@@ -30,9 +31,9 @@ test("EDIT OF THE MOMENT: avoids selecting identical edit on consecutive UTC day
 
 test("EDIT OF THE MOMENT: manual shuffleOffset cycles through eligible items", () => {
   const date = new Date("2026-10-19T12:00:00Z");
-  const initial = selectEditOfTheMoment(baseEdits, date, 0);
-  const shuffled1 = selectEditOfTheMoment(baseEdits, date, 1);
-  const shuffled2 = selectEditOfTheMoment(baseEdits, date, 2);
+  const initial = selectEditOfTheMoment([...youtube, ...hosted], date, 0);
+  const shuffled1 = selectEditOfTheMoment([...youtube, ...hosted], date, 1);
+  const shuffled2 = selectEditOfTheMoment([...youtube, ...hosted], date, 2);
 
   assert.ok(initial);
   assert.ok(shuffled1);
@@ -42,7 +43,7 @@ test("EDIT OF THE MOMENT: manual shuffleOffset cycles through eligible items", (
   assert.notEqual(shuffled1.id, shuffled2.id, "Offset 2 must shift to different edit");
 });
 
-test("EDIT OF THE MOMENT: prioritizes curated YouTube edits when available", () => {
+test("EDIT OF THE MOMENT: selects real landscape edits ahead of demos", () => {
   const mixedCatalog = [
     ...baseEdits, // 17 demo edits (IDs 0-16)
     {
