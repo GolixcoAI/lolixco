@@ -276,6 +276,7 @@ export type PrivateAuditRecord = YouTubeAuditRecord | HostedAuditRecord;
 export type FeedSection<T = import("../data/edits").Edit> =
   | {
       type: "video_row";
+      groups?: { id: string; title: string; items: T[] }[];
       id: string;
       title: string;
       items: T[];

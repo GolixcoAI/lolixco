@@ -18,6 +18,7 @@ import {
 } from "./data/fandoms";
 import {
   composeHomeFeed,
+  rankCatalogVideos,
   splitMixedResults,
   isShort,
   isVideo,
@@ -196,43 +197,40 @@ export default function App({
     [initialEdits]
   );
 
-  const [shuffleOffset, setShuffleOffset] = useState(0);
-
-  const hasCuratedYouTubeContent = useMemo(
-    () =>
-      initialEdits.some(
-        (e) => isVideo(e) && e.sourceType === "youtube_embed"
-      ),
-    [initialEdits]
+  // Production always uses the compiled module. initialEdits is a test-only
+  // public-catalog injection point, never an intake/publication API.
+  const shuffleOffset = useRef(0);
+  const [today, setToday] = useState(() => new Date());
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = () => {
+      clearTimeout(timer);
+      const now = new Date();
+      setToday(now);
+      timer = setTimeout(refresh, 86400000 - (now.getTime() % 86400000) + 10);
+    };
+    refresh();
+    const visible = () => { if (!document.hidden) refresh(); };
+    document.addEventListener("visibilitychange", visible);
+    return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", visible); };
+  }, []);
+  const initialLandscapeVideo = useMemo(
+    () => selectEditOfTheMoment(initialEdits, today), [initialEdits, today],
   );
-
-  // Guarantee that Shorts-only catalogs never place a Short into the landscape player.
-  // Until genuine YouTube content is approved, preserves the existing demo featured experience (Edit 0: "Into the Light").
-  // When genuine YouTube edits are approved, uses the deterministic Edit of the Moment daily selection.
-  const initialLandscapeVideo = useMemo(() => {
-    if (hasCuratedYouTubeContent) {
-      return (
-        selectEditOfTheMoment(initialEdits, new Date(), shuffleOffset) ||
-        initialEdits.find((e) => isVideo(e)) ||
-        null
-      );
-    }
-    const demoVideos = initialEdits.filter(isVideo);
-    if (demoVideos.length === 0) return null;
-    if (shuffleOffset > 0) {
-      return demoVideos[shuffleOffset % demoVideos.length];
-    }
-    return demoVideos[0];
-  }, [hasCuratedYouTubeContent, initialEdits, shuffleOffset]);
 
   // Initialize navigation state from URL query parameters
   const initialParams = parseUrlParams(initialEdits);
   const [query, setQuery] = useState(initialParams.query);
   const [category, setCategory] = useState(initialParams.category);
   const [fandom, setFandom] = useState(initialParams.fandom);
-  const [selected, setSelected] = useState<Edit | null>(initialLandscapeVideo);
+  const [selection, setSelection] = useState<{ catalog: Edit[]; id: number } | null>(null);
+  const selected = selection?.catalog === initialEdits
+    ? initialEdits.find((e) => e.id === selection.id && isVideo(e)) ?? initialLandscapeVideo
+    : initialLandscapeVideo;
+  const setSelected = (edit: Edit) => setSelection({ catalog: initialEdits, id: edit.id });
+  useEffect(() => { shuffleOffset.current = 0; }, [initialEdits]);
   const [active, setActive] = useState(initialParams.view);
-  const [activeShort, setActiveShort] = useState<Edit | null>(() => {
+  const [shortSelection, setActiveShort] = useState<Edit | null>(() => {
     if (typeof initialParams.shortId === "number") {
       return (
         initialEdits.find(
@@ -242,6 +240,7 @@ export default function App({
     }
     return null;
   });
+  const activeShort = initialEdits.find((e) => e.id === shortSelection?.id && isShort(e)) ?? null;
   const [modal, setModal] = useState("");
   const [immersionOpen, setImmersionOpen] = useState(false);
 
@@ -534,14 +533,8 @@ export default function App({
   }
 
   const handleShuffleFeatured = useCallback(() => {
-    setShuffleOffset((prev) => {
-      const nextOffset = prev + 1;
-      const nextFeatured = selectEditOfTheMoment(initialEdits, new Date(), nextOffset);
-      if (nextFeatured) {
-        setSelected(nextFeatured);
-      }
-      return nextOffset;
-    });
+    const nextFeatured = selectEditOfTheMoment(initialEdits, new Date(), ++shuffleOffset.current);
+    if (nextFeatured) setSelection({ catalog: initialEdits, id: nextFeatured.id });
   }, [initialEdits]);
 
   function navigate(name: string) {
@@ -604,13 +597,14 @@ export default function App({
       currentEditId: selected ? selected.id : undefined,
       limit: 4,
     },
-    isUpNextEnabled
+    isUpNextEnabled,
+    initialEdits
   );
 
   const { edits: homeRecommendedEdits } = useRecommendations({
     surface: "home",
-    limit: 6,
-  });
+    limit: 50,
+  }, true, initialEdits);
 
   const homeSections = useMemo(
     () =>
@@ -781,7 +775,7 @@ export default function App({
                 />
                 <section className="up-next">
                   <h2>Up Next</h2>
-                  {upNextEdits.filter(isVideo).map((e) => (
+                  {rankCatalogVideos(initialEdits, upNextEdits).filter((e) => e.id !== selected.id).slice(0, 4).map((e) => (
                     <VideoCard
                       key={e.id}
                       compact
@@ -795,20 +789,19 @@ export default function App({
               </div>
             )}
 
-            {homeSections.map((section, idx) => {
+            <ImmersionBanner onOpen={() => setImmersionOpen(true)} />
+            {homeSections.map((section) => {
               if (section.type === "video_row") {
                 return (
                   <div key={section.id}>
                     <ContentSection
                       title={section.title}
                       items={section.items}
+                      groups={section.groups}
                       onSelect={choose}
                       onSelectShort={handleSelectShort}
                       onTagClick={handleTagClick}
                     />
-                    {idx === 0 && (
-                      <ImmersionBanner onOpen={() => setImmersionOpen(true)} />
-                    )}
                   </div>
                 );
               }
@@ -838,7 +831,7 @@ export default function App({
                       ? "Explore edits"
                       : `${category} edits`}
               </h1>
-              <span>{filtered.length} sample edits</span>
+              <span>{filtered.length} edits</span>
             </div>
             {loading ? (
               <DiscoveryGridSkeleton
@@ -883,7 +876,7 @@ export default function App({
                       {getFandomById(fandom)?.title || fandom}
                     </h2>
                     <p>
-                      Our demo catalog does not yet include edits for this
+                      The catalog does not yet include edits for this
                       fandom. You can browse other {category} edits or clear
                       the fandom filter.
                     </p>
@@ -918,7 +911,7 @@ export default function App({
         <footer>
           LOCAL FRONTEND PREVIEW{" "}
           <span>
-            Original demo artwork & silent test footage. Account-free browsing.
+            Account-free discovery. Demos use original artwork and silent test footage.
             No personal data or platform statistics.
           </span>
         </footer>

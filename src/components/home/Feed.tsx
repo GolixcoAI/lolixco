@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Film } from "lucide-react";
 import type { Edit } from "../../data/edits";
-import { CategoryBar } from "./CategoryBar";
+import { publicSource } from "../../utils/publicSource";
 
 export { CategoryBar } from "./CategoryBar";
 
@@ -21,6 +21,8 @@ export function VideoCard({
   compact = false,
 }: VideoCardProps) {
   const [failedPoster, setFailedPoster] = useState<string | null>(null);
+
+  const source = publicSource(edit);
 
   const handleClick = () => {
     if (edit.format === "short" && onSelectShort) {
@@ -42,7 +44,7 @@ export function VideoCard({
         aria-label={`Watch ${edit.title}`}
       >
         <div className="thumbnail">
-          {failedPoster === edit.poster ? (
+          {!edit.poster || failedPoster === edit.poster ? (
             <span
               className="thumbnail-fallback"
               role="img"
@@ -66,7 +68,13 @@ export function VideoCard({
         </div>
         <div className="card-copy">
           <h3>{edit.title}</h3>
-          <small>{edit.category} · Sample edit</small>
+          <small>
+            {edit.category} ·{" "}
+            <span className="source-label">{source.label}</span>
+          </small>
+          {source.attribution && (
+            <small className="source-attribution">{source.attribution}</small>
+          )}
         </div>
       </button>
 
@@ -99,28 +107,37 @@ export function VideoCard({
 export function ContentSection({
   title,
   items,
+  groups,
   onSelect,
   onSelectShort,
   onTagClick,
 }: {
   title: string;
   items: Edit[];
+  groups?: { id: string; title: string; items: Edit[] }[];
   onSelect: (e: Edit) => void;
   onSelectShort?: (short: Edit) => void;
   onTagClick?: (tag: string) => void;
 }) {
   return (
-    <section className="content-section">
+    <section className="content-section" aria-label={title}>
       <h2>{title}</h2>
-      <div className="video-grid">
-        {items.map((edit) => (
-          <VideoCard
-            key={edit.id}
-            edit={edit}
-            onSelect={onSelect}
-            onSelectShort={onSelectShort}
-            onTagClick={onTagClick}
-          />
+      <div className={groups ? "category-groups" : undefined}>
+        {(groups ?? [{ id: "all", title: "", items }]).map((group) => (
+          <div className="content-category" key={group.id}>
+            {group.title && <h3 className="category-heading">{group.title}</h3>}
+            <div className="video-grid">
+              {group.items.map((edit) => (
+                <VideoCard
+                  key={edit.id}
+                  edit={edit}
+                  onSelect={onSelect}
+                  onSelectShort={onSelectShort}
+                  onTagClick={onTagClick}
+                />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </section>

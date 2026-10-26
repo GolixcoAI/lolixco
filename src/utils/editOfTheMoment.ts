@@ -1,8 +1,5 @@
 import type { Edit } from "../data/edits";
 
-/**
- * Returns a deterministic integer representation of a UTC date: YYYYMMDD.
- */
 export function getUtcDaySeed(date: Date = new Date()): number {
   return (
     date.getUTCFullYear() * 10000 +
@@ -11,67 +8,45 @@ export function getUtcDaySeed(date: Date = new Date()): number {
   );
 }
 
-/**
- * Deterministic integer hash function (Knuth's multiplicative hash).
- */
-function hashInt(seed: number): number {
-  let h = (seed ^ 0x5bf03635) * 2654435761;
-  return Math.abs(h ^ (h >>> 16));
-}
-
-/**
- * Selects the featured Edit of the Moment according to strict editorial rules:
- * 1. Prioritizes approved curated YouTube landscape edits if available.
- * 2. Falls back to baseline demo landscape edits when no curated YouTube content is approved yet.
- * 3. Stable for all visitors across a single UTC day (no random render flashes).
- * 4. Avoids selecting the exact same item on consecutive UTC days (when pool size >= 2).
- * 5. Supports an optional manual shuffle offset for session exploration.
+/** Consumes compiler-verified public records, never private intake/audit records.
+ * Source type describes playback, not approval. Tests may explicitly inject a
+ * synthetic public catalog; that does not authorize publication of those fixtures.
+ * A UTC epoch-day cycle guarantees distinct consecutive days for pools > 1,
+ * including month/year boundaries. Source-neutral ID ordering stabilizes rotation.
  */
 export function selectEditOfTheMoment(
   catalog: Edit[],
   date: Date = new Date(),
-  shuffleOffset: number = 0
+  shuffleOffset: number = 0,
 ): Edit | null {
-  if (!catalog || catalog.length === 0) return null;
-
-  // Filter landscape edits (exclude portrait shorts from the landscape hero banner)
-  const isLandscape = (e: Edit) => e.format === "video" || !e.format;
-
-  const curatedLandscape = catalog.filter(
-    (e) => isLandscape(e) && e.sourceType === "youtube_embed"
-  );
-
-  // Priority 1: Genuine curated YouTube edits
-  // Priority 2: Fallback to baseline landscape demo edits
-  const pool =
-    curatedLandscape.length > 0
-      ? curatedLandscape
-      : catalog.filter(isLandscape);
-
-  if (pool.length === 0) {
-    return catalog[0] || null;
-  }
-
-  const daySeed = getUtcDaySeed(date);
-  const primaryIndex = hashInt(daySeed) % pool.length;
-
-  let chosenIndex = primaryIndex;
-
-  // Avoid consecutive days having the exact same featured item if pool >= 2
-  if (pool.length >= 2) {
-    const prevDate = new Date(date.getTime() - 86400000);
-    const prevDaySeed = getUtcDaySeed(prevDate);
-    const prevIndex = hashInt(prevDaySeed) % pool.length;
-
-    if (chosenIndex === prevIndex) {
-      chosenIndex = (chosenIndex + 1) % pool.length;
-    }
-  }
-
-  // Apply manual shuffle offset (wrapped within pool)
-  if (typeof shuffleOffset === "number" && shuffleOffset > 0) {
-    chosenIndex = (chosenIndex + shuffleOffset) % pool.length;
-  }
-
-  return pool[chosenIndex];
+  if (!catalog?.length) return null;
+  const landscape = catalog.filter((e) => e.format === "video" || !e.format);
+  const pool = [
+    ...new Map(
+      landscape
+        .filter(
+          (e) =>
+            e.format === "video" &&
+            (e.sourceType === "youtube_embed" ||
+              e.sourceType === "licensed_local_media"),
+        )
+        .map((e) => [e.id, e]),
+    ).values(),
+  ].sort((a, b) => a.id - b.id);
+  // Never substitute an arbitrary demo or a portrait item when Demo 0 is absent.
+  if (!pool.length)
+    return (
+      landscape.find(
+        (e) => e.id === 0 && (!e.sourceType || e.sourceType === "local_demo"),
+      ) ?? null
+    );
+  const day = Number.isFinite(date.getTime())
+    ? Math.floor(date.getTime() / 86400000)
+    : 0;
+  const offset = Number.isSafeInteger(shuffleOffset) ? shuffleOffset : 0;
+  const index =
+    ((((day % pool.length) + (offset % pool.length)) % pool.length) +
+      pool.length) %
+    pool.length;
+  return pool[index];
 }
