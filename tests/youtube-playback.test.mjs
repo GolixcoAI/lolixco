@@ -84,14 +84,14 @@ test("PLAYBACK COORDINATOR: single-active player enforcement and audio isolation
   playbackCoordinator.notifyPlaying("player-a");
   assert.equal(playbackCoordinator.getActivePlayerId(), "player-a");
   assert.equal(playerAPaused, false);
-  assert.equal(playerBPaused, false);
-  assert.equal(playerCPaused, false);
+  assert.equal(playerBPaused, true, "Pending starts are cancelled even before PLAYING");
+  assert.equal(playerCPaused, true, "Pending starts are cancelled even before PLAYING");
 
   // Player B starts playing -> Player A must be immediately paused
   playbackCoordinator.notifyPlaying("player-b");
   assert.equal(playbackCoordinator.getActivePlayerId(), "player-b");
   assert.equal(playerAPaused, true, "Player A must be paused when Player B plays");
-  assert.equal(playerBPaused, false);
+  assert.equal(playerBPaused, true, "Pending starts are cancelled even before PLAYING");
 
   // Player C starts playing (e.g. Immersion Mode) -> Player B must be paused
   playbackCoordinator.notifyPlaying("player-c");

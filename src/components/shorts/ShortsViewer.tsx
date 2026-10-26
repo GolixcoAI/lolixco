@@ -12,8 +12,17 @@ import {
 } from "lucide-react";
 import type { Edit } from "../../data/edits";
 import { getFandomById } from "../../data/fandoms";
-import YouTubePlayer, { type YouTubePlayerHandle } from "../video/YouTubePlayer";
-import { playbackCoordinator } from "../../utils/playbackCoordinator";
+import YouTubePlayer, {
+  type YouTubePlayerHandle,
+} from "../video/YouTubePlayer";
+import {
+  allowsAutoplay,
+  useNativePlayback,
+} from "../../hooks/useNativePlayback";
+import {
+  usePlaybackDialog,
+  trapDialogTab,
+} from "../../hooks/usePlaybackDialog";
 
 export interface ShortsViewerProps {
   shorts: Edit[];
@@ -40,7 +49,7 @@ export function ShortsViewer({
   const effectiveInitialId = activeShortId ?? initialShortId;
   const initialIndex = Math.max(
     0,
-    shorts.findIndex((s) => s.id === effectiveInitialId)
+    shorts.findIndex((s) => s.id === effectiveInitialId),
   );
 
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
@@ -49,31 +58,33 @@ export function ShortsViewer({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [hasError, setHasError] = useState(false);
-  const [, setIsWaiting] = useState(false);
+  const [isWaiting, setIsWaiting] = useState(false);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const ytPlayerRef = useRef<YouTubePlayerHandle>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
-  const previousActiveElement = useRef<HTMLElement | null>(null);
-  const playRequestId = useRef(0);
+  const scope = usePlaybackDialog(viewerRef, !!shorts[currentIndex]);
+  const [blocked, setBlocked] = useState(false);
   const lastNavTime = useRef(0);
 
   const currentShort = shorts[currentIndex];
-  const isYouTube = currentShort?.sourceType === "youtube_embed" && !!currentShort.youtubeVideoId;
+  const isYouTube = currentShort?.sourceType === "youtube_embed";
 
-  // Store active element for focus restoration on exit
-  useEffect(() => {
-    if (typeof document !== "undefined") {
-      previousActiveElement.current = document.activeElement as HTMLElement;
-    }
-    // Auto-focus viewer container on mount
-    viewerRef.current?.focus();
-
-    return () => {
-      previousActiveElement.current?.focus?.();
-    };
-  }, []);
+  const playback = useNativePlayback(
+    videoRef,
+    `${currentShort?.id}:${currentShort?.source}`,
+    {
+      enabled: !isYouTube,
+      scope,
+      onPlaying: () => {
+        setIsPlaying(true);
+        setBlocked(false);
+      },
+      onPaused: () => setIsPlaying(false),
+      onBlocked: () => setBlocked(true),
+    },
+  );
 
   const prevActiveShortId = useRef(activeShortId);
   const prevShortsRef = useRef(shorts);
@@ -94,7 +105,7 @@ export function ShortsViewer({
       const currentId =
         typeof activeShortId === "number"
           ? activeShortId
-          : currentShort?.id ?? initialShortId;
+          : (currentShort?.id ?? initialShortId);
       if (typeof currentId === "number") {
         const idx = shorts.findIndex((s) => s.id === currentId);
         if (idx !== -1) {
@@ -106,120 +117,25 @@ export function ShortsViewer({
     }
   }, [activeShortId, currentIndex, currentShort?.id, initialShortId, shorts]);
 
-  // Register with playbackCoordinator for single-active audio exclusivity across Shorts and Featured player
   useEffect(() => {
-    const unregister = playbackCoordinator.registerPlayer("shorts-viewer", () => {
-      setIsPlaying(false);
-      if (videoRef.current && !videoRef.current.paused) {
-        videoRef.current.pause();
-      }
-      if (ytPlayerRef.current) {
-        try {
-          ytPlayerRef.current.pauseVideo();
-        } catch {
-          // Guard against unmounted players
-        }
-      }
-    });
-
-    playbackCoordinator.notifyPlaying("shorts-viewer");
-
-    return () => {
-      unregister();
-    };
-  }, []);
-
-  // Video playback lifecycle when currentIndex changes
-  useEffect(() => {
-    if (isYouTube) {
-      setHasError(false);
-      setIsWaiting(false);
-      setCurrentTime(0);
-      setDuration(0);
-      setIsPlaying(true);
-      return;
-    }
-
-    const video = videoRef.current;
-    if (!video) return;
-
     setHasError(false);
+    setBlocked(false);
     setIsWaiting(false);
     setCurrentTime(0);
     setDuration(0);
-
-    video.pause();
-
-    const prefersReducedMotion =
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const saveData =
-      typeof navigator !== "undefined" &&
-      (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData;
-
-    const currentReq = ++playRequestId.current;
-
-    // Respect reduced-motion and reduced-data preferences
-    if (!prefersReducedMotion && !saveData) {
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            if (playRequestId.current === currentReq) {
-              setIsPlaying(true);
-            }
-          })
-          .catch(() => {
-            // Autoplay rejected or waiting for user gesture
-            if (playRequestId.current === currentReq) {
-              setIsPlaying(false);
-            }
-          });
-      }
-    } else {
-      setIsPlaying(false);
-    }
-
-    return () => {
-      video.pause();
-    };
-  }, [currentIndex, isYouTube]);
+    setIsPlaying(false);
+    if (!isYouTube && allowsAutoplay()) void playback.play();
+  }, [currentShort?.id, currentShort?.source, isYouTube, playback.play]);
 
   const togglePlay = useCallback(() => {
     if (isYouTube) {
-      if (isPlaying) {
-        setIsPlaying(false);
-        ytPlayerRef.current?.pauseVideo();
-      } else {
-        setIsPlaying(true);
-        ytPlayerRef.current?.playVideo();
-      }
-      return;
+      if (isPlaying) ytPlayerRef.current?.pauseVideo();
+      else ytPlayerRef.current?.playVideo();
+    } else if (!hasError) {
+      if (videoRef.current?.paused) void playback.play();
+      else playback.pause();
     }
-
-    const video = videoRef.current;
-    if (!video || hasError) return;
-
-    const currentReq = ++playRequestId.current;
-
-    if (video.paused) {
-      video
-        .play()
-        .then(() => {
-          if (playRequestId.current === currentReq) {
-            setIsPlaying(true);
-          }
-        })
-        .catch(() => {
-          if (playRequestId.current === currentReq) {
-            setIsPlaying(false);
-          }
-        });
-    } else {
-      video.pause();
-      setIsPlaying(false);
-    }
-  }, [hasError, isPlaying, isYouTube]);
+  }, [hasError, isPlaying, isYouTube, playback.play, playback.pause]);
 
   const toggleMute = useCallback(() => {
     if (isYouTube) {
@@ -266,36 +182,11 @@ export function ShortsViewer({
     (e: React.MouseEvent) => {
       e.stopPropagation();
       setHasError(false);
-      setIsWaiting(true);
-
-      if (isYouTube) {
-        setIsPlaying(true);
-        setIsWaiting(false);
-        ytPlayerRef.current?.playVideo();
-        return;
-      }
-
-      const video = videoRef.current;
-      if (video) {
-        video.load();
-        const currentReq = ++playRequestId.current;
-        video
-          .play()
-          .then(() => {
-            if (playRequestId.current === currentReq) {
-              setIsPlaying(true);
-              setIsWaiting(false);
-            }
-          })
-          .catch(() => {
-            if (playRequestId.current === currentReq) {
-              setIsPlaying(false);
-              setIsWaiting(false);
-            }
-          });
-      }
+      setBlocked(false);
+      videoRef.current?.load();
+      void playback.play();
     },
-    [isYouTube]
+    [playback.play],
   );
 
   // Keyboard navigation & accessibility focus handling
@@ -303,33 +194,8 @@ export function ShortsViewer({
     function handleKeyDown(e: KeyboardEvent) {
       const activeEl = document.activeElement as HTMLElement | null;
 
-      // Trap Tab within viewer dialog
-      if (e.key === "Tab" && viewerRef.current) {
-        const focusable = viewerRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [role="slider"], [tabindex]:not([tabindex="-1"])'
-        );
-        if (focusable.length > 0) {
-          const firstEl = focusable[0];
-          const lastEl = focusable[focusable.length - 1];
-
-          if (e.shiftKey) {
-            if (
-              document.activeElement === firstEl ||
-              document.activeElement === viewerRef.current
-            ) {
-              e.preventDefault();
-              lastEl.focus();
-              return;
-            }
-          } else {
-            if (document.activeElement === lastEl) {
-              e.preventDefault();
-              firstEl.focus();
-              return;
-            }
-          }
-        }
-      }
+      trapDialogTab(e, viewerRef.current);
+      if (e.defaultPrevented) return;
 
       // Escape always closes the viewer
       if (e.key === "Escape") {
@@ -341,9 +207,9 @@ export function ShortsViewer({
       // If active element or event target is a button, link, or text input, let them handle Space / Enter natively
       const isInteractive = Boolean(
         activeEl?.closest?.("button, a, input, textarea, select") ||
-          (e.target as HTMLElement)?.closest?.(
-            "button, a, input, textarea, select"
-          )
+        (e.target as HTMLElement)?.closest?.(
+          "button, a, input, textarea, select",
+        ),
       );
 
       if (isInteractive) {
@@ -422,14 +288,32 @@ export function ShortsViewer({
       onTouchEnd={handleTouchEnd}
     >
       <div className="shorts-viewer-backdrop" onClick={onClose} />
+      <span className="sr-only" role="status">
+        {hasError
+          ? "Video unavailable"
+          : isWaiting
+            ? "Buffering"
+            : isPlaying
+              ? "Playing"
+              : "Paused"}
+      </span>
 
       <div className="shorts-viewer-container">
         {/* Top Header Controls */}
         <div className="shorts-viewer-header">
-          <span className="shorts-viewer-index">
+          <span className="shorts-viewer-index" aria-live="polite">
             {currentIndex + 1} / {shorts.length}
           </span>
           <div className="shorts-viewer-actions">
+            <button
+              type="button"
+              className="icon-button shorts-control-btn"
+              onClick={togglePlay}
+              disabled={hasError && !isYouTube}
+              aria-label={isPlaying ? "Pause short" : "Play short"}
+            >
+              {isPlaying ? <Pause size={20} /> : <Play size={20} />}
+            </button>
             <button
               type="button"
               className="icon-button shorts-control-btn"
@@ -450,24 +334,33 @@ export function ShortsViewer({
         </div>
 
         {/* Vertical Viewport Frame */}
-        <div className="shorts-viewer-frame" onClick={isYouTube ? undefined : togglePlay}>
+        <div
+          className="shorts-viewer-frame"
+          onClick={isYouTube ? undefined : togglePlay}
+        >
           {isYouTube ? (
             <YouTubePlayer
+              key={`${currentShort.id}:${currentShort.youtubeVideoId}`}
               ref={ytPlayerRef}
               videoId={currentShort.youtubeVideoId!}
               title={currentShort.title}
               poster={currentShort.poster}
               aspectRatio="9:16"
-              autoPlay={true}
+              autoPlay={allowsAutoplay()}
               muted={isMuted}
               controls={true}
-              registerWithCoordinator={false}
+              playbackScope={scope}
               onEnded={handleNext}
               onPlay={() => {
                 setIsPlaying(true);
-                playbackCoordinator.notifyPlaying("shorts-viewer");
+                setHasError(false);
+                setBlocked(false);
               }}
               onPause={() => setIsPlaying(false)}
+              onAutoplayBlocked={() => {
+                setIsPlaying(false);
+                setBlocked(true);
+              }}
               onError={() => {
                 setHasError(true);
                 setIsPlaying(false);
@@ -477,21 +370,18 @@ export function ShortsViewer({
           ) : (
             /* Always keep video element mounted in DOM to guarantee ref and retry reliability for native video */
             <video
+              key={`${currentShort.id}:${currentShort.source}`}
               ref={videoRef}
               src={currentShort.source}
               poster={currentShort.poster}
               className="shorts-video-element"
               style={{ display: hasError ? "none" : "block" }}
-              loop
+              onEnded={handleNext}
               playsInline
               muted={isMuted}
-              onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               onWaiting={() => setIsWaiting(true)}
-              onPlaying={() => {
-                setIsWaiting(false);
-                setIsPlaying(true);
-              }}
+              onPlaying={() => setIsWaiting(false)}
               onTimeUpdate={() => {
                 if (videoRef.current) {
                   setCurrentTime(videoRef.current.currentTime);
@@ -510,16 +400,25 @@ export function ShortsViewer({
             />
           )}
 
-          {hasError && (
+          {blocked && !hasError && (
+            <div className="player-status" role="status">
+              Playback needs your permission.{" "}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  togglePlay();
+                }}
+              >
+                Resume playback
+              </button>
+            </div>
+          )}
+          {hasError && !isYouTube && (
             <div className="shorts-error-state" role="alert">
               <Film size={40} className="error-icon" aria-hidden="true" />
               <h3>Video unavailable</h3>
               <p>Could not load the video for {currentShort.title}.</p>
-              <button
-                type="button"
-                className="retry-btn"
-                onClick={handleRetry}
-              >
+              <button type="button" className="retry-btn" onClick={handleRetry}>
                 <RotateCcw size={16} /> Retry
               </button>
             </div>
@@ -579,7 +478,7 @@ export function ShortsViewer({
               aria-valuemin={0}
               aria-valuemax={Math.round(duration || 100)}
               aria-valuetext={`${formatTime(currentTime)} of ${formatTime(
-                duration
+                duration,
               )}`}
               onClick={(e) => {
                 e.stopPropagation();

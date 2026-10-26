@@ -498,6 +498,9 @@ function setupMountedDom(initialUrl = "http://localhost:3000/") {
       attributes: {},
       _listeners: new Map(),
       _textContent: "",
+      paused: true,
+      pause() { this.paused = true; },
+      play() { this.paused = false; return Promise.resolve(); },
       get textContent() {
         if (this._textContent) return this._textContent;
         return this.childNodes

@@ -688,68 +688,44 @@ test("V3 FIX 7: Safe audit/catalog write failures, malformed audit handling, and
 // ---------------------------------------------------------------------------
 // 8. AUTOPLAY-BLOCKED IMMERSION RECOVERY (FIX G)
 // ---------------------------------------------------------------------------
-test("V3 FIX 8: Autoplay-blocked Immersion recovery via dedicated handleResumePlayback", () => {
-  // Track imperative player calls
-  let playVideoCalls = 0;
-  let pauseVideoCalls = 0;
-
-  const mockPlayerHandle = {
-    playVideo() {
-      playVideoCalls++;
-    },
-    pauseVideo() {
-      pauseVideoCalls++;
-    },
+test("V3 FIX 8: Mounted Immersion autoplay recovery resumes directly and retains a retry on rejection", async () => {
+  const { default: React, act } = await import("react");
+  const { setupMountedDom } = await import("./mounted-dom.mjs");
+  const { default: ImmersionViewer } = await import("../src/components/immersion/ImmersionViewer.tsx");
+  const { edits } = await import("../src/data/edits.ts");
+  const env = setupMountedDom();
+  const create = document.createElement;
+  let reject = true, playCalls = 0;
+  document.createElement = tag => {
+    const element = create(tag);
+    if (tag === "video") element.play = () => {
+      playCalls++;
+      if (reject) return Promise.reject(new Error("Synthetic autoplay rejection"));
+      element.paused = false;
+      element.dispatchEvent({ type: "playing", bubbles: false });
+      return Promise.resolve();
+    };
+    return element;
   };
-
-  // Simulate ImmersionViewer autoplay recovery state
-  let isPlaying = true; // Stale state: isPlaying remained true when autoplay was blocked
-  let autoplayBlocked = true;
-  let resumeError = null;
-
-  // Dedicated handleResumePlayback implementation matching ImmersionViewer
-  function handleResumePlayback() {
-    resumeError = null;
-    playbackCoordinator.notifyPlaying("immersion-player");
-    isPlaying = true;
-    autoplayBlocked = false;
-
-    try {
-      mockPlayerHandle.playVideo();
-    } catch {
-      autoplayBlocked = true;
-      resumeError = "Playback could not be resumed. Tap or click directly on the video player.";
-    }
+  const resume = () => env.container.querySelectorAll("button").find(b => b.textContent === "Continue Playback");
+  try {
+    await act(async () => env.root.render(React.createElement(ImmersionViewer, { catalog: [edits[0]], onClose() {} })));
+    assert.ok(resume(), "Rejected autoplay exposes a user action");
+    assert.equal(playbackCoordinator.getActivePlayerId(), null);
+    await act(async () => resume().dispatchEvent({ type: "click", bubbles: true, button: 0 }));
+    assert.ok(resume(), "A rejected explicit resume remains retryable");
+    assert.equal(playbackCoordinator.getActivePlayerId(), null);
+    const video = env.container.querySelectorAll("video")[0];
+    const pausesBefore = video._pauseCalls;
+    reject = false;
+    await act(async () => resume().dispatchEvent({ type: "click", bubbles: true, button: 0 }));
+    assert.equal(playCalls, 3);
+    assert.equal(video._pauseCalls, pausesBefore, "Resume must not take a stale pause branch");
+    assert.ok(playbackCoordinator.getActivePlayerId(), "Only actual PLAYING claims ownership");
+    assert.equal(resume(), undefined);
+    assert.equal(video.muted, false);
+  } finally {
+    await env.cleanup();
+    playbackCoordinator.reset();
   }
-
-  // User clicks "Continue Playback"
-  handleResumePlayback();
-
-  // PlayVideo was called directly, NOT pauseVideo!
-  assert.equal(playVideoCalls, 1, "Must invoke playVideo on Continue click");
-  assert.equal(pauseVideoCalls, 0, "Must NOT take the pause branch");
-  assert.equal(autoplayBlocked, false);
-  assert.equal(resumeError, null);
-  assert.equal(playbackCoordinator.getActivePlayerId(), "immersion-player");
-
-  // If playVideo throws an error, recovery gracefully surfaces error
-  const failingPlayerHandle = {
-    playVideo() {
-      throw new Error("Browser policy violation");
-    },
-  };
-
-  function handleFailingResume() {
-    resumeError = null;
-    try {
-      failingPlayerHandle.playVideo();
-    } catch {
-      autoplayBlocked = true;
-      resumeError = "Playback could not be resumed. Tap or click directly on the video player.";
-    }
-  }
-
-  handleFailingResume();
-  assert.equal(autoplayBlocked, true);
-  assert.ok(resumeError.includes("Tap or click directly on the video player"));
 });

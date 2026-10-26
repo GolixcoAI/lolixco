@@ -776,7 +776,7 @@ export default function App({
                 <VideoPlayer
                   key={selected.id}
                   edit={selected}
-                  isOverlayActive={!!activeShort || immersionOpen}
+                  isOverlayActive={!!activeShort || immersionOpen || !!modal || (mobile && drawer)}
                   onShuffle={handleShuffleFeatured}
                 />
                 <section className="up-next">
@@ -937,7 +937,7 @@ export default function App({
           </button>
         </Dialog>
       )}
-      {activeShort && (
+      {activeShort && !immersionOpen && (
         <ShortsViewer
           shorts={eligibleShorts}
           initialShortId={activeShort.id}
