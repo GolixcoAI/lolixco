@@ -1,0 +1,13 @@
+{
+  "format": "lolixco-stage6-review-only-v1",
+  "deployable": false,
+  "ownerApprovalRequired": true,
+  "cloudMutationsAllowed": false,
+  "mediaBucket": "${MEDIA_BUCKET}",
+  "protectedBucketPattern": "golixco-registration-media-*",
+  "privatePrefixes": ["masters/", "staging/", "quarantine/", "audit/"],
+  "deliveryPrefixes": ["optimized/", "posters/"],
+  "promotionRole": "arn:aws:iam::${ACCOUNT_ID}:role/lolixco-promoter",
+  "verifierRole": "arn:aws:iam::${ACCOUNT_ID}:role/lolixco-verifier",
+  "distributionArn": "arn:aws:cloudfront::${ACCOUNT_ID}:distribution/${DISTRIBUTION_ID}"
+}

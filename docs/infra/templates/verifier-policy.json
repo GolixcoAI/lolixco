@@ -1,0 +1,16 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadPrivateEvidence",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:GetObjectVersion"],
+      "Resource": [
+        "arn:aws:s3:::${MEDIA_BUCKET}/masters/*",
+        "arn:aws:s3:::${MEDIA_BUCKET}/staging/*",
+        "arn:aws:s3:::${MEDIA_BUCKET}/quarantine/*",
+        "arn:aws:s3:::${MEDIA_BUCKET}/audit/*"
+      ]
+    }
+  ]
+}

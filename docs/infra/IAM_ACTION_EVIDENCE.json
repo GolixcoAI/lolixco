@@ -1,0 +1,1022 @@
+{
+  "retrieved": "2026-10-28",
+  "sources": {
+    "s3": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/s3/s3.json",
+      "version": "v1.5"
+    },
+    "cloudfront": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/cloudfront/cloudfront.json",
+      "version": "v1.5"
+    },
+    "ec2": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/ec2/ec2.json",
+      "version": "v1.5"
+    },
+    "sts": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/sts/sts.json",
+      "version": "v1.5"
+    }
+  },
+  "actions": {
+    "s3:GetObject": {
+      "Name": "GetObject",
+      "ActionConditionKeys": [
+        "s3:AccessGrantsInstanceArn",
+        "s3:ExistingObjectTag/<key>",
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": true,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "accesspointobject"
+        },
+        {
+          "Name": "object"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    "s3:GetObjectVersion": {
+      "Name": "GetObjectVersion",
+      "ActionConditionKeys": [
+        "s3:AccessGrantsInstanceArn",
+        "s3:ExistingObjectTag/<key>",
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:versionid",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": true,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "accesspointobject"
+        },
+        {
+          "Name": "object"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    "s3:PutObject": {
+      "Name": "PutObject",
+      "ActionConditionKeys": [
+        "s3:AccessGrantsInstanceArn",
+        "s3:ObjectCreationOperation",
+        "s3:RequestObjectTag/<key>",
+        "s3:RequestObjectTagKeys",
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:if-match",
+        "s3:if-none-match",
+        "s3:object-lock-event-hold",
+        "s3:object-lock-event-hold-duration-days",
+        "s3:object-lock-legal-hold",
+        "s3:object-lock-mode",
+        "s3:object-lock-remaining-retention-days",
+        "s3:object-lock-retain-until-date",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-acl",
+        "s3:x-amz-content-sha256",
+        "s3:x-amz-copy-source",
+        "s3:x-amz-grant-full-control",
+        "s3:x-amz-grant-read",
+        "s3:x-amz-grant-read-acp",
+        "s3:x-amz-grant-write",
+        "s3:x-amz-grant-write-acp",
+        "s3:x-amz-metadata-directive",
+        "s3:x-amz-object-annotation-directive",
+        "s3:x-amz-server-side-encryption",
+        "s3:x-amz-server-side-encryption-aws-kms-key-id",
+        "s3:x-amz-server-side-encryption-customer-algorithm",
+        "s3:x-amz-storage-class",
+        "s3:x-amz-website-redirect-location"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": true,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "accesspointobject"
+        },
+        {
+          "Name": "object"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    "s3:DeleteObject": {
+      "Name": "DeleteObject",
+      "ActionConditionKeys": [
+        "s3:AccessGrantsInstanceArn",
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:if-match",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": true,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "accesspointobject"
+        },
+        {
+          "Name": "object"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    "cloudfront:CreateInvalidation": {
+      "Name": "CreateInvalidation",
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "distribution"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "cloudfront:GetInvalidation": {
+      "Name": "GetInvalidation",
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "distribution"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:ListAllMyBuckets": {
+      "Name": "ListAllMyBuckets",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": true,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "cloudfront:ListDistributions": {
+      "Name": "ListDistributions",
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": true,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "ec2:DescribeRegions": {
+      "Name": "DescribeRegions",
+      "ActionConditionKeys": ["ec2:Region"],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": true,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "ec2:DescribeInstances": {
+      "Name": "DescribeInstances",
+      "ActionConditionKeys": ["ec2:Region"],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": true,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": false
+      }
+    },
+    "sts:GetCallerIdentity": {
+      "Name": "GetCallerIdentity",
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:DeleteObjectVersion": {
+      "Name": "DeleteObjectVersion",
+      "ActionConditionKeys": [
+        "s3:AccessGrantsInstanceArn",
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:versionid",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": true,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "accesspointobject"
+        },
+        {
+          "Name": "object"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    "s3:GetBucketPolicy": {
+      "Name": "GetBucketPolicy",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "accesspoint"
+        },
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:PutBucketPolicy": {
+      "Name": "PutBucketPolicy",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": true,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:GetBucketPublicAccessBlock": {
+      "Name": "GetBucketPublicAccessBlock",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:PutBucketPublicAccessBlock": {
+      "Name": "PutBucketPublicAccessBlock",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": true,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:GetBucketOwnershipControls": {
+      "Name": "GetBucketOwnershipControls",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:PutBucketOwnershipControls": {
+      "Name": "PutBucketOwnershipControls",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": true,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:GetEncryptionConfiguration": {
+      "Name": "GetEncryptionConfiguration",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:PutEncryptionConfiguration": {
+      "Name": "PutEncryptionConfiguration",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:GetBucketVersioning": {
+      "Name": "GetBucketVersioning",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:PutBucketVersioning": {
+      "Name": "PutBucketVersioning",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:GetLifecycleConfiguration": {
+      "Name": "GetLifecycleConfiguration",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:PutLifecycleConfiguration": {
+      "Name": "PutLifecycleConfiguration",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:GetBucketTagging": {
+      "Name": "GetBucketTagging",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": false
+      }
+    },
+    "s3:PutBucketTagging": {
+      "Name": "PutBucketTagging",
+      "ActionConditionKeys": [
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": true,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": false
+      }
+    },
+    "cloudfront:GetDistribution": {
+      "Name": "GetDistribution",
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "distribution"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": false
+      }
+    },
+    "cloudfront:GetDistributionConfig": {
+      "Name": "GetDistributionConfig",
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "distribution"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "cloudfront:UpdateDistribution": {
+      "Name": "UpdateDistribution",
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "distribution"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "cloudfront:GetOriginAccessControl": {
+      "Name": "GetOriginAccessControl",
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "origin-access-control"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "cloudfront:UpdateOriginAccessControl": {
+      "Name": "UpdateOriginAccessControl",
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": false,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "origin-access-control"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    "s3:ListBucket": {
+      "Name": "ListBucket",
+      "ActionConditionKeys": [
+        "s3:AccessGrantsInstanceArn",
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:delimiter",
+        "s3:max-keys",
+        "s3:prefix",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": true,
+          "IsList": true,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "accesspoint"
+        },
+        {
+          "Name": "bucket"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    "s3:AbortMultipartUpload": {
+      "Name": "AbortMultipartUpload",
+      "ActionConditionKeys": [
+        "s3:AccessGrantsInstanceArn",
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": true,
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "accesspointobject"
+        },
+        {
+          "Name": "object"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    "s3:ListMultipartUploadParts": {
+      "Name": "ListMultipartUploadParts",
+      "ActionConditionKeys": [
+        "s3:AccessGrantsInstanceArn",
+        "s3:ResourceAccount",
+        "s3:TlsVersion",
+        "s3:authType",
+        "s3:signatureAge",
+        "s3:signatureversion",
+        "s3:x-amz-content-sha256"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsDataPlane": true,
+          "IsList": true,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "accesspointobject"
+        },
+        {
+          "Name": "object"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    }
+  },
+  "resources": {
+    "s3": [
+      {
+        "Name": "accesspoint",
+        "ARNFormats": [
+          "arn:${Partition}:s3:${Region}:${Account}:accesspoint/${AccessPointName}"
+        ],
+        "ConditionKeys": [
+          "aws:ResourceTag/${TagKey}",
+          "s3:AccessPointNetworkOrigin",
+          "s3:AccessPointTag/${TagKey}",
+          "s3:DataAccessPointAccount",
+          "s3:DataAccessPointArn"
+        ]
+      },
+      {
+        "Name": "accesspointobject",
+        "ARNFormats": [
+          "arn:${Partition}:s3:${Region}:${Account}:accesspoint/${AccessPointName}/object/${ObjectName}"
+        ],
+        "ConditionKeys": [
+          "aws:ResourceTag/${TagKey}",
+          "s3:AccessPointNetworkOrigin",
+          "s3:AccessPointTag/${TagKey}",
+          "s3:BucketTag/${TagKey}",
+          "s3:DataAccessPointAccount",
+          "s3:DataAccessPointArn"
+        ]
+      },
+      {
+        "Name": "bucket",
+        "ARNFormats": ["arn:${Partition}:s3:::${BucketName}"],
+        "ConditionKeys": ["aws:ResourceTag/${TagKey}", "s3:BucketTag/${TagKey}"]
+      },
+      {
+        "Name": "object",
+        "ARNFormats": ["arn:${Partition}:s3:::${BucketName}/${ObjectName}"],
+        "ConditionKeys": ["aws:ResourceTag/${TagKey}", "s3:BucketTag/${TagKey}"]
+      }
+    ],
+    "cloudfront": [
+      {
+        "Name": "distribution",
+        "ARNFormats": [
+          "arn:${Partition}:cloudfront::${Account}:distribution/${DistributionId}"
+        ],
+        "ConditionKeys": ["aws:ResourceTag/${TagKey}"]
+      },
+      {
+        "Name": "origin-access-control",
+        "ARNFormats": [
+          "arn:${Partition}:cloudfront::${Account}:origin-access-control/${Id}"
+        ]
+      }
+    ],
+    "ec2": [],
+    "sts": []
+  }
+}

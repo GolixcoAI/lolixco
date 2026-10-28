@@ -1,0 +1,87 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DeliveryOnly",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::${MEDIA_BUCKET}/optimized/*",
+        "arn:aws:s3:::${MEDIA_BUCKET}/posters/*"
+      ],
+      "Principal": {
+        "Service": "cloudfront.amazonaws.com"
+      },
+      "Condition": {
+        "StringEquals": {
+          "AWS:SourceArn": "arn:aws:cloudfront::${ACCOUNT_ID}:distribution/${DISTRIBUTION_ID}"
+        }
+      }
+    },
+    {
+      "Sid": "DenyPrivateReadsExceptVerification",
+      "Effect": "Deny",
+      "Action": ["s3:GetObject", "s3:GetObjectVersion"],
+      "Resource": [
+        "arn:aws:s3:::${MEDIA_BUCKET}/masters/*",
+        "arn:aws:s3:::${MEDIA_BUCKET}/staging/*",
+        "arn:aws:s3:::${MEDIA_BUCKET}/quarantine/*",
+        "arn:aws:s3:::${MEDIA_BUCKET}/audit/*"
+      ],
+      "Principal": "*",
+      "Condition": {
+        "ArnNotEquals": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::${ACCOUNT_ID}:role/lolixco-verifier",
+            "arn:aws:iam::${ACCOUNT_ID}:role/lolixco-promoter"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "DenyCloudFrontOutsideDelivery",
+      "Effect": "Deny",
+      "Action": ["s3:GetObject", "s3:GetObjectVersion"],
+      "Resource": "arn:aws:s3:::${MEDIA_BUCKET}/*",
+      "Principal": {
+        "Service": "cloudfront.amazonaws.com"
+      },
+      "Condition": {
+        "StringNotEquals": {
+          "AWS:SourceArn": "arn:aws:cloudfront::${ACCOUNT_ID}:distribution/${DISTRIBUTION_ID}"
+        }
+      }
+    },
+    {
+      "Sid": "DenyDeliveryWritesExceptPromoter",
+      "Effect": "Deny",
+      "Action": ["s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion"],
+      "Resource": [
+        "arn:aws:s3:::${MEDIA_BUCKET}/optimized/*",
+        "arn:aws:s3:::${MEDIA_BUCKET}/posters/*"
+      ],
+      "Principal": "*",
+      "Condition": {
+        "ArnNotEquals": {
+          "aws:PrincipalArn": "arn:aws:iam::${ACCOUNT_ID}:role/lolixco-promoter"
+        }
+      }
+    },
+    {
+      "Sid": "DenyInsecureTransport",
+      "Effect": "Deny",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::${MEDIA_BUCKET}",
+        "arn:aws:s3:::${MEDIA_BUCKET}/*"
+      ],
+      "Principal": "*",
+      "Condition": {
+        "Bool": {
+          "aws:SecureTransport": "false",
+          "aws:PrincipalIsAWSService": "false"
+        }
+      }
+    }
+  ]
+}

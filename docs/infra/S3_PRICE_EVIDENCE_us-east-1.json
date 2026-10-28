@@ -1,0 +1,15 @@
+{
+  "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/us-east-1/index.json",
+  "publicationDate": "2026-10-15T17:35:40Z",
+  "retrieved": "2026-10-28",
+  "rates": [
+    {
+      "sku": "WP9ANXZGBYYSGJEA",
+      "usageType": "TimedStorage-ByteHrs",
+      "operation": "",
+      "description": "$0.023 per GB - first 50 TB / month of storage used",
+      "unit": "GB-Mo",
+      "usd": "0.0230000000"
+    }
+  ]
+}

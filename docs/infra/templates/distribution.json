@@ -1,0 +1,63 @@
+{
+  "DistributionConfig": {
+    "CallerReference": "${UNIQUE_REFERENCE}",
+    "Comment": "Lolixco future pilot; disabled until acceptance",
+    "Enabled": false,
+    "Origins": {
+      "Quantity": 1,
+      "Items": [
+        {
+          "Id": "lolixco-s3",
+          "DomainName": "${MEDIA_BUCKET}.s3.ap-south-1.amazonaws.com",
+          "OriginPath": "",
+          "S3OriginConfig": {
+            "OriginAccessIdentity": ""
+          },
+          "OriginAccessControlId": "${OAC_ID}"
+        }
+      ]
+    },
+    "DefaultCacheBehavior": {
+      "TargetOriginId": "lolixco-s3",
+      "ViewerProtocolPolicy": "https-only",
+      "AllowedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"],
+        "CachedMethods": {
+          "Quantity": 2,
+          "Items": ["GET", "HEAD"]
+        }
+      },
+      "Compress": false,
+      "CachePolicyId": "${CACHE_POLICY_ID}",
+      "ResponseHeadersPolicyId": "${RESPONSE_HEADERS_POLICY_ID}",
+      "TrustedSigners": {
+        "Enabled": false,
+        "Quantity": 0
+      },
+      "TrustedKeyGroups": {
+        "Enabled": false,
+        "Quantity": 0
+      }
+    },
+    "PriceClass": "PriceClass_All",
+    "ViewerCertificate": {
+      "CloudFrontDefaultCertificate": true
+    },
+    "HttpVersion": "http2",
+    "IsIPV6Enabled": true,
+    "CustomErrorResponses": {
+      "Quantity": 2,
+      "Items": [
+        {
+          "ErrorCode": 403,
+          "ErrorCachingMinTTL": 1
+        },
+        {
+          "ErrorCode": 404,
+          "ErrorCachingMinTTL": 1
+        }
+      ]
+    }
+  }
+}
