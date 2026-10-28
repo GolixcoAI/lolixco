@@ -1,0 +1,57 @@
+{
+  "assumptions": {
+    "videos": 30,
+    "masterGB": 1,
+    "deliveryGB": 0.1,
+    "posterGB": 0.00025,
+    "workingCopiesGB": 6,
+    "retainedVersionsGB": 3,
+    "storagePerGB": 0.025,
+    "putPer1000": 0.005,
+    "getPer1000": 0.0004,
+    "indiaDTO": 0.109,
+    "httpsPer10000": 0.012,
+    "missFraction": 0.1,
+    "requestsPerPlay": 12,
+    "validationGB": 1,
+    "validationRequests": 200
+  },
+  "scenarios": [
+    {
+      "plays": 100,
+      "storedGB": 42.00750000000001,
+      "deliveredGB": 11,
+      "requests": 1400,
+      "storage": 1.0501875000000003,
+      "cdnTransfer": 1.199,
+      "cdnRequests": 0.0016800000000000003,
+      "originReads": 0.000056000000000000006,
+      "storageRequests": 0.005,
+      "total": 2.2559235
+    },
+    {
+      "plays": 1000,
+      "storedGB": 42.00750000000001,
+      "deliveredGB": 101,
+      "requests": 12200,
+      "storage": 1.0501875000000003,
+      "cdnTransfer": 11.009,
+      "cdnRequests": 0.01464,
+      "originReads": 0.000488,
+      "storageRequests": 0.005,
+      "total": 12.079315500000002
+    },
+    {
+      "plays": 10000,
+      "storedGB": 42.00750000000001,
+      "deliveredGB": 1001,
+      "requests": 120200,
+      "storage": 1.0501875000000003,
+      "cdnTransfer": 109.109,
+      "cdnRequests": 0.14424,
+      "originReads": 0.004808,
+      "storageRequests": 0.005,
+      "total": 110.31323549999999
+    }
+  ]
+}

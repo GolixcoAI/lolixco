@@ -1,0 +1,21 @@
+{
+  "CachePolicyConfig": {
+    "Name": "lolixco-versioned-media",
+    "MinTTL": 0,
+    "DefaultTTL": 86400,
+    "MaxTTL": 31536000,
+    "ParametersInCacheKeyAndForwardedToOrigin": {
+      "EnableAcceptEncodingGzip": false,
+      "EnableAcceptEncodingBrotli": false,
+      "HeadersConfig": {
+        "HeaderBehavior": "none"
+      },
+      "CookiesConfig": {
+        "CookieBehavior": "none"
+      },
+      "QueryStringsConfig": {
+        "QueryStringBehavior": "none"
+      }
+    }
+  }
+}

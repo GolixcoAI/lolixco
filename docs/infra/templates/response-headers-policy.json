@@ -1,0 +1,36 @@
+{
+  "ResponseHeadersPolicyConfig": {
+    "Name": "lolixco-media-headers",
+    "CorsConfig": {
+      "AccessControlAllowCredentials": false,
+      "AccessControlAllowHeaders": {
+        "Quantity": 1,
+        "Items": ["Range"]
+      },
+      "AccessControlAllowMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"]
+      },
+      "AccessControlAllowOrigins": {
+        "Quantity": 1,
+        "Items": ["https://${APP_HOST}"]
+      },
+      "AccessControlExposeHeaders": {
+        "Quantity": 4,
+        "Items": ["Content-Length", "Content-Range", "Accept-Ranges", "ETag"]
+      },
+      "OriginOverride": true
+    },
+    "SecurityHeadersConfig": {
+      "ContentTypeOptions": {
+        "Override": true
+      },
+      "StrictTransportSecurity": {
+        "AccessControlMaxAgeSec": 31536000,
+        "IncludeSubdomains": false,
+        "Preload": false,
+        "Override": true
+      }
+    }
+  }
+}

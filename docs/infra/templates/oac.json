@@ -1,0 +1,9 @@
+{
+  "OriginAccessControlConfig": {
+    "Name": "lolixco-media-oac",
+    "Description": "Approved delivery assets only",
+    "SigningProtocol": "sigv4",
+    "SigningBehavior": "always",
+    "OriginAccessControlOriginType": "s3"
+  }
+}
