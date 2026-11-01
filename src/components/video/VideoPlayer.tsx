@@ -247,7 +247,7 @@ function VideoPlayerSession({
         onWaiting={() => setWaiting(true)}
         onPlaying={() => setWaiting(false)}
         onError={() => {
-          setError("Demo video unavailable. Retry to load the local clip.");
+          setError("Video unavailable. Retry to load this clip.");
           setWaiting(false);
         }}
       />
