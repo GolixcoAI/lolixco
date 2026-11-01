@@ -359,6 +359,10 @@ main {
   z-index: 4;
   pointer-events: none;
 }
+.hero-info .watch,
+.hero-info .shuffle-moment-btn {
+  pointer-events: auto;
+}
 .eyebrow {
   display: inline-flex;
   gap: 5px;
@@ -411,6 +415,7 @@ main {
 .watch {
   margin-top: 12px;
   min-height: 36px;
+  pointer-events: auto;
 }
 .player-bottom {
   position: absolute;
@@ -2194,7 +2199,7 @@ dialog .fine-print {
 .player[data-info-hidden="true"] .hero-info .hero-meta,
 .player[data-info-hidden="true"] .hero-info .moment-label,
 .player[data-info-hidden="true"] .hero-info > .watch:not(:focus-visible) {
-  opacity: 0; visibility: hidden; pointer-events: none;
+  opacity: 0; visibility: hidden; pointer-events: none !important;
 }
 @media (prefers-reduced-motion: reduce) {
   .hero-info h1, .hero-info .hero-meta, .hero-info .moment-label, .hero-info > .watch { transition: none; }

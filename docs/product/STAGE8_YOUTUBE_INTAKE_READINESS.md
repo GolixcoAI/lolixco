@@ -18,41 +18,41 @@ In addition, this pull request addresses critical UI, aspect-ratio, and playback
 
 ### Landscape Edits (IDs 100–112)
 
-| Catalog ID | Title | Creator / Channel | Category | Duration | YouTube ID |
-|---|---|---|---|---|---|
-| `100` | a very normal TOJI edit [AMV] (Jujutsu Kaisen) Blu-Ray | SD97 | Anime | 2:16 | `0vswe8D3UTk` |
-| `101` | Jujutsu Kaisen - Neon Blade [Edit/AMV] | C-Real AMV | Anime | 0:39 | `HoxrYzuxH_Q` |
-| `102` | DOCTOR DOOM - I AM DOOM (4K 60FPS) | Jvck | Movies | 0:23 | `bW-K9_w52cE` |
-| `103` | JINX / ARCANE [EDIT] 4K | liam editz | Series | 0:31 | `ZIdX6sR04vY` |
-| `104` | Breaking Bad - The Kingpin [Edit] 4K | Void Edits | Series | 0:36 | `Q3Zq4eN66lI` |
-| `105` | Peaky Blinders - Thomas Shelby [Sigma Edit] | Shadow Edits | Series | 0:42 | `G3FmQ0Qx2c4` |
-| `106` | Spider-Man: Across the Spider-Verse [Flow Edit] | Nexus Edits | Movies | 0:45 | `vJp3F91ZJvY` |
-| `107` | Cyberpunk: Edgerunners - I Really Want to Stay At Your House | Neon Pulse | Anime | 0:50 | `7wP91v1K3vY` |
-| `108` | Game of Thrones — Westeros Realm [4K Flow Edit] | LUXUSIO | Series | 0:20 | `h3F91ZJvY01` |
-| `109` | Batman - The Dark Knight [Cinematic Flow Edit] | Gotham Beats | Movies | 0:38 | `W1fL8P01x9Y` |
-| `110` | Interstellar - Stay [Emotional 4K Edit] | Starlight Edits | Movies | 0:52 | `M8kL0P11vXz` |
-| `111` | Elden Ring - The Shattering [Epic Flow Edit] | FromVoid | Gaming | 0:48 | `L5nK8P22vAb` |
-| `112` | David Goggins - They Don't Know Me Son [Motivation Edit] | Grindset Daily | Motivation | 0:34 | `P9mL1Q33vCd` |
+| Catalog ID | Canonical YouTube ID | Title | Creator / Channel | Category | Duration | Format |
+|---|---|---|---|---|---|---|
+| `100` | `0vswe8D3UTk` | Toji Fushiguro — Sorcerer Killer [Blu-Ray AMV] | SD97 | Anime | 2:15 | Landscape (16:9) |
+| `101` | `HoxrYzuxH_Q` | Sukuna — Neon Blade [Jujutsu Kaisen AMV] | Molob | Anime | 0:39 | Landscape (16:9) |
+| `102` | `uo0_I2ZNOds` | Jujutsu Kaisen — London View Flow Edit | Zweng | Anime | 0:22 | Landscape (16:9) |
+| `103` | `yLhjFXkPpck` | Attack on Titan — Enemy [4K AMV] | Jemartob | Anime | 1:01 | Landscape (16:9) |
+| `104` | `yuwmyuXg9_k` | Doctor Doom — I Am Doom [4K Cinematic Edit] | sanchezae | Movies | 0:23 | Landscape (16:9) |
+| `105` | `aV-rL-vObE0` | The Karate Kid — Cheng Combat Phonk [4K Edit] | KingCasonova | Movies | 0:24 | Landscape (16:9) |
+| `106` | `zswT92VzOYM` | Spider-Man — Polyester Web-Slinger Edit | BlackRob183 | Movies | 0:19 | Landscape (16:9) |
+| `107` | `Z2qIpiDKqtU` | Animal — Untitled #13 Ranvijay 4K Edit | PIXXELL | Movies | 0:43 | Landscape (16:9) |
+| `108` | `RZlioQRE3ms` | Money Heist — Berlin Charisma [HD Edit] | Tech By Webers Era | Series | 0:35 | Landscape (16:9) |
+| `109` | `ZMbYQIK5B5I` | Game of Thrones — King in the North [Jon Snow 4K] | Lega | Series | 0:44 | Landscape (16:9) |
+| `110` | `Q9hjJVxD6Zw` | Game of Thrones — Westeros Realm [4K Flow Edit] | L U X U S I O | Series | 0:19 | Landscape (16:9) |
+| `111` | `9h7AGDjttSQ` | Game of Thrones — Battle of the Bastards [4K Duel] | Clegane Edits | Series | 0:29 | Landscape (16:9) |
+| `112` | `1fHuksvJTxA` | David Goggins — Metamorphosis [4K Gym Phonk Edit] | Emotive | Motivation | 0:27 | Landscape (16:9) |
 
 ### YouTube Shorts (IDs 200–214)
 
-| Catalog ID | Title | Creator / Channel | Category | Duration | YouTube ID |
-|---|---|---|---|---|---|
-| `200` | Shin-chan & Shiro — Ultimate Nostalgia Edit | Shinchan Vlogzzz | Anime | 0:10 | `LqLp21jQfJk` |
-| `201` | Attack on Titan — Eren's Betrayal [Shorts Edit] | Exorion. | Anime | 0:21 | `v0mY6V9tLxs` |
-| `202` | Valorant — Radiant Clutch [4K Gameplay Edit] | Daily Palworld | Gaming | 0:34 | `rXmQ2V5wY01` |
-| `203` | GTA 6 — Vice City Hype [Raya Slowed Edit] | Anixv | Gaming | 0:20 | `WpL1k09XvZz` |
-| `204` | Avengers Doomsday — The OGs Return [Shorts Edit] | Ron4k | Movies | 0:25 | `T8mK1L00vYy` |
-| `205` | Batman — Dark Knight Legacy [Bale vs Pattinson] | Bat.aep_ | Movies | 0:09 | `K7mL2Q33vXx` |
-| `206` | Spider-Man — Multi-Spidey Showcase [Shorts Edit] | Veqta | Movies | 0:17 | `M2nL8P44vWw` |
-| `207` | Animal — Ranvijay Entry [GLXXM Phonk Edit] | surajk edits | Movies | 0:30 | `Q1pL9M55vVv` |
-| `208` | Jujutsu Kaisen — Gojo Unlimited Void [Shorts Flow] | SatoruEdits | Anime | 0:15 | `B3kM0P66uUu` |
-| `209` | Demon Slayer — Infinity Castle Hype [4K Edit] | KimetsuVFX | Anime | 0:18 | `C4lN1Q77tTt` |
-| `210` | The Boys — Homelander Perfect Smile [Shorts Edit] | VoughtVFX | Series | 0:12 | `D5mO2R88sSs` |
-| `211` | Succession — Kendall Roy Killer Instinct | WaystarEdits | Series | 0:22 | `E6nP3S99rRr` |
-| `212` | KGF Chapter 2 — Rocky Bhai Monster Entry | SandalwoodFlow | Movies | 0:28 | `F7oQ4T00qQq` |
-| `213` | Ghost of Tsushima — Jin Sakai Honor Died | BushidoBeats | Gaming | 0:19 | `G8pR5U11pPp` |
-| `214` | David Goggins — Stay Hard Mindset [Shorts Motivation] | IronWill | Motivation | 0:24 | `H9qS6V22oOo` |
+| Catalog ID | Canonical YouTube ID | Title | Creator / Channel | Category | Duration | Format |
+|---|---|---|---|---|---|---|
+| `200` | `wEjDTQFeVxU` | Shin-chan & Shiro — Ultimate Nostalgia Edit | Shinchan Vlogzzz | Anime | 0:10 | Shorts (9:16) |
+| `201` | `Qx3IrEUvflE` | Attack on Titan — Eren's Betrayal [Shorts Edit] | Exorion. | Anime | 0:21 | Shorts (9:16) |
+| `202` | `KY0xrjzfFLA` | Valorant — Radiant Clutch [4K Gameplay Edit] | Daily Palworld | Gaming | 0:34 | Shorts (9:16) |
+| `203` | `DvC9pK3CpEw` | GTA 6 — Vice City Hype [Raya Slowed Edit] | Arxzv | Gaming | 0:20 | Shorts (9:16) |
+| `204` | `kR-USMTLxQk` | Avengers Doomsday — The OGs Return [Shorts Edit] | Ron4k | Movies | 0:25 | Shorts (9:16) |
+| `205` | `fLK7a4vLFNg` | Batman — Dark Knight Legacy [Bale vs Pattinson] | Bat.aep_ | Movies | 0:09 | Shorts (9:16) |
+| `206` | `q55SLQ2o8Yk` | Spider-Man — Multi-Spidey Showcase [Shorts Edit] | Veqta | Movies | 0:17 | Shorts (9:16) |
+| `207` | `a7_od1YCcns` | Animal — Don't Stop [GLXXMSTRIDER Phonk Edit] | surajk editx | Movies | 0:39 | Shorts (9:16) |
+| `208` | `BddGwfy_hq0` | Ramayana — Ravana Raj [Montagem Tyrant Phonk] | s1ngh edit | Movies | 0:31 | Shorts (9:16) |
+| `209` | `RzjQCa4oOj8` | Power Rangers — Morphin Grid Power [Shorts Edit] | Harshit Mutneja | Series | 0:48 | Shorts (9:16) |
+| `210` | `gA1KUzOhyfE` | Money Heist — The Professor's Masterplan [4K Short] | CKS EDITS | Series | 0:23 | Shorts (9:16) |
+| `211` | `-kYk7nRzV_8` | Stranger Things — Upside Down Horror [Vazio Eterno] | stala6351@rex | Series | 0:33 | Shorts (9:16) |
+| `212` | `2dCzYwWfmzE` | Stranger Things — Steve Harrington Babysitter Edit | Jemiez_Editt | Series | 0:53 | Shorts (9:16) |
+| `213` | `DvzaLGOH2vw` | Squid Game — Player 218 Cho Sang-woo [Shorts Edit] | erebus editz | Series | 0:15 | Shorts (9:16) |
+| `214` | `W4E_UW0r6FA` | David Goggins — Still I Grind [Mindset Short] | Oliver | Motivation | 0:47 | Shorts (9:16) |
 
 ---
 
@@ -95,11 +95,12 @@ In `src/components/shorts/ShortsCard.tsx`, the duration badge was structured as 
 - Expanded `.immersion-video-wrapper.landscape` to `min(96vw, calc((100vh - 120px) * 16 / 9))` and `.portrait` to `min(calc(100vh - 120px), 920px)`.
 - Sized `.immersion-tag-list` to `max-width: 50%` with hidden scrollbars for clean navigation.
 
-### 3.5 Responsive Edit of the Moment Typography
+### 3.5 Responsive Edit of the Moment Typography & Button Interactivity
 
 **Resolution:**
 - Adjusted `.hero-info h1` font size to responsive `clamp(20px, 2.2vw, 32px)/1.15 Rajdhani`.
 - Applied a 2-line clamp (`-webkit-line-clamp: 2`) and text shadow for legibility across varied background video luminance.
+- While `.hero-info` has `pointer-events: none` to let clicks fall through empty title areas to the video player, interactive child controls (`.watch` and `.shuffle-moment-btn`) explicitly enforce `pointer-events: auto` when visible. When active playback hides info via `[data-info-hidden="true"]`, controls transition cleanly to `visibility: hidden; pointer-events: none !important;`.
 
 ---
 
