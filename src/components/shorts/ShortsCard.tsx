@@ -57,7 +57,7 @@ export function ShortsCard({
 
 
           {short.duration && (
-            <span className="duration shorts-duration">{short.duration}</span>
+            <span className="shorts-duration">{short.duration}</span>
           )}
 
           <div className="shorts-card-info">

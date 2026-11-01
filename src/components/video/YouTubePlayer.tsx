@@ -495,6 +495,7 @@ export const YouTubePlayer = forwardRef<
       style={{
         position: "relative",
         width: "100%",
+        height: "100%",
         aspectRatio: aspectRatio === "9:16" ? "9 / 16" : "16 / 9",
         backgroundColor: "#000",
         overflow: "hidden",

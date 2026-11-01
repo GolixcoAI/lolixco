@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import React, {act} from 'react';
 import {setupMountedDom} from './mounted-dom.mjs';
 import VideoPlayer from '../src/components/video/VideoPlayer.tsx';
@@ -47,4 +48,51 @@ test('Featured native aspect follows metadata for landscape, square and portrait
    assert.equal(Number(current.style.aspectRatio),width/height);
   }
  } finally {await env.cleanup();setSessionMuted(true)}
+});
+
+test('Featured Watch Now button remains clickable and triggers playback on native player', async () => {
+ const env = setupMountedDom();
+ try {
+  await act(async () => env.root.render(React.createElement(VideoPlayer, { edit: edits[0] })));
+  const video = env.container.querySelectorAll('video')[0];
+  const watchBtn = env.container.querySelectorAll('button').find(b => b.getAttribute('class')?.includes('watch'));
+  assert.ok(watchBtn, 'Watch button must be rendered in DOM');
+  assert.equal(video._playCalls, 0);
+
+  // Click Watch Now button
+  await act(async () => {
+   watchBtn.dispatchEvent({ type: 'click', bubbles: true });
+  });
+  assert.equal(video._playCalls, 1, 'Clicking Watch Now button must trigger play on video');
+ } finally {
+  await env.cleanup();
+ }
+});
+
+test('CSS rules ensure Watch Now and Shuffle buttons retain pointer-events when visible and disable when hidden', () => {
+ const css = fs.readFileSync('src/styles/index.css', 'utf8');
+ // .hero-info is non-blocking to empty space
+ assert.match(css, /\.hero-info\s*\{[^}]*pointer-events:\s*none;/);
+ // .hero-info .watch has pointer-events: auto
+ assert.match(css, /\.hero-info\s+\.watch[^{]*\{[^}]*pointer-events:\s*auto;/);
+ // .watch itself has pointer-events: auto
+ assert.match(css, /\.watch\s*\{[^}]*pointer-events:\s*auto;/);
+ // hidden info disables pointer-events
+ assert.match(css, /\.player\[data-info-hidden="true"\][^{]*\.watch[^{]*\{[^}]*pointer-events:\s*none\s*!important;/);
+});
+
+test('CSS rules establish non-overlapping separation between .hero-info and .player-bottom seek rail', () => {
+ const css = fs.readFileSync('src/styles/index.css', 'utf8');
+ // .hero-info is elevated safely above playback rail
+ assert.match(css, /\.hero-info\s*\{[^}]*bottom:\s*68px;/);
+ // .player-bottom has higher z-index than .hero-info
+ assert.match(css, /\.player-bottom\s*\{[^}]*z-index:\s*5;/);
+});
+
+test('CSS rules ensure Shorts viewer header is an in-flow responsive row without negative top clipping', () => {
+ const css = fs.readFileSync('src/styles/index.css', 'utf8');
+ // No negative top clipping in desktop header
+ assert.doesNotMatch(css, /\.shorts-viewer-header\s*\{[^}]*top:\s*-[0-9]+px/);
+ // Shorts viewer container has column flow and bounded width
+ assert.match(css, /\.shorts-viewer-container\s*\{[^}]*flex-direction:\s*column;/);
 });

@@ -351,10 +351,17 @@ main {
 
 .hero-info {
   position: absolute;
-  left: 22px;
-  bottom: 62px;
-  transition: opacity 0.2s;
+  left: 20px;
+  right: 20px;
+  max-width: min(650px, 85%);
+  bottom: 68px;
+  transition: opacity 0.3s ease;
   z-index: 4;
+  pointer-events: none;
+}
+.hero-info .watch,
+.hero-info .shuffle-moment-btn {
+  pointer-events: auto;
 }
 .eyebrow {
   display: inline-flex;
@@ -366,10 +373,15 @@ main {
   padding: 3px 5px;
 }
 .hero-info h1 {
-  font: 700 clamp(28px, 3vw, 48px)/1.05 Rajdhani;
+  font: 700 clamp(20px, 2.2vw, 32px)/1.15 Rajdhani;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  margin: 7px 0 10px;
+  margin: 6px 0 8px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9), 0 0 16px rgba(0, 0, 0, 0.8);
 }
 .hero-meta {
   display: flex;
@@ -403,11 +415,12 @@ main {
 .watch {
   margin-top: 12px;
   min-height: 36px;
+  pointer-events: auto;
 }
 .player-bottom {
   position: absolute;
   inset: auto 12px 5px;
-  z-index: 3;
+  z-index: 5;
 }
 .timeline {
   height: 6px;
@@ -1504,23 +1517,21 @@ dialog .fine-print {
   position: relative;
   z-index: 2;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 90vh;
-  max-height: 940px;
-  aspect-ratio: 9 / 16;
-  max-width: calc(90vh * 9 / 16);
+  box-sizing: border-box;
+  width: min(calc((100vh - 100px) * 9 / 16), 92vw, 506px);
 }
 .shorts-viewer-header {
-  position: absolute;
-  top: 14px;
-  left: 16px;
-  right: 16px;
-  z-index: 10;
+  width: 100%;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  pointer-events: none;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+  pointer-events: auto;
 }
 .shorts-viewer-header > * {
   pointer-events: auto;
@@ -1562,13 +1573,18 @@ dialog .fine-print {
 .shorts-viewer-frame {
   position: relative;
   width: 100%;
-  height: 100%;
+  height: min(calc(100vh - 100px), 840px);
+  aspect-ratio: 9 / 16;
   border-radius: 12px;
   overflow: hidden;
   background: #000;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8), 0 0 24px rgba(0, 0, 0, 0.6);
   border: 1px solid #1f2736;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 1 auto;
 }
 .shorts-video-element {
   width: 100%;
@@ -1807,11 +1823,34 @@ dialog .fine-print {
     height: 100dvh;
     max-height: none;
     max-width: none;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
     border-radius: 0;
   }
+  .shorts-viewer-header {
+    position: relative;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    margin-bottom: 0;
+    padding: max(env(safe-area-inset-top, 8px), 8px) 16px 8px;
+    background: #000;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    box-sizing: border-box;
+    flex-shrink: 0;
+  }
   .shorts-viewer-frame {
+    flex: 1 1 0;
+    width: 100%;
+    height: auto;
+    max-width: none;
+    max-height: none;
     border-radius: 0;
     border: none;
+    aspect-ratio: auto;
   }
   .shorts-empty-state {
     padding: 48px 16px;
@@ -1922,14 +1961,14 @@ dialog .fine-print {
 
 .immersion-video-wrapper.landscape {
   aspect-ratio: 16 / 9;
-  width: min(94vw, calc((100vh - 160px) * 16 / 9));
-  height: min(calc(94vw * 9 / 16), calc(100vh - 160px));
+  width: min(96vw, calc((100vh - 120px) * 16 / 9));
+  height: min(calc(96vw * 9 / 16), calc(100vh - 120px));
 }
 
 .immersion-video-wrapper.portrait {
   aspect-ratio: 9 / 16;
-  height: min(calc(100vh - 160px), 880px);
-  width: min(calc(min(calc(100vh - 160px), 880px) * 9 / 16), 94vw);
+  height: min(calc(100vh - 120px), 920px);
+  width: min(calc(min(calc(100vh - 120px), 920px) * 9 / 16), 96vw);
 }
 
 .immersion-bottombar {
@@ -1979,7 +2018,12 @@ dialog .fine-print {
   align-items: center;
   gap: 8px;
   overflow-x: auto;
-  max-width: 40%;
+  max-width: 50%;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.immersion-tag-list::-webkit-scrollbar {
+  display: none;
 }
 
 .immersion-tag {
@@ -2112,7 +2156,23 @@ dialog .fine-print {
 @media (prefers-reduced-motion: reduce) { main, .shorts-card, .shorts-thumbnail img { transition: none; } }
 .youtube-context-controls { position: absolute; top: 10px; right: 10px; z-index: 6; display: flex; gap: 4px; background: #0009; border-radius: 6px; }
 /* YT creates a 640x360 iframe unless its actual replacement node is sized. */
-.youtube-player-wrapper iframe { width: 100%; height: 100%; display: block; border: 0; }
+.youtube-player-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.youtube-player-wrapper > div:first-child {
+  width: 100%;
+  height: 100%;
+}
+.youtube-player-wrapper iframe {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  border: 0;
+}
 .immersion-topbar, .immersion-bottombar { min-width: 0; width: 100%; box-sizing: border-box; }
 .immersion-top-actions, .immersion-controls { flex-shrink: 0; }
 .immersion-meta-info { min-width: 0; }
@@ -2157,7 +2217,7 @@ dialog .fine-print {
 .player[data-info-hidden="true"] .hero-info .hero-meta,
 .player[data-info-hidden="true"] .hero-info .moment-label,
 .player[data-info-hidden="true"] .hero-info > .watch:not(:focus-visible) {
-  opacity: 0; visibility: hidden; pointer-events: none;
+  opacity: 0; visibility: hidden; pointer-events: none !important;
 }
 @media (prefers-reduced-motion: reduce) {
   .hero-info h1, .hero-info .hero-meta, .hero-info .moment-label, .hero-info > .watch { transition: none; }
