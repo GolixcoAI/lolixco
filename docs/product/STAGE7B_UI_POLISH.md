@@ -15,3 +15,18 @@ Stage 8 intake and publication are independent. These UI contracts accept inject
 The featured stage reserves a viewport-bounded height while its player follows native `videoWidth/videoHeight` after metadata loads. A source-keyed measurement avoids applying the old video's ratio to a new source; verified format is the initial/provider fallback. Portrait controls wrap within the capped player. Fullscreen still uses the stable viewport container with contain-fit rendering. Source changes keep the existing reset-to-start behavior; geometry measurement does not seek.
 
 Shorts duration badges explicitly unset the generic landscape badge's bottom constraint. Setting both top and bottom had stretched the badge background into a vertical strip; the source fix keeps only the small top-right badge.
+
+## Cinematic title timing
+
+Featured title, metadata, and the moment label remain visible for approximately three seconds after PLAYING, a source change, or user interaction. They then fade over 240ms. Pointer entry/movement, touch, focus and keyboard interaction renew that window; pause reveals information immediately. Shuffle, primary playback/mute/fullscreen controls and the seek timeline remain available. Reduced-motion mode removes the opacity animation while retaining the information window. Both native events and official YouTube API play/pause callbacks drive the same hook. Cross-origin iframe internals retain their provider's own controls and captions; parent pointer handlers apply to the surrounding Lolixco player chrome.
+
+## Background-tab playback investigation
+
+Tab switching currently pauses playback by explicit Stage 4 policy, not by unmounting the player:
+
+- `useNativePlayback` pauses on `visibilitychange` when `document.hidden` is true, and rejects hidden-document starts or delayed PLAYING events.
+- The featured native player's animation/visibility lifecycle also pauses its native element when hidden.
+- `YouTubePlayer` pauses through the official API when hidden and guards hidden-document starts and recovery.
+- The playback coordinator does not itself subscribe to visibility. Pause events/callbacks release playback ownership; the visible page does not automatically resume a previously paused player.
+
+A cancelled pending YouTube start can also retire its iframe under the existing race protection; that is distinct from an ordinary running-video visibility pause. These app-level guards explain native and YouTube behavior even before any browser/provider suspension. Browser throttling, OS lifecycle suspension and provider restrictions may apply independently. Background continuation is a separate, nonblocking follow-up: define an explicit user policy and reconcile native/iframe ownership, manual pause and lifecycle events across every surface. This PR retains the established policy rather than selectively removing guards or attempting to bypass browser/YouTube restrictions.

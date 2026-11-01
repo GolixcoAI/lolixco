@@ -1,3 +1,4 @@
+import { useCinematicInfo } from "../../hooks/useCinematicInfo";
 import { useSessionAudio } from "../../hooks/useSessionAudio";
 import { publicSource } from "../../utils/publicSource";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
@@ -59,6 +60,15 @@ function VideoPlayerSession({
     setA(null); setB(null); setLoop(false); setMenu(""); setNotice("");
     setPlaying(false); setWaiting(false); setQuality("");
   }, [edit.id, edit.source]);
+  const info = useCinematicInfo(playing, `${edit.id}:${edit.source}`);
+  const infoInteractions = {
+    "data-info-hidden": !info.visible,
+    onPointerEnter: info.reveal,
+    onPointerMove: info.reveal,
+    onTouchStart: info.reveal,
+    onFocusCapture: info.reveal,
+    onKeyDownCapture: info.reveal,
+  };
   const state = useRef({ a, b, loop });
   state.current = { a, b, loop };
   const valid = a !== null && b !== null && validLoop(a, b, duration);
@@ -150,6 +160,7 @@ function VideoPlayerSession({
     return (
       <div
         ref={container}
+        {...infoInteractions}
         className="player youtube-featured"
         data-orientation={orientation}
         style={mediaStyle}
@@ -163,6 +174,11 @@ function VideoPlayerSession({
           aspectRatio={edit.format === "short" ? "9:16" : "16:9"}
           autoPlay={allowsAutoplay()}
           playbackAllowed={!isOverlayActive}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onEnded={() => setPlaying(false)}
+          onAutoplayBlocked={() => setPlaying(false)}
+          onError={() => setPlaying(false)}
           muted={muted}
           controls={true}
         />
@@ -173,7 +189,7 @@ function VideoPlayerSession({
         </div>
         <div className="hero-info" style={{ pointerEvents: "none" }}>
           <span className="eyebrow">
-            <Award size={15} /> EDIT OF THE MOMENT
+            <span className="moment-label"><Award size={15} /> EDIT OF THE MOMENT</span>
             {onShuffle && (
               <button
                 type="button"
@@ -212,6 +228,7 @@ function VideoPlayerSession({
   return (
     <div
       ref={container}
+      {...infoInteractions}
       className={`player ${playing ? "playing" : ""}`}
       data-orientation={orientation}
       style={mediaStyle}
@@ -280,7 +297,7 @@ function VideoPlayerSession({
 
       <div className="hero-info">
         <span className="eyebrow">
-          <Award size={15} /> EDIT OF THE MOMENT
+          <span className="moment-label"><Award size={15} /> EDIT OF THE MOMENT</span>
           {onShuffle && (
             <button
               type="button"
