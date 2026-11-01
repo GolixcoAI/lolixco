@@ -341,6 +341,7 @@ export default function App({
       const newFandom = isFandomCompatibleWithCategory(fandom, normCat)
         ? fandom
         : "";
+      setQuery("");
       setCategory(normCat);
       setFandom(newFandom);
 
@@ -351,7 +352,7 @@ export default function App({
         setActive(nextView);
       }
 
-      syncUrl(normCat, newFandom, query, nextView, activeShort?.id, true);
+      syncUrl(normCat, newFandom, "", nextView, activeShort?.id, true);
     },
     [active, activeShort?.id, catalogShorts.length, fandom, query]
   );
@@ -360,6 +361,7 @@ export default function App({
     (newFandomId: string) => {
       const cleanFandom =
         newFandomId === "all" ? "" : newFandomId.trim().toLowerCase();
+      setQuery("");
       setFandom(cleanFandom);
 
       // On dedicated Shorts page with 0 shorts, user action navigates to Explore
@@ -369,7 +371,7 @@ export default function App({
         setActive(nextView);
       }
 
-      syncUrl(category, cleanFandom, query, nextView, activeShort?.id, true);
+      syncUrl(category, cleanFandom, "", nextView, activeShort?.id, true);
     },
     [active, activeShort?.id, category, catalogShorts.length, query]
   );
@@ -768,7 +770,6 @@ export default function App({
             {selected && isVideo(selected) && (
               <div className="featured-row">
                 <VideoPlayer
-                  key={selected.id}
                   edit={selected}
                   isOverlayActive={!!activeShort || immersionOpen || !!modal || (mobile && drawer)}
                   onShuffle={handleShuffleFeatured}

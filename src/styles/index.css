@@ -348,14 +348,7 @@ main {
   inset: 0;
   object-fit: cover;
 }
-.player-shade {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(0deg, #000e, transparent 65%),
-    linear-gradient(90deg, #0007, transparent 70%);
-}
+
 .hero-info {
   position: absolute;
   left: 22px;
@@ -1108,8 +1101,7 @@ dialog .fine-print {
     aspect-ratio: 1.5;
     overflow: visible;
   }
-  .player video,
-  .player-shade {
+  .player video {
     border-radius: 8px;
   }
   .hero-info {
@@ -1442,17 +1434,7 @@ dialog .fine-print {
   background: linear-gradient(135deg, #171d27, #090b10);
   padding: 16px;
 }
-.shorts-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(0, 0, 0, 0.05) 0%,
-    rgba(0, 0, 0, 0.25) 45%,
-    rgba(0, 0, 0, 0.92) 100%
-  );
-  pointer-events: none;
-}
+
 .shorts-duration {
   position: absolute;
   top: 8px;
@@ -2114,3 +2096,23 @@ dialog .fine-print {
 .source-attribution { display: block; overflow-wrap: anywhere; }
 .card-copy { min-width: 0; }
 .shorts-badge { max-width: 100%; }
+
+/* Explicit viewport geometry: do not inherit the site's main/sidebar or header layout. */
+.immersion-main-area { margin: 0; padding: 0; min-height: 0; height: auto; transition: none; }
+.immersion-topbar { position: relative; inset: auto; height: auto; flex-shrink: 0; border: 0; }
+.immersion-bottombar { flex-shrink: 0; }
+.immersion-overlay { height: 100dvh; width: 100%; }
+.player video { object-fit: contain; }
+.player:fullscreen { width: 100%; height: 100%; border: 0; border-radius: 0; background: #000; }
+.hero-info { text-shadow: 0 2px 5px #000, 0 0 14px #000; }
+.shorts-card-info { text-shadow: 0 1px 4px #000, 0 0 8px #000; }
+/* Empty grid tracks keep one or two results at normal card size. */
+.video-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 380px)); }
+@media (max-width: 767px) { .video-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); } }
+@media (prefers-reduced-motion: reduce) { main, .shorts-card, .shorts-thumbnail img { transition: none; } }
+.youtube-context-controls { position: absolute; top: 10px; right: 10px; z-index: 6; display: flex; gap: 4px; background: #0009; border-radius: 6px; }
+/* YT creates a 640x360 iframe unless its actual replacement node is sized. */
+.youtube-player-wrapper iframe { width: 100%; height: 100%; display: block; border: 0; }
+.immersion-topbar, .immersion-bottombar { min-width: 0; width: 100%; box-sizing: border-box; }
+.immersion-top-actions, .immersion-controls { flex-shrink: 0; }
+.immersion-meta-info { min-width: 0; }

@@ -55,7 +55,12 @@ export function useNativePlayback(
     s.wanted = true;
     try {
       await s.video.play();
-      // Pause the captured old element, never a newer ref after a source change.
+      // A stable native element may now belong to a newer source generation.
+      if (session.current !== s) {
+        if (session.current?.video !== s.video) s.video.pause();
+        return;
+      }
+      // Pause only a still-current attempt that lost playback ownership.
       if (
         session.current !== s ||
         !s.wanted ||

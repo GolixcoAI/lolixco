@@ -1,3 +1,4 @@
+import { useSessionAudio } from "../../hooks/useSessionAudio";
 import { publicSource } from "../../utils/publicSource";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -34,8 +35,8 @@ function VideoPlayerSession({
 }) {
   const video = useRef<HTMLVideoElement>(null),
     container = useRef<HTMLDivElement>(null);
+  const [muted, setMuted] = useSessionAudio();
   const [playing, setPlaying] = useState(false),
-    [muted, setMuted] = useState(true),
     [duration, setDuration] = useState(0),
     [position, setPosition] = useState(0),
     [buffered, setBuffered] = useState(0),
@@ -47,6 +48,11 @@ function VideoPlayerSession({
     [loop, setLoop] = useState(false),
     [notice, setNotice] = useState(""),
     [quality, setQuality] = useState("");
+  useEffect(() => {
+    setPosition(0); setBuffered(0); setDuration(0); setError("");
+    setA(null); setB(null); setLoop(false); setMenu(""); setNotice("");
+    setPlaying(false); setWaiting(false); setQuality("");
+  }, [edit.id, edit.source]);
   const state = useRef({ a, b, loop });
   state.current = { a, b, loop };
   const valid = a !== null && b !== null && validLoop(a, b, duration);
@@ -149,9 +155,14 @@ function VideoPlayerSession({
           aspectRatio="16:9"
           autoPlay={allowsAutoplay()}
           playbackAllowed={!isOverlayActive}
+          muted={muted}
           controls={true}
         />
-        <div className="player-shade" style={{ pointerEvents: "none" }} />
+
+        <div className="youtube-context-controls">
+          <button className="icon-button" aria-label={muted ? "Unmute video" : "Mute video"} onClick={() => setMuted(!muted)}>{muted ? <VolumeX /> : <Volume2 />}</button>
+          <button className="icon-button" aria-label="Fullscreen" onClick={fullscreen}><Maximize /></button>
+        </div>
         <div className="hero-info" style={{ pointerEvents: "none" }}>
           <span className="eyebrow">
             <Award size={15} /> EDIT OF THE MOMENT
@@ -215,7 +226,7 @@ function VideoPlayerSession({
         ref={video}
         src={edit.source}
         poster={edit.poster}
-        muted
+        muted={muted}
         playsInline
         preload="metadata"
         onLoadedMetadata={() => {
@@ -251,7 +262,7 @@ function VideoPlayerSession({
           setWaiting(false);
         }}
       />
-      <div className="player-shade" />
+
       <div className="hero-info">
         <span className="eyebrow">
           <Award size={15} /> EDIT OF THE MOMENT
@@ -530,13 +541,12 @@ function VideoPlayerSession({
   );
 }
 
-// A media identity owns its controls, markers, errors and pending operations.
+// Keep the fullscreen shell stable; source effects reset media-specific controls.
 export default function VideoPlayer(
   props: Parameters<typeof VideoPlayerSession>[0],
 ) {
   return (
     <VideoPlayerSession
-      key={`${props.edit.id}:${props.edit.sourceType}:${props.edit.youtubeVideoId}:${props.edit.source}`}
       {...props}
     />
   );

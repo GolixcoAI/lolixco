@@ -1,3 +1,4 @@
+import { useSessionAudio } from "../../hooks/useSessionAudio";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import type { Edit } from "../../data/edits";
 import { isYouTubeEmbed } from "../../data/edits";
@@ -61,7 +62,7 @@ export default function ImmersionViewer({
   const [autoplayBlocked, setAutoplayBlocked] = useState<boolean>(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [isMuted, setIsMuted] = useState<boolean>(true);
+  const [isMuted, setIsMuted] = useSessionAudio();
 
   const currentEdit = session.currentEdit;
   const state = session.state;
