@@ -13,6 +13,7 @@ export const CANONICAL_CATEGORIES = [
   "Multifandom",
   "Gaming",
   "Phonk",
+  "Motivation",
 ];
 
 export const VALID_REVIEW_STATUSES = [

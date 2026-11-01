@@ -1,3 +1,4 @@
+import { useSessionAudio, setSessionMuted } from "../../hooks/useSessionAudio";
 import {
   useEffect,
   useRef,
@@ -134,7 +135,7 @@ export const YouTubePlayer = forwardRef<
     poster,
     aspectRatio = "16:9",
     autoPlay = false,
-    muted = true,
+    muted: controlledMuted,
     controls = true,
     coordinatorId,
     registerWithCoordinator = true,
@@ -155,6 +156,8 @@ export const YouTubePlayer = forwardRef<
 
   const commands = useRef({ play: () => {}, pause: () => {} });
   const autoStart = useRef({ videoId, allowed: true });
+  const [sessionMuted] = useSessionAudio();
+  const muted = controlledMuted ?? sessionMuted;
   const [generation, setGeneration] = useState(0);
   const leaseRef = useRef<PlaybackLease | null>(null);
   const propsRef = useRef({ autoPlay, muted, playbackAllowed });
@@ -464,6 +467,20 @@ export const YouTubePlayer = forwardRef<
       /* Ignore teardown races. */
     }
   }, [muted, isReady]);
+
+  // The iframe's built-in controls do not emit a volume-change event.
+  // Observe actual state only once the API has applied the requested preference.
+  useEffect(() => {
+    if (!isReady || autoplayBlocked) return;
+    const timer = window.setInterval(() => {
+      try {
+        const player = playerRef.current;
+        if (player && containerRef.current?.querySelector("iframe"))
+          setSessionMuted(player.isMuted());
+      } catch { /* iframe teardown */ }
+    }, 300);
+    return () => window.clearInterval(timer);
+  }, [isReady, autoplayBlocked]);
 
   const fallbackThumbnail =
     poster ||

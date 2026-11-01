@@ -56,7 +56,7 @@ For each new item:
    - Landscape videos: `100` to `199`.
    - Portrait shorts: `200` to `299`.
 2. Specify format: `"video"` or `"short"`.
-3. Choose canonical category: `"Anime" | "Movies" | "Series" | "Multifandom" | "Gaming" | "Phonk"`.
+3. Choose canonical category: `"Anime" | "Movies" | "Series" | "Multifandom" | "Gaming" | "Phonk" | "Motivation"`.
 4. Associate registered fandom slug IDs (e.g. `["jujutsu-kaisen"]`, `["valorant"]`). If introducing a new fandom, first declare it in `src/data/fandoms.ts`.
 5. Add search tags (lowercase alphanumeric, no `#`).
 6. Specify asset paths: `/media/videos/...` and `/media/posters/...`.

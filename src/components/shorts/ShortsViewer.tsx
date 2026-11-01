@@ -1,3 +1,4 @@
+import { useSessionAudio } from "../../hooks/useSessionAudio";
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   X,
@@ -54,7 +55,7 @@ export function ShortsViewer({
 
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useSessionAudio();
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [hasError, setHasError] = useState(false);

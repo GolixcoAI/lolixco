@@ -173,6 +173,7 @@ CANONICAL_CATEGORIES: tuple[str, ...] = (
     "Series",
     "Phonk",
     "Multifandom",
+    "Motivation",
 )
 
 

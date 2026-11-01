@@ -1,5 +1,7 @@
+import { useCinematicInfo } from "../../hooks/useCinematicInfo";
+import { useSessionAudio } from "../../hooks/useSessionAudio";
 import { publicSource } from "../../utils/publicSource";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   Play,
   Pause,
@@ -19,6 +21,7 @@ import {
   allowsAutoplay,
   useNativePlayback,
 } from "../../hooks/useNativePlayback";
+const measuredAspects = new Map<string, number>();
 const time = (n: number) =>
   `${Math.floor(n / 60)}:${Math.floor(n % 60)
     .toString()
@@ -34,8 +37,13 @@ function VideoPlayerSession({
 }) {
   const video = useRef<HTMLVideoElement>(null),
     container = useRef<HTMLDivElement>(null);
+  const [muted, setMuted] = useSessionAudio();
+  const [measurement, setMeasurement] = useState<{ source: string; ratio: number } | null>(null);
+  const mediaRatio = (measurement?.source === edit.source ? measurement.ratio : measuredAspects.get(edit.source))
+    ?? (edit.format === "short" ? 9 / 16 : 16 / 9);
+  const orientation = mediaRatio < 0.95 ? "portrait" : mediaRatio > 1.05 ? "landscape" : "square";
+  const mediaStyle = { "--media-ratio": mediaRatio, aspectRatio: String(mediaRatio) } as CSSProperties;
   const [playing, setPlaying] = useState(false),
-    [muted, setMuted] = useState(true),
     [duration, setDuration] = useState(0),
     [position, setPosition] = useState(0),
     [buffered, setBuffered] = useState(0),
@@ -47,6 +55,20 @@ function VideoPlayerSession({
     [loop, setLoop] = useState(false),
     [notice, setNotice] = useState(""),
     [quality, setQuality] = useState("");
+  useEffect(() => {
+    setPosition(0); setBuffered(0); setDuration(0); setError("");
+    setA(null); setB(null); setLoop(false); setMenu(""); setNotice("");
+    setPlaying(false); setWaiting(false); setQuality("");
+  }, [edit.id, edit.source]);
+  const info = useCinematicInfo(playing, `${edit.id}:${edit.source}`);
+  const infoInteractions = {
+    "data-info-hidden": !info.visible,
+    onPointerEnter: info.reveal,
+    onPointerMove: info.reveal,
+    onTouchStart: info.reveal,
+    onFocusCapture: info.reveal,
+    onKeyDownCapture: info.reveal,
+  };
   const state = useRef({ a, b, loop });
   state.current = { a, b, loop };
   const valid = a !== null && b !== null && validLoop(a, b, duration);
@@ -138,7 +160,10 @@ function VideoPlayerSession({
     return (
       <div
         ref={container}
+        {...infoInteractions}
         className="player youtube-featured"
+        data-orientation={orientation}
+        style={mediaStyle}
         tabIndex={0}
         aria-label={`${edit.title} video player`}
       >
@@ -146,15 +171,25 @@ function VideoPlayerSession({
           videoId={edit.youtubeVideoId || ""}
           title={edit.title}
           poster={edit.poster}
-          aspectRatio="16:9"
+          aspectRatio={edit.format === "short" ? "9:16" : "16:9"}
           autoPlay={allowsAutoplay()}
           playbackAllowed={!isOverlayActive}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onEnded={() => setPlaying(false)}
+          onAutoplayBlocked={() => setPlaying(false)}
+          onError={() => setPlaying(false)}
+          muted={muted}
           controls={true}
         />
-        <div className="player-shade" style={{ pointerEvents: "none" }} />
+
+        <div className="youtube-context-controls">
+          <button className="icon-button" aria-label={muted ? "Unmute video" : "Mute video"} onClick={() => setMuted(!muted)}>{muted ? <VolumeX /> : <Volume2 />}</button>
+          <button className="icon-button" aria-label="Fullscreen" onClick={fullscreen}><Maximize /></button>
+        </div>
         <div className="hero-info" style={{ pointerEvents: "none" }}>
           <span className="eyebrow">
-            <Award size={15} /> EDIT OF THE MOMENT
+            <span className="moment-label"><Award size={15} /> EDIT OF THE MOMENT</span>
             {onShuffle && (
               <button
                 type="button"
@@ -193,7 +228,10 @@ function VideoPlayerSession({
   return (
     <div
       ref={container}
+      {...infoInteractions}
       className={`player ${playing ? "playing" : ""}`}
+      data-orientation={orientation}
+      style={mediaStyle}
       tabIndex={0}
       aria-label={`${edit.title} video player`}
       onKeyDown={(e) => {
@@ -215,13 +253,18 @@ function VideoPlayerSession({
         ref={video}
         src={edit.source}
         poster={edit.poster}
-        muted
+        muted={muted}
         playsInline
         preload="metadata"
         onLoadedMetadata={() => {
           setError("");
           const v = video.current!;
           setDuration(v.duration);
+          if (v.videoWidth > 0 && v.videoHeight > 0) {
+            const ratio = v.videoWidth / v.videoHeight;
+            measuredAspects.set(edit.source, ratio);
+            setMeasurement({ source: edit.source, ratio });
+          }
           setQuality(`${v.videoHeight}p · original source`);
           if (allowsAutoplay()) void play();
         }}
@@ -247,14 +290,14 @@ function VideoPlayerSession({
         onWaiting={() => setWaiting(true)}
         onPlaying={() => setWaiting(false)}
         onError={() => {
-          setError("Demo video unavailable. Retry to load the local clip.");
+          setError("Video unavailable. Retry to load this clip.");
           setWaiting(false);
         }}
       />
-      <div className="player-shade" />
+
       <div className="hero-info">
         <span className="eyebrow">
-          <Award size={15} /> EDIT OF THE MOMENT
+          <span className="moment-label"><Award size={15} /> EDIT OF THE MOMENT</span>
           {onShuffle && (
             <button
               type="button"
@@ -530,13 +573,12 @@ function VideoPlayerSession({
   );
 }
 
-// A media identity owns its controls, markers, errors and pending operations.
+// Keep the fullscreen shell stable; source effects reset media-specific controls.
 export default function VideoPlayer(
   props: Parameters<typeof VideoPlayerSession>[0],
 ) {
   return (
     <VideoPlayerSession
-      key={`${props.edit.id}:${props.edit.sourceType}:${props.edit.youtubeVideoId}:${props.edit.source}`}
       {...props}
     />
   );

@@ -55,7 +55,7 @@ These fields are projected to client bundles and visible to platform visitors:
 | `format` | `string` | `"video"` \| `"short"` | Mandatory presentation format. Standard landscape (`16:9`) or vertical Short (`9:16`). |
 | `title` | `string` | `3` to `100` chars | Display title. |
 | `description` | `string` | `5` to `1000` chars | Descriptive summary shown on video player and Shorts viewer. |
-| `category` | `string` | Enum: `Anime`, `Gaming`, `Movies`, `Series`, `Phonk`, `Multifandom`, `Cinematic` | Primary category. `Cinematic` is strictly prohibited for new content (`id >= 17`). |
+| `category` | `string` | Enum: `Anime`, `Gaming`, `Movies`, `Series`, `Phonk`, `Multifandom`, `Motivation`, `Cinematic` | Primary category. `Cinematic` is strictly prohibited for new content (`id >= 17`). |
 | `fandomIds` | `string[]` | Registered slug IDs | Optional array of fandom slugs registered in `FANDOM_REGISTRY`. Must be compatible with `category` unless `Multifandom`. |
 | `tags` | `string[]` | `^[a-z0-9_-]+$` | Array of lowercase search tags (strictly lowercase, no leading `#`). At least 1 required. |
 | `poster` | `string` | Valid image file path | URL or local path (`/media/...`) to card poster image (`.svg`, `.png`, `.jpg`, `.webp`). |

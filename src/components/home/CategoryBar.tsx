@@ -7,6 +7,7 @@ import {
   Music,
   Film,
   Sparkles,
+  Flame,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -22,6 +23,7 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
   Multifandom: Sparkles,
   Gaming: Gamepad2,
   Phonk: Music,
+  Motivation: Flame,
   Cinematic: Film,
 };
 

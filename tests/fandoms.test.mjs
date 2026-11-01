@@ -123,7 +123,7 @@ test("isFandomCompatibleWithCategory validates category-fandom compatibility", (
 test("Taxonomy preservation: Production categories distinguish from legacy demo Cinematic", () => {
   assert.deepEqual(
     [...PRIMARY_CATEGORIES],
-    ["Anime", "Movies", "Series", "Multifandom", "Gaming", "Phonk"]
+    ["Anime", "Movies", "Series", "Multifandom", "Gaming", "Phonk", "Motivation"]
   );
   assert.deepEqual([...LEGACY_CATEGORIES], ["Cinematic"]);
 
@@ -494,7 +494,11 @@ function setupMountedDom(initialUrl = "http://localhost:3000/") {
       ownerDocument: null,
       parentNode: null,
       childNodes: [],
-      style: {},
+      style: {
+        setProperty(name, value) { this[name] = String(value); },
+        getPropertyValue(name) { return this[name] ?? ""; },
+        removeProperty(name) { const old = this[name] ?? ""; delete this[name]; return old; },
+      },
       attributes: {},
       _listeners: new Map(),
       _textContent: "",
