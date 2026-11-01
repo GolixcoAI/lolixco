@@ -11,3 +11,7 @@ Immersion explicitly resets inherited site header/main geometry. Native content 
 Reduced-motion preferences disable the added layout transitions. Navigation, card transforms and video source replacement do not animate media dimensions.
 
 Stage 8 intake and publication are independent. These UI contracts accept injected private reference catalogs for local browser tests without changing the canonical production catalog or recommendation snapshot.
+
+The featured stage reserves a viewport-bounded height while its player follows native `videoWidth/videoHeight` after metadata loads. A source-keyed measurement avoids applying the old video's ratio to a new source; verified format is the initial/provider fallback. Portrait controls wrap within the capped player. Fullscreen still uses the stable viewport container with contain-fit rendering. Source changes keep the existing reset-to-start behavior; geometry measurement does not seek.
+
+Shorts duration badges explicitly unset the generic landscape badge's bottom constraint. Setting both top and bottom had stretched the badge background into a vertical strip; the source fix keeps only the small top-right badge.

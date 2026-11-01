@@ -121,7 +121,11 @@ export function setupMountedDom(initialUrl = "http://localhost:3000/") {
       ownerDocument: null,
       parentNode: null,
       childNodes: [],
-      style: {},
+      style: {
+        setProperty(name, value) { this[name] = String(value); },
+        getPropertyValue(name) { return this[name] ?? ""; },
+        removeProperty(name) { const old = this[name] ?? ""; delete this[name]; return old; },
+      },
       attributes: {},
       _listeners: new Map(),
       _textContent: "",

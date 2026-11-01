@@ -30,3 +30,21 @@ test('Session audio subscribers inherit explicit preference and manual mute acro
  await act(async()=>setSessionMuted(true));assert.equal(seen.at(-1),true);
  }finally{await env.cleanup();setSessionMuted(true)}
 });
+
+test('Featured native aspect follows metadata for landscape, square and portrait without replacing the player', async()=>{
+ const env=setupMountedDom();
+ try {
+  let player;
+  for (const [index,width,height] of [[0,1920,1080],[1,1080,1080],[2,1080,1920]]) {
+   await act(async()=>env.root.render(React.createElement(VideoPlayer,{edit:{...edits[index],source:`/media/aspect-${index}.mp4`}})));
+   const video=env.container.querySelectorAll('video')[0];
+   Object.defineProperty(video,'videoWidth',{configurable:true,value:width});
+   Object.defineProperty(video,'videoHeight',{configurable:true,value:height});
+   await act(async()=>video.dispatchEvent({type:'loadedmetadata',bubbles:false}));
+   const current=env.container.querySelectorAll('div').find(x=>x.getAttribute('aria-label')?.includes('video player'));
+   if(player) assert.equal(current,player);
+   player=current;
+   assert.equal(Number(current.style.aspectRatio),width/height);
+  }
+ } finally {await env.cleanup();setSessionMuted(true)}
+});

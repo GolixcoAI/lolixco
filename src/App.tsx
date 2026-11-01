@@ -769,11 +769,13 @@ export default function App({
           <>
             {selected && isVideo(selected) && (
               <div className="featured-row">
+                <div className="featured-player-stage">
                 <VideoPlayer
                   edit={selected}
                   isOverlayActive={!!activeShort || immersionOpen || !!modal || (mobile && drawer)}
                   onShuffle={handleShuffleFeatured}
                 />
+                </div>
                 <section className="up-next">
                   <h2>Up Next</h2>
                   {rankCatalogVideos(initialEdits, upNextEdits).filter((e) => e.id !== selected.id).slice(0, 4).map((e) => (

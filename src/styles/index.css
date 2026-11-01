@@ -333,7 +333,7 @@ main {
 }
 .player {
   position: relative;
-  aspect-ratio: 2.36;
+  aspect-ratio: 16 / 9;
   min-width: 0;
   background: #090c10;
   overflow: hidden;
@@ -967,7 +967,7 @@ dialog .fine-print {
     grid-template-columns: minmax(0, 1fr) 290px;
   }
   .player {
-    aspect-ratio: 2.05;
+    aspect-ratio: 16 / 9;
   }
   .feature {
     display: none;
@@ -1010,7 +1010,7 @@ dialog .fine-print {
     grid-template-columns: 1fr;
   }
   .player {
-    aspect-ratio: 2.2;
+    aspect-ratio: 16 / 9;
   }
   .up-next {
     display: grid;
@@ -1098,7 +1098,7 @@ dialog .fine-print {
     gap: 14px;
   }
   .player {
-    aspect-ratio: 1.5;
+    aspect-ratio: 16 / 9;
     overflow: visible;
   }
   .player video {
@@ -1437,6 +1437,9 @@ dialog .fine-print {
 
 .shorts-duration {
   position: absolute;
+  bottom: auto;
+  left: auto;
+  height: max-content;
   top: 8px;
   right: 8px;
   background: rgba(0, 0, 0, 0.75);
@@ -1446,7 +1449,7 @@ dialog .fine-print {
   font-size: 11px;
   font-weight: 600;
   font-family: monospace;
-  backdrop-filter: blur(4px);
+
 }
 .shorts-card-info {
   position: absolute;
@@ -2116,3 +2119,33 @@ dialog .fine-print {
 .immersion-topbar, .immersion-bottombar { min-width: 0; width: 100%; box-sizing: border-box; }
 .immersion-top-actions, .immersion-controls { flex-shrink: 0; }
 .immersion-meta-info { min-width: 0; }
+
+/* Reserve layout space while sizing the player itself to actual native metadata. */
+.featured-row, .featured-player-stage { --featured-height: clamp(300px, 52svh, 560px); }
+.featured-player-stage { height: var(--featured-height); min-width: 0; display: flex; align-items: center; justify-content: center; }
+.featured-player-stage > .player {
+  width: min(100%, calc(var(--featured-height) * var(--media-ratio, 1.7777778)));
+  max-height: var(--featured-height);
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+.player[data-orientation="portrait"] .hero-info,
+.player[data-orientation="square"] .hero-info { left: 12px; right: 12px; }
+.player[data-orientation="portrait"] .hero-info h1 { font-size: clamp(20px, 2vw, 30px); }
+.featured-player-stage > .player:fullscreen { width: 100%; height: 100%; max-height: none; }
+@media (max-width: 767px) {
+  .featured-row, .featured-player-stage { --featured-height: clamp(260px, 46svh, 360px); }
+}
+.player[data-orientation="portrait"] .controls { flex-wrap: wrap; }
+.player[data-orientation="portrait"] .hero-info { bottom: 98px; }
+.player[data-orientation="portrait"] .eyebrow { flex-wrap: wrap; max-width: 100%; gap: 4px; }
+@media (max-width: 767px) {
+  .player[data-orientation="landscape"] .hero-info { left: 10px; right: 10px; bottom: 62px; }
+  .player[data-orientation="landscape"] .hero-info h1 {
+    font-size: 18px; margin: 4px 0;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden;
+  }
+  .player[data-orientation="landscape"] .hero-meta { font-size: 10px; margin-bottom: 0; }
+  .player[data-orientation="landscape"] .hero-info .watch { display: none; }
+  .player[data-orientation="landscape"] .eyebrow { font-size: 10px; }
+}

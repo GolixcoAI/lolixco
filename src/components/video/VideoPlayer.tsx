@@ -1,6 +1,6 @@
 import { useSessionAudio } from "../../hooks/useSessionAudio";
 import { publicSource } from "../../utils/publicSource";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   Play,
   Pause,
@@ -20,6 +20,7 @@ import {
   allowsAutoplay,
   useNativePlayback,
 } from "../../hooks/useNativePlayback";
+const measuredAspects = new Map<string, number>();
 const time = (n: number) =>
   `${Math.floor(n / 60)}:${Math.floor(n % 60)
     .toString()
@@ -36,6 +37,11 @@ function VideoPlayerSession({
   const video = useRef<HTMLVideoElement>(null),
     container = useRef<HTMLDivElement>(null);
   const [muted, setMuted] = useSessionAudio();
+  const [measurement, setMeasurement] = useState<{ source: string; ratio: number } | null>(null);
+  const mediaRatio = (measurement?.source === edit.source ? measurement.ratio : measuredAspects.get(edit.source))
+    ?? (edit.format === "short" ? 9 / 16 : 16 / 9);
+  const orientation = mediaRatio < 0.95 ? "portrait" : mediaRatio > 1.05 ? "landscape" : "square";
+  const mediaStyle = { "--media-ratio": mediaRatio, aspectRatio: String(mediaRatio) } as CSSProperties;
   const [playing, setPlaying] = useState(false),
     [duration, setDuration] = useState(0),
     [position, setPosition] = useState(0),
@@ -145,6 +151,8 @@ function VideoPlayerSession({
       <div
         ref={container}
         className="player youtube-featured"
+        data-orientation={orientation}
+        style={mediaStyle}
         tabIndex={0}
         aria-label={`${edit.title} video player`}
       >
@@ -152,7 +160,7 @@ function VideoPlayerSession({
           videoId={edit.youtubeVideoId || ""}
           title={edit.title}
           poster={edit.poster}
-          aspectRatio="16:9"
+          aspectRatio={edit.format === "short" ? "9:16" : "16:9"}
           autoPlay={allowsAutoplay()}
           playbackAllowed={!isOverlayActive}
           muted={muted}
@@ -205,6 +213,8 @@ function VideoPlayerSession({
     <div
       ref={container}
       className={`player ${playing ? "playing" : ""}`}
+      data-orientation={orientation}
+      style={mediaStyle}
       tabIndex={0}
       aria-label={`${edit.title} video player`}
       onKeyDown={(e) => {
@@ -233,6 +243,11 @@ function VideoPlayerSession({
           setError("");
           const v = video.current!;
           setDuration(v.duration);
+          if (v.videoWidth > 0 && v.videoHeight > 0) {
+            const ratio = v.videoWidth / v.videoHeight;
+            measuredAspects.set(edit.source, ratio);
+            setMeasurement({ source: edit.source, ratio });
+          }
           setQuality(`${v.videoHeight}p · original source`);
           if (allowsAutoplay()) void play();
         }}

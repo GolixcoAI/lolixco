@@ -63,7 +63,11 @@ function setupMinimalDom() {
       nodeName: tagName.toUpperCase(),
       ownerDocument: null,
       childNodes: [],
-      style: {},
+      style: {
+        setProperty(name, value) { this[name] = String(value); },
+        getPropertyValue(name) { return this[name] ?? ""; },
+        removeProperty(name) { const old = this[name] ?? ""; delete this[name]; return old; },
+      },
       attributes: {},
       setAttribute(k, v) { this.attributes[k] = v; },
       removeAttribute(k) { delete this.attributes[k]; },
