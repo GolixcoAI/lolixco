@@ -354,7 +354,7 @@ main {
   left: 20px;
   right: 20px;
   max-width: min(650px, 85%);
-  bottom: 24px;
+  bottom: 68px;
   transition: opacity 0.3s ease;
   z-index: 4;
   pointer-events: none;
@@ -420,7 +420,7 @@ main {
 .player-bottom {
   position: absolute;
   inset: auto 12px 5px;
-  z-index: 3;
+  z-index: 5;
 }
 .timeline {
   height: 6px;
@@ -1517,23 +1517,21 @@ dialog .fine-print {
   position: relative;
   z-index: 2;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 90vh;
-  max-height: 940px;
-  aspect-ratio: 9 / 16;
-  max-width: calc(90vh * 9 / 16);
+  box-sizing: border-box;
+  width: min(calc((100vh - 100px) * 9 / 16), 92vw, 506px);
 }
 .shorts-viewer-header {
-  position: absolute;
-  top: -46px;
-  left: 0;
-  right: 0;
+  width: 100%;
   z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  pointer-events: none;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+  pointer-events: auto;
 }
 .shorts-viewer-header > * {
   pointer-events: auto;
@@ -1575,7 +1573,8 @@ dialog .fine-print {
 .shorts-viewer-frame {
   position: relative;
   width: 100%;
-  height: 100%;
+  height: min(calc(100vh - 100px), 840px);
+  aspect-ratio: 9 / 16;
   border-radius: 12px;
   overflow: hidden;
   background: #000;
@@ -1585,6 +1584,7 @@ dialog .fine-print {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex: 0 1 auto;
 }
 .shorts-video-element {
   width: 100%;
@@ -1823,16 +1823,34 @@ dialog .fine-print {
     height: 100dvh;
     max-height: none;
     max-width: none;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
     border-radius: 0;
   }
   .shorts-viewer-header {
-    top: max(env(safe-area-inset-top, 12px), 12px);
-    left: 12px;
-    right: 12px;
+    position: relative;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    margin-bottom: 0;
+    padding: max(env(safe-area-inset-top, 8px), 8px) 16px 8px;
+    background: #000;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    box-sizing: border-box;
+    flex-shrink: 0;
   }
   .shorts-viewer-frame {
+    flex: 1 1 0;
+    width: 100%;
+    height: auto;
+    max-width: none;
+    max-height: none;
     border-radius: 0;
     border: none;
+    aspect-ratio: auto;
   }
   .shorts-empty-state {
     padding: 48px 16px;

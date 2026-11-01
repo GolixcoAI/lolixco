@@ -54,6 +54,10 @@ In addition, this pull request addresses critical UI, aspect-ratio, and playback
 | `213` | `DvzaLGOH2vw` | Squid Game — Player 218 Cho Sang-woo [Shorts Edit] | erebus editz | Series | 0:15 | Shorts (9:16) |
 | `214` | `W4E_UW0r6FA` | David Goggins — Still I Grind [Mindset Short] | Oliver | Motivation | 0:47 | Shorts (9:16) |
 
+> [!NOTE]
+> **Pre-existing Duration Annotation for Item 204 (`kR-USMTLxQk`):**
+> The owner-approved manifest records a display duration of `0:25` (25s), whereas YouTube player runtime inspection evidence records `26.0s` (a 1-second rounding discrepancy between YouTube's rounded metadata and decoded container length). In compliance with catalog intake governance, the approved record is preserved as approved without silent modification, and documented here for publication clearance.
+
 ---
 
 ## 3. UI Repairs & Architectural Fixes
@@ -70,15 +74,15 @@ Third-party YouTube iframe embeds initialize by default to 640x360 pixels when t
   - `.youtube-player-wrapper > div:first-child`: Explicitly expanded child container to `100%` width and height.
   - `.youtube-player-wrapper iframe`: Added `width: 100% !important; height: 100% !important; display: block; border: 0;` to guarantee full coverage of the player frame.
 
-### 3.2 Shorts Modal Header Decoupling
+### 3.2 Responsive Shorts Viewer Header & Viewport Geometry
 
 **Root Cause:**
-`.shorts-viewer-header` was previously positioned at `top: 14px; left: 16px;` inside the video frame. In YouTube Shorts playback, this header directly collided with the YouTube video title and native controls.
+Negative absolute positioning (`top: -46px`) placed header controls outside the viewport on laptop viewports (e.g., 1280×720, where container starts at y=36, placing buttons at y=-10). In mobile viewports (`390×844`), positioning inside the video frame overlapped YouTube's native title and channel avatar.
 
 **Resolution:**
-- On desktop viewports, `.shorts-viewer-header` is repositioned to `top: -46px; left: 0; right: 0;`, cleanly elevating index labels and modal controls above the 9:16 frame.
-- On mobile viewports (`max-width: 767px`), header adheres to safe-area insets (`top: max(env(safe-area-inset-top, 12px), 12px)`).
-- Centered alignment added to `.shorts-viewer-frame`.
+- Replaced negative positioning with a robust responsive layout:
+  - On desktop and laptop viewports, `.shorts-viewer-container` uses a flex column with bounded dimensions (`width: min(calc((100vh - 100px) * 9 / 16), 92vw, 506px)`), reserving an in-flow header row above `.shorts-viewer-frame`. All controls (index, Play, Mute, Close) start at y ≥ 27px from the top of the viewport on all standard screens (1280×720, 1366×768, 1440×900, 1920×1080) with zero clipping.
+  - On mobile viewports (`max-width: 767px`), `.shorts-viewer-container` establishes a full-screen flex column with `.shorts-viewer-header` as a dedicated top bar (`position: relative; top: 0; background: #000; padding-top: max(env(safe-area-inset-top, 8px), 8px)`). The video frame begins cleanly below the bar, preventing any overlap with YouTube's embedded title bar or controls.
 
 ### 3.3 Shorts Card Duration Badge Decoupling
 
@@ -95,19 +99,23 @@ In `src/components/shorts/ShortsCard.tsx`, the duration badge was structured as 
 - Expanded `.immersion-video-wrapper.landscape` to `min(96vw, calc((100vh - 120px) * 16 / 9))` and `.portrait` to `min(calc(100vh - 120px), 920px)`.
 - Sized `.immersion-tag-list` to `max-width: 50%` with hidden scrollbars for clean navigation.
 
-### 3.5 Responsive Edit of the Moment Typography & Button Interactivity
+### 3.5 Featured Watch Now Interactivity & Seek Timeline Protection
+
+**Root Cause:**
+Positioning `.hero-info` at `bottom: 24px` placed the clickable Watch Now button across the same vertical coordinate space as the playback seek timeline (`.timeline` at `inset: auto 12px 5px`). On viewports such as 1280×720, clicking the timeline near the beginning (e.g. ~2 seconds) intercepted the Watch Now button instead of seeking.
 
 **Resolution:**
-- Adjusted `.hero-info h1` font size to responsive `clamp(20px, 2.2vw, 32px)/1.15 Rajdhani`.
-- Applied a 2-line clamp (`-webkit-line-clamp: 2`) and text shadow for legibility across varied background video luminance.
-- While `.hero-info` has `pointer-events: none` to let clicks fall through empty title areas to the video player, interactive child controls (`.watch` and `.shuffle-moment-btn`) explicitly enforce `pointer-events: auto` when visible. When active playback hides info via `[data-info-hidden="true"]`, controls transition cleanly to `visibility: hidden; pointer-events: none !important;`.
+- Elevated `.hero-info` to `bottom: 68px`, establishing >15px of physical separation above the playback rail across all screen sizes.
+- Assigned `z-index: 5` to `.player-bottom` (exceeding `.hero-info`'s `z-index: 4`) ensuring the seek timeline and player controls take absolute precedence for hit-testing across their full width.
+- Maintained responsive `clamp(20px, 2.2vw, 32px)/1.15 Rajdhani` typography with 2-line clamping.
+- Maintained explicit `pointer-events: auto` on interactive child controls (`.watch` and `.shuffle-moment-btn`) when visible, and `pointer-events: none !important` when cinematic fade hides player info (`[data-info-hidden="true"]`).
 
 ---
 
 ## 4. Verification Boundaries & Clearance Constraints
 
 1. **Test Suite Integrity:**
-   All 532 Vitest unit and integration tests and 63 RecSys Python tests pass without modification.
+   All 536 isolated Node test runner tests and 63 RecSys Python tests pass cleanly without modification or failure.
 2. **Catalog Baseline Untouched:**
    `src/data/edits.ts` remains strictly identical to `origin/main` (containing the 17 demo baseline items).
 3. **No Unilateral Publication:**

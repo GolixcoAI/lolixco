@@ -80,3 +80,19 @@ test('CSS rules ensure Watch Now and Shuffle buttons retain pointer-events when 
  // hidden info disables pointer-events
  assert.match(css, /\.player\[data-info-hidden="true"\][^{]*\.watch[^{]*\{[^}]*pointer-events:\s*none\s*!important;/);
 });
+
+test('CSS rules establish non-overlapping separation between .hero-info and .player-bottom seek rail', () => {
+ const css = fs.readFileSync('src/styles/index.css', 'utf8');
+ // .hero-info is elevated safely above playback rail
+ assert.match(css, /\.hero-info\s*\{[^}]*bottom:\s*68px;/);
+ // .player-bottom has higher z-index than .hero-info
+ assert.match(css, /\.player-bottom\s*\{[^}]*z-index:\s*5;/);
+});
+
+test('CSS rules ensure Shorts viewer header is an in-flow responsive row without negative top clipping', () => {
+ const css = fs.readFileSync('src/styles/index.css', 'utf8');
+ // No negative top clipping in desktop header
+ assert.doesNotMatch(css, /\.shorts-viewer-header\s*\{[^}]*top:\s*-[0-9]+px/);
+ // Shorts viewer container has column flow and bounded width
+ assert.match(css, /\.shorts-viewer-container\s*\{[^}]*flex-direction:\s*column;/);
+});
