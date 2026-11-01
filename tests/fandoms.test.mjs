@@ -123,7 +123,7 @@ test("isFandomCompatibleWithCategory validates category-fandom compatibility", (
 test("Taxonomy preservation: Production categories distinguish from legacy demo Cinematic", () => {
   assert.deepEqual(
     [...PRIMARY_CATEGORIES],
-    ["Anime", "Movies", "Series", "Multifandom", "Gaming", "Phonk"]
+    ["Anime", "Movies", "Series", "Multifandom", "Gaming", "Phonk", "Motivation"]
   );
   assert.deepEqual([...LEGACY_CATEGORIES], ["Cinematic"]);
 

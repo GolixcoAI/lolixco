@@ -47,7 +47,7 @@ Local development binds to `127.0.0.1:8000`. Permit only the explicitly configur
 | `current_edit_id` | Required non-null ID for `up_next`; null/absent for `home`. Unknown or unavailable current item returns 404 without disclosing its private status. |
 | `limit` | Integer 1–50; default 12. Persisted in cursor snapshot. |
 | `mode` | `auto` default, `baseline`, or `neural`. Auto uses only a validated compatible model explicitly promoted by server configuration, otherwise baseline. Explicit neural without a usable model returns 503. |
-| `filters.category` | Null or one of Cinematic, Gaming, Anime, Movies, Series, Phonk. Unknown value: 422. Case-insensitive input normalized to canonical spelling. Featured/New/Trending are not categories; frontend tab mapping needs separate review. |
+| `filters.category` | Null or one of Cinematic, Gaming, Anime, Movies, Series, Phonk, Multifandom, Motivation. Unknown value: 422. Case-insensitive input normalized to canonical spelling. Featured/New/Trending are not categories; frontend tab mapping needs separate review. |
 | `filters.tags_all` | At most 10 distinct normalized tags, each 1–64 characters after normalization. All requested tags must match; no match returns empty, not relaxed filtering. Default empty. |
 | `exclude_edit_ids` | At most 200 strict IDs. Duplicates collapse; absent catalog IDs are harmless. Default empty. |
 | `context.history` | At most 50 entries ordered oldest to newest; default empty. Each requires ID, nonnegative integer `unique_watch_ms`, UTC RFC3339 time. Reject out-of-order/future entries (allow 5-minute clock skew). |

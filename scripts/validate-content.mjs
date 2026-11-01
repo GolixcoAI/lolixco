@@ -32,6 +32,7 @@ export const PRIMARY_CATEGORIES = [
   "Multifandom",
   "Gaming",
   "Phonk",
+  "Motivation",
 ];
 
 export const LEGACY_CATEGORIES = ["Cinematic"];

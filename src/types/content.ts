@@ -31,7 +31,8 @@ export type CanonicalCategory =
   | "Series"
   | "Multifandom"
   | "Gaming"
-  | "Phonk";
+  | "Phonk"
+  | "Motivation";
 
 /**
  * Legacy demo category preserved for backward compatibility with initial sample assets.

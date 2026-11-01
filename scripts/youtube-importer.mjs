@@ -1141,7 +1141,7 @@ Usage:
 
 Options:
   --batch, --batch-id <id>     Batch identifier (e.g. 01, batch-01, batch-10)
-  --category <name>            Category (Anime, Gaming, Movies, Series, Phonk, Multifandom)
+  --category <name>            Category (Anime, Gaming, Movies, Series, Phonk, Multifandom, Motivation)
   --fandom <slug>              Fandom slug (e.g. valorant, jujutsu-kaisen)
   --format <type>              Format (video, landscape, short)
   --input, --batch-file <file> Input file (.txt with 1 URL per line or .json)

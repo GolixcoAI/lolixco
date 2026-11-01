@@ -62,6 +62,7 @@ export const PRIMARY_CATEGORIES: readonly CanonicalCategory[] = [
   "Multifandom",
   "Gaming",
   "Phonk",
+  "Motivation",
 ] as const;
 
 /**

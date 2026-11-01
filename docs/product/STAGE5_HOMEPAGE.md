@@ -46,7 +46,7 @@ their meanings. These are bounded discovery previews; Explore/category/search
 continue to expose the complete catalog. A short duration never defines a Short.
 
 Source previews contain populated category groups in the shared canonical order:
-Anime, Movies, Series, Multifandom, Gaming, Phonk. Items retain catalog order within
+Anime, Movies, Series, Multifandom, Gaming, Phonk, Motivation. Items retain catalog order within
 each group. Unknown/legacy categories follow in first-seen order; an absent label
 uses Other. No empty sections or category headings are emitted. Group and item
 keys use stable category/source IDs and catalog IDs, not positions.
