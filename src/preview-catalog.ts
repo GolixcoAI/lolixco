@@ -849,23 +849,5 @@ export const previewCatalog: Edit[] = [
     "channelTitle": "Oliver",
     "channelId": "UCe1QClFrO99cIlHo4q9_Kqg",
     "sourceUrl": "https://www.youtube.com/watch?v=W4E_UW0r6FA"
-  },
-  {
-    "id": 900,
-    "title": "Generated infrastructure test — not a launch edit",
-    "category": "Multifandom",
-    "tags": [
-      "test",
-      "preview"
-    ],
-    "description": "Self-generated FFmpeg test pattern and synthesized tone. Infrastructure test only.",
-    "creator": "Lolixco infrastructure test",
-    "poster": "/preview-assets/sample.webp",
-    "source": "/preview-assets/sample.mp4",
-    "duration": "0:06",
-    "trending": false,
-    "format": "video",
-    "fandomIds": [],
-    "sourceType": "licensed_local_media"
   }
 ];
