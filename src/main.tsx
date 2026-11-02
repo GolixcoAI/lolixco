@@ -6,9 +6,10 @@ import "@fontsource/inter/600.css";
 import "@fontsource/rajdhani/600.css";
 import "@fontsource/rajdhani/700.css";
 import App from "./App";
+import { previewCatalog } from "./preview-catalog";
 import "./styles/index.css";
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <App initialEdits={previewCatalog} />
   </React.StrictMode>,
 );
