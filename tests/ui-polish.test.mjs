@@ -78,7 +78,7 @@ test('CSS rules ensure Watch Now and Shuffle buttons retain pointer-events when 
  // .watch itself has pointer-events: auto
  assert.match(css, /\.watch\s*\{[^}]*pointer-events:\s*auto;/);
  // hidden info disables pointer-events
- assert.match(css, /\.player\[data-info-hidden="true"\][^{]*\.watch[^{]*\{[^}]*pointer-events:\s*none\s*!important;/);
+ assert.match(css, /\.player\[data-info-hidden="true"\]\s+\.hero-info:not\(:focus-within\)\s+\*\s*\{[^}]*pointer-events:\s*none\s*!important;/);
 });
 
 test('CSS rules establish non-overlapping separation between .hero-info and .player-bottom seek rail', () => {

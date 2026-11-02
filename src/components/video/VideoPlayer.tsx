@@ -194,12 +194,6 @@ function VideoPlayerSession({
               <button
                 type="button"
                 className="shuffle-moment-btn"
-                style={{
-                  pointerEvents: "auto",
-                  position: "relative",
-                  zIndex: 10,
-                  cursor: "pointer",
-                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   onShuffle();
@@ -302,12 +296,6 @@ function VideoPlayerSession({
             <button
               type="button"
               className="shuffle-moment-btn"
-              style={{
-                pointerEvents: "auto",
-                position: "relative",
-                zIndex: 10,
-                cursor: "pointer",
-              }}
               onClick={(e) => {
                 e.stopPropagation();
                 onShuffle();
