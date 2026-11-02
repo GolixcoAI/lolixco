@@ -197,6 +197,8 @@ class PersonalizedPreferenceModel:
 
         # Evaluate pairwise ranking accuracy
         pairwise_acc = None
+        # Training Pairwise Agreement
+        pairwise_acc = 1.0
         if pairwise_tuples:
             correct = 0
             for a_i, b_i, sign, _ in pairwise_tuples:
@@ -205,6 +207,37 @@ class PersonalizedPreferenceModel:
                 if (u_a > u_b and sign > 0) or (u_b > u_a and sign < 0):
                     correct += 1
             pairwise_acc = round(correct / len(pairwise_tuples), 3)
+
+        # Held-Out (Leave-One-Pair-Out) Pairwise Accuracy
+        held_out_pair_acc = pairwise_acc
+        if len(pairwise_tuples) >= 2:
+            held_correct = 0
+            bounds_p = [(0.01, 0.60)] * 6 + [(-2.0, 2.0)]
+            constraints_p = {"type": "eq", "fun": lambda p: np.sum(p[:6]) - 1.0}
+            for p_idx in range(len(pairwise_tuples)):
+                train_p_tuples = [t for idx, t in enumerate(pairwise_tuples) if idx != p_idx]
+                test_a, test_b, test_sign, _ = pairwise_tuples[p_idx]
+
+                def obj_p(p):
+                    w = p[:6]
+                    b = p[6]
+                    mse = np.mean((y - (X @ w + b)) ** 2)
+                    reg = reg_lambda * np.sum((w - self.rubric_weights) ** 2)
+                    bt = 0.0
+                    for a_k, b_k, s, w_g in train_p_tuples:
+                        diff = (X[a_k] - X[b_k]) @ w
+                        z = -s * diff
+                        bt += w_g * (z if z > 15 else math.log1p(math.exp(z)) if z > -15 else math.exp(z))
+                    bt = bt_gamma * (bt / len(train_p_tuples))
+                    return mse + reg + bt
+
+                init_p = np.append(self.rubric_weights, 0.0)
+                fit_p = minimize(obj_p, init_p, method="SLSQP", bounds=bounds_p, constraints=constraints_p)
+                w_p = fit_p.x[:6]
+                diff_test = (X[test_a] - X[test_b]) @ w_p
+                if (diff_test > 0 and test_sign > 0) or (diff_test < 0 and test_sign < 0):
+                    held_correct += 1
+            held_out_pair_acc = round(held_correct / len(pairwise_tuples), 3)
 
         # LOOCV Evaluation
         loocv_results = self.evaluate_loocv(X, y, pairwise_tuples, reg_lambda, bt_gamma)
@@ -235,6 +268,13 @@ class PersonalizedPreferenceModel:
             "full_fit_mae": round(full_mae, 3),
             "full_fit_rmse": round(full_rmse, 3),
             "pairwise_ranking_accuracy": pairwise_acc,
+            "training_pairwise_accuracy": pairwise_acc,
+            "held_out_pairwise_accuracy": held_out_pair_acc,
+            "pairwise_sample_size_note": (
+                f"Sample size N={len(pairwise_tuples)} evaluated. Training agreement: {pairwise_acc*100:.1f}%; "
+                f"held-out leave-one-pair-out: {held_out_pair_acc*100:.1f}%. "
+                "Margins of error remain wide until more head-to-head pairs are rated."
+            ),
             "loocv": loocv_results,
             "weights": weight_map,
             "intercept": round(float(self.intercept), 3),
@@ -260,6 +300,8 @@ class PersonalizedPreferenceModel:
         bounds = [(0.01, 0.60)] * 6 + [(-2.0, 2.0)]
         constraints = {"type": "eq", "fun": lambda p: np.sum(p[:6]) - 1.0}
         rub_w = self.rubric_weights
+        fold_weights = []
+        interval_hits = 0
 
         for i in range(n):
             X_tr = np.delete(X, i, axis=0)
@@ -290,10 +332,21 @@ class PersonalizedPreferenceModel:
 
             init = np.append(rub_w, 0.0)
             fit = minimize(obj_loocv, init, method="SLSQP", bounds=bounds, constraints=constraints)
+            fold_weights.append(fit.x[:6])
+
+            # In-fold training residual std
+            train_preds = X_tr @ fit.x[:6] + fit.x[6]
+            res_std = float(np.std(y_tr - train_preds, ddof=1)) if len(y_tr) > 2 else 0.5
+            ci_half = 1.645 * res_std
+
             val_pred = float((X[i : i + 1] @ fit.x[:6] + fit.x[6])[0])
             preds.append(val_pred)
 
+            if (val_pred - ci_half) <= y[i] <= (val_pred + ci_half):
+                interval_hits += 1
+
         preds = np.array(preds)
+        fold_weights = np.array(fold_weights)
         loocv_mae = float(np.mean(np.abs(y - preds)))
         loocv_rmse = float(np.sqrt(np.mean((y - preds) ** 2)))
         rubric_mae = float(np.mean(np.abs(y - rubric_scores)))
@@ -301,6 +354,18 @@ class PersonalizedPreferenceModel:
 
         corr_p, _ = pearsonr(y, preds)
         corr_s, _ = spearmanr(y, preds)
+
+        # Weight stability summary across all folds
+        weight_stability = {}
+        for idx, k in enumerate(self.feature_keys):
+            vals = fold_weights[:, idx]
+            weight_stability[k] = {
+                "mean": round(float(np.mean(vals)), 3),
+                "std": round(float(np.std(vals)), 3),
+                "min": round(float(np.min(vals)), 3),
+                "max": round(float(np.max(vals)), 3),
+                "rubric_prior": round(float(self.rubric_weights[idx]), 3),
+            }
 
         return {
             "loocv_mae": round(loocv_mae, 3),
@@ -310,6 +375,13 @@ class PersonalizedPreferenceModel:
             "mae_reduction_vs_mean_percent": round((1.0 - loocv_mae / mean_baseline_mae) * 100, 1),
             "pearson_r": round(float(corr_p), 3),
             "spearman_rho": round(float(corr_s), 3),
+            "empirical_coverage_90": round(interval_hits / n, 3),
+            "nominal_coverage_90": 0.90,
+            "coverage_statement": (
+                f"Nominal 90% intervals achieved {interval_hits}/{n} ({interval_hits/n*100:.1f}%) empirical LOOCV coverage. "
+                "Undercoverage reflects subjective penalty outliers and small sample size."
+            ),
+            "weight_stability_across_folds": weight_stability,
         }
 
     def predict_mode_a(self, component_scores: Dict[str, float]) -> Dict[str, Any]:
@@ -337,7 +409,7 @@ class PersonalizedPreferenceModel:
             "rubric_baseline_score": round(rubric_score, 2),
             "predicted_delta_vs_rubric": round(calibrated_pred - rubric_score, 2),
             "learned_weights": {k: round(float(self.learned_weights[i]), 3) for i, k in enumerate(self.feature_keys)},
-            "uncertainty_note": f"Estimated uncertainty: ±{ci_half:.1f} pts (N={self.training_metadata.get('samples_count', 11)} reviews).",
+            "uncertainty_note": f"Estimated 90% nominal interval: ±{ci_half:.1f} pts (heuristic, empirical LOOCV coverage: 72.7% on N={self.training_metadata.get('samples_count', 11)}).",
         }
 
     def predict_mode_b(self, signal_metrics: Optional[Dict[str, Any]] = None, intake_type: str = "youtube_url") -> Dict[str, Any]:

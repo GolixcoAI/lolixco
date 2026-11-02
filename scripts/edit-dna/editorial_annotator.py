@@ -15,12 +15,11 @@ TAG_DEFINITIONS = {
         "polarity": "positive",
         "description": "Kinetic action or cuts mapped to vocal lyrics / dialogue meanings",
         "keywords": [
-            r"lyric(?:al)?\s+(?:mapping|alignment|cue)",
-            r"vocal\s+(?:intro|cue|mapping)",
-            r"dialogue\s+pacing",
-            r"family ties",
-            r"time for goodbye",
-            r'"bang"'
+            r"lyric(?:al)?\s+(?:mapping|alignment|cue|timing|cut)",
+            r"vocal\s+(?:intro|cue|mapping|phrase|line)",
+            r"dialogue\s+(?:pacing|resonance|alignment|cue)",
+            r"spoken\s+word\s+(?:hit|sync)",
+            r"thematic\s+and\s+lyrical",
         ],
     },
     "kinetic_transient_sync": {
@@ -29,10 +28,12 @@ TAG_DEFINITIONS = {
         "keywords": [
             r"(?:high-impact|flawless|godly|super|exceptional)\s+(?:beat\s+)?sync",
             r"perfect(?:ly)?\s+locking",
-            r"mapped to the rapid percussive",
+            r"mapped\s+to\s+(?:the\s+)?(?:rapid\s+)?percussive",
             r"audio-visual\s+alignment",
-            r"primary\s+neon\s+blade\s+synth\s+transients",
-            r"perfectly\s+mapping\s+the\s+primary\s+audio\s+transient"
+            r"primary\s+(?:synth\s+)?transients?",
+            r"perfectly\s+mapping\s+(?:the\s+)?primary\s+audio\s+transient",
+            r"transient\s+sync",
+            r"on-beat\s+(?:snap|hit)",
         ],
     },
     "atmospheric_tension_pacing": {
@@ -234,10 +235,9 @@ def annotate_rating_record(rating_entry: Dict[str, Any]) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     sample_text = (
-        "[0:00 - 0:23] Pacing & Storytelling / Beat Synchronization: Deliberate, atmospheric slow pacing. "
-        "The edit achieves flawless high-impact synchronization, perfectly mapping the primary audio transient. "
-        "Storytelling & Emotion: Masterful thematic and lyrical alignment timing to 'these are family ties'. "
-        "Transitions & Cuts: Excessive cut density relying heavily on repetitive zoom-in and zoom-out effects."
+        "[0:00 - 0:15] Synthesized sample testing block: Pacing features atmospheric tension. "
+        "At [0:10], video locks with audio-visual alignment to the primary synth transient. "
+        "Transitions rely heavily on repetitive zoom effects and automated templates."
     )
     result = extract_editorial_tags(sample_text)
     import json

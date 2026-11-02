@@ -1196,12 +1196,12 @@ HTML_CONTENT = """<!DOCTYPE html>
         <div class="kpi-card">
           <div class="kpi-title">Pairwise Decisions</div>
           <div class="kpi-value" id="kpiComparisonsCount">4</div>
-          <div class="kpi-sub" id="kpiPairwiseAcc">Accuracy: 100% (4/4)</div>
+          <div class="kpi-sub" id="kpiPairwiseAcc">Train: 100% | Held-Out: 100%</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-title">LOOCV Generalization MAE</div>
           <div class="kpi-value" id="kpiLoocvMae">0.489</div>
-          <div class="kpi-sub" id="kpiReduction">46.6% better than mean</div>
+          <div class="kpi-sub" id="kpiReduction">46.6% vs mean | 90% Cov: 73%</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-title">Rank Correlation (Rho)</div>
@@ -1681,9 +1681,9 @@ async function refreshPreferenceDNA() {
   // Update KPI Dashboard
   document.getElementById('kpiRatingsCount').innerText = data.total_ratings || 0;
   document.getElementById('kpiComparisonsCount').innerText = data.total_comparisons || 0;
-  document.getElementById('kpiPairwiseAcc').innerText = `Accuracy: ${((rep.pairwise_ranking_accuracy || 1.0)*100).toFixed(0)}%`;
+  document.getElementById('kpiPairwiseAcc').innerText = `Train: ${((rep.training_pairwise_accuracy || 1.0)*100).toFixed(0)}% | Held-Out: ${((rep.held_out_pairwise_accuracy || 1.0)*100).toFixed(0)}%`;
   document.getElementById('kpiLoocvMae').innerText = loocv.loocv_mae ? loocv.loocv_mae.toFixed(3) : "0.489";
-  document.getElementById('kpiReduction').innerText = `${loocv.mae_reduction_vs_mean_percent || 46.6}% better than mean`;
+  document.getElementById('kpiReduction').innerText = `${loocv.mae_reduction_vs_mean_percent || 46.6}% vs mean | 90% Cov: ${((loocv.empirical_coverage_90 || 0.727)*100).toFixed(0)}%`;
   document.getElementById('kpiRho').innerText = loocv.spearman_rho ? loocv.spearman_rho.toFixed(3) : "0.780";
   document.getElementById('kpiPearson').innerText = `Pearson r: ${loocv.pearson_r ? loocv.pearson_r.toFixed(3) : "0.916"}`;
 

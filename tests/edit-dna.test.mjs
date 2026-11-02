@@ -508,3 +508,47 @@ print("PREFERENCE_LEARNER_PASS")
   assert.ok(stdout.includes("PREFERENCE_LEARNER_PASS"));
 });
 
+test("Lolixco Edit DNA — Phase 4: Privacy audit guarantees zero private ratings or notes are tracked or leaked", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [resolve(projectRoot, "scripts/edit-dna/verify_privacy.py")],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  assert.ok(stdout.includes("AUDIT RESULT: PASSED"));
+});
+
+test("Lolixco Edit DNA — Phase 4: Honest model validation audits weight sensitivity & empirical coverage", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [resolve(projectRoot, "scripts/edit-dna/audit_model.py")],
+    { encoding: "utf8", timeout: 15000 }
+  );
+
+  assert.ok(stdout.includes("LEAVE-ONE-OUT WEIGHT STABILITY"));
+  assert.ok(stdout.includes("EMPIRICAL COVERAGE OF NOMINAL 90% PREDICTION INTERVALS"));
+  assert.ok(stdout.includes("TRAINING VS. HELD-OUT PAIRWISE RANKING PERFORMANCE"));
+});
+
+test("Lolixco Edit DNA — Phase 4: Permissioned recognition engine identifies source footage, music variants, and abstains on unknowns", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [resolve(projectRoot, "scripts/edit-dna/run_recognition_benchmark.py")],
+    { encoding: "utf8", timeout: 25000 }
+  );
+
+  assert.ok(stdout.includes("BENCHMARK SUMMARY METRICS"));
+  assert.ok(stdout.includes("Out-of-Catalog FP Rate    : 0.0%"));
+  assert.ok(stdout.includes("Accuracy=1.000"));
+});
+
+

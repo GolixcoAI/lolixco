@@ -1,0 +1,234 @@
+{
+  "timestamp": "2026-11-02T16:14:26Z",
+  "benchmark_summary": {
+    "total_queries": 12,
+    "visual_metrics": {
+      "true_positives": 4,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 2,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
+      "accuracy": 1.0,
+      "false_positive_rate": 0.0
+    },
+    "audio_metrics": {
+      "true_positives": 4,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 2,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
+      "accuracy": 1.0,
+      "false_positive_rate": 0.0
+    },
+    "overall_metrics": {
+      "true_positives": 8,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 4,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
+      "accuracy": 1.0,
+      "false_positive_rate": 0.0
+    },
+    "mean_latency_ms": 857.59
+  },
+  "query_details": [
+    {
+      "query_id": "q_v1_clean_jjk",
+      "modality": "visual",
+      "condition": "clean_cut",
+      "expected_target": "ref_v1_jjk",
+      "expected_status": "identified",
+      "predicted_status": "identified",
+      "predicted_target": "ref_v1_jjk",
+      "confidence": 0.96,
+      "is_correct": true,
+      "latency_ms": 933.0,
+      "diagnostics": {
+        "similarity_score": 0.96,
+        "runner_up_margin": 0.141,
+        "is_mirrored": false,
+        "hash_similarity": 0.949,
+        "color_similarity": 0.992
+      }
+    },
+    {
+      "query_id": "q_v2_crop_contrast_spiderman",
+      "modality": "visual",
+      "condition": "15pct_crop_35pct_contrast",
+      "expected_target": "ref_v2_spiderman",
+      "expected_status": "identified",
+      "predicted_status": "identified",
+      "predicted_target": "ref_v2_spiderman",
+      "confidence": 0.68,
+      "is_correct": true,
+      "latency_ms": 781.54,
+      "diagnostics": {
+        "similarity_score": 0.68,
+        "runner_up_margin": 0.134,
+        "is_mirrored": false,
+        "hash_similarity": 0.659,
+        "color_similarity": 0.744
+      }
+    },
+    {
+      "query_id": "q_v3_mirrored_jjk",
+      "modality": "visual",
+      "condition": "horizontal_mirror",
+      "expected_target": "ref_v1_jjk",
+      "expected_status": "identified",
+      "predicted_status": "identified",
+      "predicted_target": "ref_v1_jjk",
+      "confidence": 0.96,
+      "is_correct": true,
+      "latency_ms": 679.73,
+      "diagnostics": {
+        "similarity_score": 0.96,
+        "runner_up_margin": 0.145,
+        "is_mirrored": true,
+        "hash_similarity": 0.949,
+        "color_similarity": 0.992
+      }
+    },
+    {
+      "query_id": "q_v4_color_graded_aot",
+      "modality": "visual",
+      "condition": "heavy_cyan_grade",
+      "expected_target": "ref_v3_aot",
+      "expected_status": "identified",
+      "predicted_status": "identified",
+      "predicted_target": "ref_v3_aot",
+      "confidence": 0.941,
+      "is_correct": true,
+      "latency_ms": 628.03,
+      "diagnostics": {
+        "similarity_score": 0.941,
+        "runner_up_margin": 0.257,
+        "is_mirrored": false,
+        "hash_similarity": 0.993,
+        "color_similarity": 0.783
+      }
+    },
+    {
+      "query_id": "q_v5_unknown_anime",
+      "modality": "visual",
+      "condition": "out_of_catalog_unknown",
+      "expected_target": null,
+      "expected_status": "abstain",
+      "predicted_status": "abstain",
+      "predicted_target": null,
+      "confidence": 0.584,
+      "is_correct": true,
+      "latency_ms": 741.33,
+      "diagnostics": {}
+    },
+    {
+      "query_id": "q_v6_distorted_spiderman",
+      "modality": "visual",
+      "condition": "extreme_distortion_stress_test",
+      "expected_target": null,
+      "expected_status": "abstain",
+      "predicted_status": "abstain",
+      "predicted_target": null,
+      "confidence": 0.64,
+      "is_correct": true,
+      "latency_ms": 1051.07,
+      "diagnostics": {}
+    },
+    {
+      "query_id": "q_a1_clean_phonk",
+      "modality": "audio",
+      "condition": "clean_slice",
+      "expected_target": "ref_a1_phonk_neon",
+      "expected_status": "identified",
+      "predicted_status": "identified",
+      "predicted_target": "ref_a1_phonk_neon",
+      "confidence": 0.998,
+      "is_correct": true,
+      "latency_ms": 1242.86,
+      "diagnostics": {
+        "similarity_score": 0.998,
+        "runner_up_margin": 0.294
+      }
+    },
+    {
+      "query_id": "q_a2_slowed_reverb_phonk",
+      "modality": "audio",
+      "condition": "slowed_0.85x_with_reverb",
+      "expected_target": "ref_a1_phonk_neon",
+      "expected_status": "identified",
+      "predicted_status": "identified",
+      "predicted_target": "ref_a1_phonk_neon",
+      "confidence": 0.775,
+      "is_correct": true,
+      "latency_ms": 1038.58,
+      "diagnostics": {
+        "similarity_score": 0.775,
+        "runner_up_margin": 0.427
+      }
+    },
+    {
+      "query_id": "q_a3_pitched_family",
+      "modality": "audio",
+      "condition": "pitched_plus_2_semitones",
+      "expected_target": "ref_a2_trap_family",
+      "expected_status": "identified",
+      "predicted_status": "identified",
+      "predicted_target": "ref_a2_trap_family",
+      "confidence": 0.912,
+      "is_correct": true,
+      "latency_ms": 733.66,
+      "diagnostics": {
+        "similarity_score": 0.912,
+        "runner_up_margin": 0.247
+      }
+    },
+    {
+      "query_id": "q_a4_dialogue_mixed_exp",
+      "modality": "audio",
+      "condition": "mixed_with_dialogue_0db_snr",
+      "expected_target": "ref_a3_cinematic_exp",
+      "expected_status": "identified",
+      "predicted_status": "identified",
+      "predicted_target": "ref_a3_cinematic_exp",
+      "confidence": 0.77,
+      "is_correct": true,
+      "latency_ms": 1109.05,
+      "diagnostics": {
+        "similarity_score": 0.77,
+        "runner_up_margin": 0.103
+      }
+    },
+    {
+      "query_id": "q_a5_unknown_audio",
+      "modality": "audio",
+      "condition": "out_of_catalog_unknown",
+      "expected_target": null,
+      "expected_status": "abstain",
+      "predicted_status": "abstain",
+      "predicted_target": null,
+      "confidence": 0.568,
+      "is_correct": true,
+      "latency_ms": 727.67,
+      "diagnostics": {}
+    },
+    {
+      "query_id": "q_a6_extreme_slowed_0_65x",
+      "modality": "audio",
+      "condition": "extreme_slowed_stress_test",
+      "expected_target": null,
+      "expected_status": "abstain",
+      "predicted_status": "abstain",
+      "predicted_target": null,
+      "confidence": 0.393,
+      "is_correct": true,
+      "latency_ms": 624.61,
+      "diagnostics": {}
+    }
+  ]
+}
