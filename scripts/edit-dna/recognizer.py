@@ -57,9 +57,9 @@ def compute_frame_color_moments(frame: np.ndarray) -> np.ndarray:
 
 
 def extract_video_visual_features(video_path: str, max_frames: int = 30) -> Dict[str, Any]:
-    """Extracts visual trajectory features from a video file."""
+    """Extracts visual trajectory features and invariant ORB keypoints from a video file."""
     if not os.path.isfile(video_path):
-        return {"hashes": [], "color_moments": [], "frame_count": 0}
+        return {"hashes": [], "color_moments": [], "frame_count": 0, "keypoint_descriptors": [], "mirrored_descriptors": []}
 
     cap = cv2.VideoCapture(video_path)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -69,6 +69,11 @@ def extract_video_visual_features(video_path: str, max_frames: int = 30) -> Dict
     hashes = []
     mirrored_hashes = []
     color_moments = []
+    keypoint_descriptors = []
+    mirrored_descriptors = []
+
+    orb = cv2.ORB_create(nfeatures=250)
+    kp_step = max(1, total_frames // 6) if total_frames > 6 else 1
 
     frame_idx = 0
     while cap.isOpened() and len(hashes) < max_frames:
@@ -77,11 +82,22 @@ def extract_video_visual_features(video_path: str, max_frames: int = 30) -> Dict
             break
         if frame_idx % step == 0:
             h = compute_frame_hash(frame)
-            h_mirrored = compute_frame_hash(cv2.flip(frame, 1))
+            flipped = cv2.flip(frame, 1)
+            h_mirrored = compute_frame_hash(flipped)
             cm = compute_frame_color_moments(frame)
             hashes.append(h)
             mirrored_hashes.append(h_mirrored)
             color_moments.append(cm)
+
+        if frame_idx % kp_step == 0 and len(keypoint_descriptors) < 6:
+            _, des = orb.detectAndCompute(frame, None)
+            flipped = cv2.flip(frame, 1)
+            _, des_m = orb.detectAndCompute(flipped, None)
+            if des is not None:
+                keypoint_descriptors.append(des)
+            if des_m is not None:
+                mirrored_descriptors.append(des_m)
+
         frame_idx += 1
 
     cap.release()
@@ -89,6 +105,8 @@ def extract_video_visual_features(video_path: str, max_frames: int = 30) -> Dict
         "hashes": np.array(hashes) if hashes else np.empty((0, 240), dtype=bool),
         "mirrored_hashes": np.array(mirrored_hashes) if mirrored_hashes else np.empty((0, 240), dtype=bool),
         "color_moments": np.array(color_moments) if color_moments else np.empty((0, 6)),
+        "keypoint_descriptors": keypoint_descriptors,
+        "mirrored_descriptors": mirrored_descriptors,
         "frame_count": len(hashes),
         "fps": fps,
     }
@@ -100,8 +118,9 @@ def match_visual_features(
 ) -> Tuple[float, Dict[str, Any]]:
     """
     Matches query visual trajectory against reference trajectory.
+    Combines perceptual gradient hash similarity, Lab color moments,
+    and invariant ORB local keypoint correspondence with mirror verification.
     Returns (similarity_score [0..1], diagnostics_dict).
-    Supports horizontal mirror invariance and sub-sequence alignment.
     """
     q_hashes = query_feats.get("hashes")
     q_mirrored = query_feats.get("mirrored_hashes")
@@ -113,21 +132,38 @@ def match_visual_features(
     if len(q_hashes) == 0 or len(r_hashes) == 0:
         return 0.0, {"error": "empty_features"}
 
-    # Compute pairwise frame similarity matrices (both normal and mirrored)
-    # Hamming similarity = 1.0 - (hamming_dist / num_bits)
-    num_bits = q_hashes.shape[1]
-    
-    # Distance matrix normal
+    # Hamming distance matrices (normal and mirrored)
     dist_norm = np.mean(q_hashes[:, None, :] != r_hashes[None, :, :], axis=2)
     dist_mirror = np.mean(q_mirrored[:, None, :] != r_hashes[None, :, :], axis=2)
-    
-    # Check if query is mirrored
+
     mean_dist_norm = np.min(dist_norm, axis=1).mean()
     mean_dist_mirror = np.min(dist_mirror, axis=1).mean()
-    is_mirrored = mean_dist_mirror < (mean_dist_norm - 0.05)
+
+    # Keypoint geometric correspondence via BFMatcher
+    q_des = query_feats.get("keypoint_descriptors", [])
+    q_mdes = query_feats.get("mirrored_descriptors", [])
+    r_des = reference_feats.get("keypoint_descriptors", [])
+
+    kp_matches_norm = 0
+    kp_matches_flip = 0
+
+    if len(q_des) > 0 and len(r_des) > 0:
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+        for qd in q_des:
+            for rd in r_des:
+                m = bf.match(qd, rd)
+                kp_matches_norm += len([x for x in m if x.distance < 45])
+
+        for qmd in q_mdes:
+            for rd in r_des:
+                m = bf.match(qmd, rd)
+                kp_matches_flip += len([x for x in m if x.distance < 45])
+
+    is_mirrored = (kp_matches_flip > 1.35 * kp_matches_norm and kp_matches_flip >= 20) or (
+        mean_dist_mirror < (mean_dist_norm - 0.05)
+    )
 
     best_dist = dist_mirror if is_mirrored else dist_norm
-    # Per-frame best match in reference
     per_frame_sim = 1.0 - np.min(best_dist, axis=1)
     hash_sim = float(np.mean(per_frame_sim))
 
@@ -138,12 +174,26 @@ def match_visual_features(
     else:
         color_sim = 0.5
 
-    # Combined visual score: 75% structural hash + 25% tonal color
-    combined_score = 0.75 * hash_sim + 0.25 * color_sim
+    best_kp_count = max(kp_matches_norm, kp_matches_flip)
+
+    # If keypoints exist in reference, incorporate geometric correspondence
+    if len(r_des) > 0:
+        kp_score = min(1.0, best_kp_count / 80.0)
+        # If geometric features completely fail (< 15 matches), reject as unrelated footage
+        if best_kp_count < 15:
+            combined_score = 0.35 * hash_sim + 0.15 * color_sim  # drops below 0.40
+        else:
+            combined_score = 0.40 * hash_sim + 0.20 * color_sim + 0.40 * kp_score
+    else:
+        # Fallback to perceptual hash + color
+        combined_score = 0.75 * hash_sim + 0.25 * color_sim
+
+    combined_score = float(max(0.0, min(1.0, combined_score)))
 
     return combined_score, {
         "hash_similarity": round(hash_sim, 3),
         "color_similarity": round(color_sim, 3),
+        "keypoint_matches": best_kp_count,
         "is_mirrored": bool(is_mirrored),
     }
 
@@ -304,9 +354,9 @@ class EditDNARecognizer:
 
         # Decision Thresholds
         self.visual_sim_threshold = 0.58
-        self.visual_margin_threshold = 0.10
+        self.visual_margin_threshold = 0.07
         self.audio_sim_threshold = 0.60
-        self.audio_margin_threshold = 0.10
+        self.audio_margin_threshold = 0.08
 
     def register_visual_reference(
         self,

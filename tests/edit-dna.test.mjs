@@ -551,4 +551,35 @@ test("Lolixco Edit DNA — Phase 4: Permissioned recognition engine identifies s
   assert.ok(stdout.includes("Accuracy=1.000"));
 });
 
+test("Lolixco Edit DNA — Phase 4: Genuine real-world media recognition experiment with ORB keypoint correspondence", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [resolve(projectRoot, "scripts/edit-dna/test_real_media_recognition.py")],
+    { encoding: "utf8", timeout: 20000 }
+  );
+
+  assert.ok(stdout.includes("Real Media Recognition Accuracy: 100.0%"));
+  assert.ok(stdout.includes("Real Negative Control Rejection: 100.0%"));
+});
+
+test("Lolixco Edit DNA — Phase 4: Multi-source mixed edit analyzer generates segment-level timeline & holistic summary", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [resolve(projectRoot, "scripts/edit-dna/test_mixed_edit.py")],
+    { encoding: "utf8", timeout: 25000 }
+  );
+
+  assert.ok(stdout.includes("Mixed-Source Edit: True"));
+  assert.ok(stdout.includes("Shot-Level Visual Timeline"));
+  assert.ok(stdout.includes("Windowed Music Timeline"));
+  assert.ok(stdout.includes("Identified Visual Sources"));
+});
+
+
 

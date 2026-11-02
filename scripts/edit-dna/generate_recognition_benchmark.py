@@ -385,32 +385,80 @@ def generate_audio_queries():
 
 def build_benchmark_manifest():
     manifest = {
-        "benchmark_version": "1.0.0",
+        "benchmark_version": "2.0.0",
+        "benchmark_type": "controlled_signal_transformation_invariance",
+        "disclaimer": (
+            "These references and queries are procedurally synthesized test signals designed to evaluate mathematical "
+            "resilience to geometric and audio transformations (crops, contrast, horizontal mirroring, pitch shifting, "
+            "tempo stretching, dialogue mixing, and out-of-catalog abstention). They are NOT licensed or copyrighted anime "
+            "frames or commercial music recordings. Performance on this benchmark demonstrates algorithmic transformation "
+            "invariance, not open-world anime or music identity recognition."
+        ),
         "synthesized_at": "2026-11-02T16:00:00Z",
         "visual_references": [
-            {"ref_id": "ref_v1_jjk", "title": "Jujutsu Kaisen: Shibuya Arc", "franchise": "Jujutsu Kaisen", "path": "test-assets/recognition/ref_v1_jjk.mp4"},
-            {"ref_id": "ref_v2_spiderman", "title": "Spider-Man: Across the Spider-Verse", "franchise": "Spider-Man", "path": "test-assets/recognition/ref_v2_spiderman.mp4"},
-            {"ref_id": "ref_v3_aot", "title": "Attack on Titan: The Rumbling", "franchise": "Attack on Titan", "path": "test-assets/recognition/ref_v3_aot.mp4"},
-            {"ref_id": "ref_v4_demon_slayer", "title": "Demon Slayer: Entertainment District", "franchise": "Demon Slayer", "path": "test-assets/recognition/ref_v4_demon_slayer.mp4"},
+            {
+                "ref_id": "synth_proto_v1_crimson_slash",
+                "title": "Synthetic Prototype: Crimson Slash (Simulating High-Contrast Action Aesthetic)",
+                "franchise": "Controlled Benchmark Prototype (Non-Copyrighted)",
+                "path": "test-assets/recognition/ref_v1_jjk.mp4"
+            },
+            {
+                "ref_id": "synth_proto_v2_comic_halftone",
+                "title": "Synthetic Prototype: Halftone Dot Grid (Simulating Multiverse Comic Aesthetic)",
+                "franchise": "Controlled Benchmark Prototype (Non-Copyrighted)",
+                "path": "test-assets/recognition/ref_v2_spiderman.mp4"
+            },
+            {
+                "ref_id": "synth_proto_v3_sepia_clouds",
+                "title": "Synthetic Prototype: Sepia Smoke & Marching Blocks (Simulating Colossal March Aesthetic)",
+                "franchise": "Controlled Benchmark Prototype (Non-Copyrighted)",
+                "path": "test-assets/recognition/ref_v3_aot.mp4"
+            },
+            {
+                "ref_id": "synth_proto_v4_lightning_ribbons",
+                "title": "Synthetic Prototype: Electric Arc & Particle Ribbons (Simulating Particle Combat Aesthetic)",
+                "franchise": "Controlled Benchmark Prototype (Non-Copyrighted)",
+                "path": "test-assets/recognition/ref_v4_demon_slayer.mp4"
+            },
         ],
         "audio_references": [
-            {"ref_id": "ref_a1_phonk_neon", "title": "NEON BLADE", "artist": "MoonDeity", "path": "test-assets/recognition/ref_a1_phonk_neon.wav"},
-            {"ref_id": "ref_a2_trap_family", "title": "family ties", "artist": "Baby Keem & Kendrick Lamar", "path": "test-assets/recognition/ref_a2_trap_family.wav"},
-            {"ref_id": "ref_a3_cinematic_exp", "title": "Experience", "artist": "Ludovico Einaudi", "path": "test-assets/recognition/ref_a3_cinematic_exp.wav"},
-            {"ref_id": "ref_a4_ambient_past", "title": "Past Lives", "artist": "BØRNS", "path": "test-assets/recognition/ref_a4_ambient_past.wav"},
+            {
+                "ref_id": "synth_proto_a1_phonk_cowbell",
+                "title": "Synthetic Prototype: 130 BPM Phonk Pattern (Procedural Cowbells + 808 Bass)",
+                "artist": "Controlled Benchmark Synthesizer (Non-Copyrighted)",
+                "path": "test-assets/recognition/ref_a1_phonk_neon.wav"
+            },
+            {
+                "ref_id": "synth_proto_a2_trap_brass",
+                "title": "Synthetic Prototype: 134 BPM Brass Trap Pattern (Procedural Staccato Horns + Snares)",
+                "artist": "Controlled Benchmark Synthesizer (Non-Copyrighted)",
+                "path": "test-assets/recognition/ref_a2_trap_family.wav"
+            },
+            {
+                "ref_id": "synth_proto_a3_piano_arpeggio",
+                "title": "Synthetic Prototype: 90 BPM Minimalist Piano / Strings (Procedural Neo-Classical)",
+                "artist": "Controlled Benchmark Synthesizer (Non-Copyrighted)",
+                "path": "test-assets/recognition/ref_a3_cinematic_exp.wav"
+            },
+            {
+                "ref_id": "synth_proto_a4_ambient_pads",
+                "title": "Synthetic Prototype: 75 BPM Ambient Dream-Pop (Procedural Resonant Synth Wash)",
+                "artist": "Controlled Benchmark Synthesizer (Non-Copyrighted)",
+                "path": "test-assets/recognition/ref_a4_ambient_past.wav"
+            },
         ],
         "test_queries": [
-            {"query_id": "q_v1_clean_jjk", "modality": "visual", "path": "test-assets/recognition/q_v1_clean_jjk.mp4", "ground_truth_target": "ref_v1_jjk", "expected_status": "identified", "condition": "clean_cut"},
-            {"query_id": "q_v2_crop_contrast_spiderman", "modality": "visual", "path": "test-assets/recognition/q_v2_crop_contrast_spiderman.mp4", "ground_truth_target": "ref_v2_spiderman", "expected_status": "identified", "condition": "15pct_crop_35pct_contrast"},
-            {"query_id": "q_v3_mirrored_jjk", "modality": "visual", "path": "test-assets/recognition/q_v3_mirrored_jjk.mp4", "ground_truth_target": "ref_v1_jjk", "expected_status": "identified", "condition": "horizontal_mirror"},
-            {"query_id": "q_v4_color_graded_aot", "modality": "visual", "path": "test-assets/recognition/q_v4_color_graded_aot.mp4", "ground_truth_target": "ref_v3_aot", "expected_status": "identified", "condition": "heavy_cyan_grade"},
-            {"query_id": "q_v5_unknown_anime", "modality": "visual", "path": "test-assets/recognition/q_v5_unknown_anime.mp4", "ground_truth_target": None, "expected_status": "abstain", "condition": "out_of_catalog_unknown"},
-            {"query_id": "q_v6_distorted_spiderman", "modality": "visual", "path": "test-assets/recognition/q_v6_distorted_spiderman.mp4", "ground_truth_target": None, "expected_status": "abstain", "condition": "extreme_distortion_stress_test"},
-            {"query_id": "q_a1_clean_phonk", "modality": "audio", "path": "test-assets/recognition/q_a1_clean_phonk.wav", "ground_truth_target": "ref_a1_phonk_neon", "expected_status": "identified", "condition": "clean_slice"},
-            {"query_id": "q_a2_slowed_reverb_phonk", "modality": "audio", "path": "test-assets/recognition/q_a2_slowed_reverb_phonk.wav", "ground_truth_target": "ref_a1_phonk_neon", "expected_status": "identified", "condition": "slowed_0.85x_with_reverb"},
-            {"query_id": "q_a3_pitched_family", "modality": "audio", "path": "test-assets/recognition/q_a3_pitched_family.wav", "ground_truth_target": "ref_a2_trap_family", "expected_status": "identified", "condition": "pitched_plus_2_semitones"},
-            {"query_id": "q_a4_dialogue_mixed_exp", "modality": "audio", "path": "test-assets/recognition/q_a4_dialogue_mixed_exp.wav", "ground_truth_target": "ref_a3_cinematic_exp", "expected_status": "identified", "condition": "mixed_with_dialogue_0db_snr"},
-            {"query_id": "q_a5_unknown_audio", "modality": "audio", "path": "test-assets/recognition/q_a5_unknown_audio.wav", "ground_truth_target": None, "expected_status": "abstain", "condition": "out_of_catalog_unknown"},
+            {"query_id": "q_v1_clean_cut", "modality": "visual", "path": "test-assets/recognition/q_v1_clean_jjk.mp4", "ground_truth_target": "synth_proto_v1_crimson_slash", "expected_status": "identified", "condition": "clean_cut"},
+            {"query_id": "q_v2_crop_contrast", "modality": "visual", "path": "test-assets/recognition/q_v2_crop_contrast_spiderman.mp4", "ground_truth_target": "synth_proto_v2_comic_halftone", "expected_status": "identified", "condition": "15pct_crop_35pct_contrast"},
+            {"query_id": "q_v3_mirrored", "modality": "visual", "path": "test-assets/recognition/q_v3_mirrored_jjk.mp4", "ground_truth_target": "synth_proto_v1_crimson_slash", "expected_status": "identified", "condition": "horizontal_mirror"},
+            {"query_id": "q_v4_color_graded", "modality": "visual", "path": "test-assets/recognition/q_v4_color_graded_aot.mp4", "ground_truth_target": "synth_proto_v3_sepia_clouds", "expected_status": "identified", "condition": "heavy_cyan_grade"},
+            {"query_id": "q_v5_unknown_anime_style", "modality": "visual", "path": "test-assets/recognition/q_v5_unknown_anime.mp4", "ground_truth_target": None, "expected_status": "abstain", "condition": "out_of_catalog_unknown"},
+            {"query_id": "q_v6_distorted_blur", "modality": "visual", "path": "test-assets/recognition/q_v6_distorted_spiderman.mp4", "ground_truth_target": None, "expected_status": "abstain", "condition": "extreme_distortion_stress_test"},
+            {"query_id": "q_a1_clean_phonk_pattern", "modality": "audio", "path": "test-assets/recognition/q_a1_clean_phonk.wav", "ground_truth_target": "synth_proto_a1_phonk_cowbell", "expected_status": "identified", "condition": "clean_slice"},
+            {"query_id": "q_a2_slowed_reverb_pattern", "modality": "audio", "path": "test-assets/recognition/q_a2_slowed_reverb_phonk.wav", "ground_truth_target": "synth_proto_a1_phonk_cowbell", "expected_status": "identified", "condition": "slowed_0.85x_with_reverb"},
+            {"query_id": "q_a3_pitched_trap_pattern", "modality": "audio", "path": "test-assets/recognition/q_a3_pitched_family.wav", "ground_truth_target": "synth_proto_a2_trap_brass", "expected_status": "identified", "condition": "pitched_plus_2_semitones"},
+            {"query_id": "q_a4_dialogue_mixed_pattern", "modality": "audio", "path": "test-assets/recognition/q_a4_dialogue_mixed_exp.wav", "ground_truth_target": "synth_proto_a3_piano_arpeggio", "expected_status": "identified", "condition": "mixed_with_dialogue_0db_snr"},
+            {"query_id": "q_a5_unknown_acoustic_audio", "modality": "audio", "path": "test-assets/recognition/q_a5_unknown_audio.wav", "ground_truth_target": None, "expected_status": "abstain", "condition": "out_of_catalog_unknown"},
             {"query_id": "q_a6_extreme_slowed_0_65x", "modality": "audio", "path": "test-assets/recognition/q_a6_extreme_slowed_0_65x.wav", "ground_truth_target": None, "expected_status": "abstain", "condition": "extreme_slowed_stress_test"},
         ]
     }

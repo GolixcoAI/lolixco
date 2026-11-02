@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-11-02T16:40:48Z",
+  "provenance": "authorized_local_video_bytes_public_media_motion_study_webm",
+  "results": [
+    {
+      "query_id": "q_real_crop_contrast",
+      "expected_target": "ref_real_motion_study",
+      "expected_status": "identified",
+      "predicted_status": "identified",
+      "predicted_target": "ref_real_motion_study",
+      "confidence": 0.804,
+      "is_correct": true,
+      "latency_ms": 1309.51,
+      "evidence": {
+        "similarity_score": 0.804,
+        "runner_up_margin": 0.804,
+        "is_mirrored": true,
+        "hash_similarity": 0.586,
+        "color_similarity": 0.849
+      }
+    },
+    {
+      "query_id": "q_real_mirror_graded",
+      "expected_target": "ref_real_motion_study",
+      "expected_status": "identified",
+      "predicted_status": "identified",
+      "predicted_target": "ref_real_motion_study",
+      "confidence": 0.962,
+      "is_correct": true,
+      "latency_ms": 1351.4,
+      "evidence": {
+        "similarity_score": 0.962,
+        "runner_up_margin": 0.962,
+        "is_mirrored": true,
+        "hash_similarity": 0.944,
+        "color_similarity": 0.923
+      }
+    },
+    {
+      "query_id": "q_real_negative_control",
+      "expected_target": null,
+      "expected_status": "abstain",
+      "predicted_status": "abstain",
+      "predicted_target": null,
+      "confidence": 0.342,
+      "is_correct": true,
+      "latency_ms": 873.6,
+      "evidence": {}
+    }
+  ],
+  "accuracy": 1.0
+}

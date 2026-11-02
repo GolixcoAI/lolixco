@@ -1,0 +1,207 @@
+{
+  "media_summary": {
+    "filename": "mixed_edit_demo.mp4",
+    "duration_seconds": 12.0,
+    "resolution": "640x360",
+    "fps": 24.0,
+    "detected_shots_count": 4,
+    "analysis_latency_ms": 6453.5
+  },
+  "holistic_summary": {
+    "identified_visual_sources": [
+      {
+        "source_title": "Synthetic Prototype: Crimson Slash (Simulating High-Contrast Action Aesthetic)",
+        "cumulative_seconds": 3.0,
+        "duration_share_percent": 25.0
+      },
+      {
+        "source_title": "Synthetic Prototype: Halftone Dot Grid (Simulating Multiverse Comic Aesthetic)",
+        "cumulative_seconds": 3.0,
+        "duration_share_percent": 25.0
+      },
+      {
+        "source_title": "Synthetic Prototype: Sepia Smoke & Marching Blocks (Simulating Colossal March Aesthetic)",
+        "cumulative_seconds": 3.0,
+        "duration_share_percent": 25.0
+      }
+    ],
+    "unrecognized_visual_duration_sec": 3.0,
+    "unrecognized_visual_share_percent": 25.0,
+    "identified_music_tracks": [
+      {
+        "track_title": "Synthetic Prototype: 130 BPM Phonk Pattern (Procedural Cowbells + 808 Bass)",
+        "artist": "Controlled Benchmark Synthesizer (Non-Copyrighted)",
+        "detected_intervals": [
+          "[0.0s - 4.0s]"
+        ],
+        "transformations": {
+          "speed_factor": 1.0,
+          "pitch_shift_semitones": 0
+        }
+      },
+      {
+        "track_title": "Synthetic Prototype: 134 BPM Brass Trap Pattern (Procedural Staccato Horns + Snares)",
+        "artist": "Controlled Benchmark Synthesizer (Non-Copyrighted)",
+        "detected_intervals": [
+          "[2.0s - 6.0s]"
+        ],
+        "transformations": {
+          "speed_factor": 1.0,
+          "pitch_shift_semitones": -2
+        }
+      }
+    ],
+    "is_mixed_source_edit": true
+  },
+  "shot_timeline": [
+    {
+      "shot_index": 1,
+      "start_time": 0.0,
+      "end_time": 3.0,
+      "duration": 3.0,
+      "visual_recognition": {
+        "status": "identified",
+        "matched_entity": {
+          "ref_id": "synth_proto_v1_crimson_slash",
+          "title": "Synthetic Prototype: Crimson Slash (Simulating High-Contrast Action Aesthetic)",
+          "franchise": "Controlled Benchmark Prototype (Non-Copyrighted)"
+        },
+        "confidence": 0.991,
+        "margin": 0.105,
+        "is_mirrored": false,
+        "evidence": "Keyframe hash match 0.98, tonal match 0.99"
+      }
+    },
+    {
+      "shot_index": 2,
+      "start_time": 3.0,
+      "end_time": 6.0,
+      "duration": 3.0,
+      "visual_recognition": {
+        "status": "identified",
+        "matched_entity": {
+          "ref_id": "synth_proto_v2_comic_halftone",
+          "title": "Synthetic Prototype: Halftone Dot Grid (Simulating Multiverse Comic Aesthetic)",
+          "franchise": "Controlled Benchmark Prototype (Non-Copyrighted)"
+        },
+        "confidence": 0.813,
+        "margin": 0.098,
+        "is_mirrored": false,
+        "evidence": "Keyframe hash match 0.66, tonal match 0.75"
+      }
+    },
+    {
+      "shot_index": 3,
+      "start_time": 6.0,
+      "end_time": 9.0,
+      "duration": 3.0,
+      "visual_recognition": {
+        "status": "identified",
+        "matched_entity": {
+          "ref_id": "synth_proto_v3_sepia_clouds",
+          "title": "Synthetic Prototype: Sepia Smoke & Marching Blocks (Simulating Colossal March Aesthetic)",
+          "franchise": "Controlled Benchmark Prototype (Non-Copyrighted)"
+        },
+        "confidence": 0.956,
+        "margin": 0.146,
+        "is_mirrored": false,
+        "evidence": "Keyframe hash match 1.00, tonal match 0.78"
+      }
+    },
+    {
+      "shot_index": 4,
+      "start_time": 9.0,
+      "end_time": 12.0,
+      "duration": 3.0,
+      "visual_recognition": {
+        "status": "abstain",
+        "reason": "unregistered_source_or_insufficient_confidence",
+        "confidence": 0.712,
+        "matched_entity": null,
+        "evidence": "Top similarity 0.71 (Synthetic Prototype: Electric Arc & Particle Ribbons (Simulating Particle Combat Aesthetic)) below threshold or ambiguous."
+      }
+    }
+  ],
+  "audio_windows": [
+    {
+      "window_start": 0.0,
+      "window_end": 4.0,
+      "audio_recognition": {
+        "status": "identified",
+        "matched_entity": {
+          "ref_id": "synth_proto_a1_phonk_cowbell",
+          "title": "Synthetic Prototype: 130 BPM Phonk Pattern (Procedural Cowbells + 808 Bass)",
+          "artist": "Controlled Benchmark Synthesizer (Non-Copyrighted)"
+        },
+        "confidence": 0.807,
+        "transformations": {
+          "speed_factor": 1.0,
+          "pitch_shift_semitones": 0
+        },
+        "evidence": "Chroma correlation 0.81, onset correlation 0.79"
+      }
+    },
+    {
+      "window_start": 2.0,
+      "window_end": 6.0,
+      "audio_recognition": {
+        "status": "identified",
+        "matched_entity": {
+          "ref_id": "synth_proto_a2_trap_brass",
+          "title": "Synthetic Prototype: 134 BPM Brass Trap Pattern (Procedural Staccato Horns + Snares)",
+          "artist": "Controlled Benchmark Synthesizer (Non-Copyrighted)"
+        },
+        "confidence": 0.651,
+        "transformations": {
+          "speed_factor": 1.0,
+          "pitch_shift_semitones": -2
+        },
+        "evidence": "Chroma correlation 0.78, onset correlation 0.48"
+      }
+    },
+    {
+      "window_start": 4.0,
+      "window_end": 8.0,
+      "audio_recognition": {
+        "status": "abstain",
+        "reason": "unregistered_music_or_insufficient_confidence",
+        "confidence": 0.464,
+        "matched_entity": null,
+        "evidence": "Top similarity 0.46 (Synthetic Prototype: 134 BPM Brass Trap Pattern (Procedural Staccato Horns + Snares)) below threshold or ambiguous."
+      }
+    },
+    {
+      "window_start": 6.0,
+      "window_end": 10.0,
+      "audio_recognition": {
+        "status": "abstain",
+        "reason": "unregistered_music_or_insufficient_confidence",
+        "confidence": 0.654,
+        "matched_entity": null,
+        "evidence": "Top similarity 0.65 (Synthetic Prototype: 134 BPM Brass Trap Pattern (Procedural Staccato Horns + Snares)) below threshold or ambiguous."
+      }
+    },
+    {
+      "window_start": 8.0,
+      "window_end": 12.0,
+      "audio_recognition": {
+        "status": "abstain",
+        "reason": "unregistered_music_or_insufficient_confidence",
+        "confidence": 0.616,
+        "matched_entity": null,
+        "evidence": "Top similarity 0.62 (Synthetic Prototype: 90 BPM Minimalist Piano / Strings (Procedural Neo-Classical)) below threshold or ambiguous."
+      }
+    },
+    {
+      "window_start": 10.0,
+      "window_end": 12.0,
+      "audio_recognition": {
+        "status": "abstain",
+        "reason": "unregistered_music_or_insufficient_confidence",
+        "confidence": 0.645,
+        "matched_entity": null,
+        "evidence": "Top similarity 0.65 (Synthetic Prototype: 90 BPM Minimalist Piano / Strings (Procedural Neo-Classical)) below threshold or ambiguous."
+      }
+    }
+  ]
+}
