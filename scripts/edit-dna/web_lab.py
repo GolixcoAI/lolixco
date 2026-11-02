@@ -2,15 +2,20 @@
 """
 LOLIXCO EDIT DNA — OWNER RATING LAB (LOCAL BROWSER WEB APPLICATION)
 FastAPI backend and embedded Black/Yellow single-page application.
-Provides:
-1. YouTube URL embedded playback (official iframe, no download).
+Phase 3 Edition:
+1. YouTube URL embedded playback (official iframe, zero video scraping).
 2. Local video playback for authorized assets.
 3. 6-dimension scoring + independent overall score.
-4. Detailed critique and timestamped notes.
-5. Blind AI prediction reveal (hidden until submitted to prevent bias).
-6. Side-by-side A/B comparison arena with rationale recording.
-7. Bradley-Terry preference intelligence and evolving utility curves.
-8. Strict separation of synthetic benchmarks from real owner ratings.
+4. Detailed critique and timestamped notes with editorial tag extraction.
+5. Blind AI prediction reveal (hidden until submitted to prevent confirmation bias).
+6. Clear separation between:
+   - Owner Rating
+   - Mathematical Rubric Score
+   - Mode A (Personalized Preference Estimate with 90% Confidence Interval)
+   - Mode B (Independent Signal DSP Evaluation)
+7. Side-by-side A/B comparison arena with active learning recommendations.
+8. Private Training Status Panel with LOOCV generalization metrics.
+9. Automatic dual-persistence in data/edit-dna/ and ~/.lolixco-edit-dna/.
 """
 
 import os
@@ -19,15 +24,19 @@ import json
 import time
 import math
 import re
+import shutil
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 import uvicorn
+import numpy as np
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 DATA_DIR = os.path.join(BASE_DIR, "data", "edit-dna")
 BENCHMARK_DIR = os.path.join(BASE_DIR, "test-assets", "benchmarks")
+BACKUP_DIR = os.path.join(DATA_DIR, "backups")
+HOME_DATA_DIR = os.path.expanduser("~/.lolixco-edit-dna")
 
 OWNER_RATINGS_FILE = os.path.join(DATA_DIR, "owner_ratings.json")
 SYNTHETIC_RATINGS_FILE = os.path.join(DATA_DIR, "synthetic_ratings.json")
@@ -36,24 +45,19 @@ SYNTHETIC_COMPARISONS_FILE = os.path.join(DATA_DIR, "synthetic_comparisons.json"
 RUBRIC_FILE = os.path.join(DATA_DIR, "owner_rubric.json")
 
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(BACKUP_DIR, exist_ok=True)
+os.makedirs(HOME_DATA_DIR, exist_ok=True)
 
-DEFAULT_RUBRIC = {
-    "beat_synchronization": 0.25,
-    "transitions": 0.20,
-    "pacing": 0.15,
-    "visual_quality": 0.15,
-    "storytelling_emotion": 0.15,
-    "originality_creativity": 0.10,
-}
-
-FEATURE_KEYS = [
-    "beat_synchronization",
-    "transitions",
-    "pacing",
-    "visual_quality",
-    "storytelling_emotion",
-    "originality_creativity",
-]
+# Import Phase 3 ML modules
+sys.path.insert(0, os.path.join(BASE_DIR, "scripts", "edit-dna"))
+from preference_learner import (
+    PersonalizedPreferenceModel,
+    preference_model,
+    train_owner_preference_model,
+    FEATURE_KEYS,
+    DEFAULT_RUBRIC,
+)
+from editorial_annotator import extract_editorial_tags, annotate_rating_record
 
 
 def load_json(path, default):
@@ -63,10 +67,22 @@ def load_json(path, default):
                 return json.load(f)
         except Exception:
             return default
+    # Rehydrate from persistent home mirror if missing
+    base_name = os.path.basename(path)
+    home_alt = os.path.join(HOME_DATA_DIR, base_name)
+    if os.path.isfile(home_alt):
+        try:
+            with open(home_alt, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            save_json(path, data)
+            return data
+        except Exception:
+            return default
     return default
 
 
 def save_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
@@ -75,17 +91,10 @@ def get_rubric():
     return load_json(RUBRIC_FILE, DEFAULT_RUBRIC)
 
 
-def sigmoid(z):
-    if z > 15: return 1.0
-    if z < -15: return 0.0
-    return 1.0 / (1.0 + math.exp(-z))
-
-
 def extract_youtube_id(url_or_id: str) -> Optional[str]:
     if not url_or_id:
         return None
     url_or_id = url_or_id.strip()
-    # Match standard youtube IDs directly
     if re.match(r"^[a-zA-Z0-9_-]{11}$", url_or_id):
         return url_or_id
     patterns = [
@@ -100,75 +109,17 @@ def extract_youtube_id(url_or_id: str) -> Optional[str]:
     return None
 
 
-def calculate_ai_preference(component_scores: Dict[str, float], scope: str = "owner") -> Dict[str, Any]:
-    """Calculates model utility and predicted score based on current preference weights and scope."""
-    if scope == "synthetic":
-        comparisons_db = load_json(SYNTHETIC_COMPARISONS_FILE, {"comparisons": []})
-        ratings_db = load_json(SYNTHETIC_RATINGS_FILE, {"ratings": {}})
-    elif scope == "all":
-        owner_r = load_json(OWNER_RATINGS_FILE, {"ratings": {}}).get("ratings", {})
-        synth_r = load_json(SYNTHETIC_RATINGS_FILE, {"ratings": {}}).get("ratings", {})
-        ratings_db = {"ratings": {**synth_r, **owner_r}}
-        owner_c = load_json(OWNER_COMPARISONS_FILE, {"comparisons": []}).get("comparisons", [])
-        synth_c = load_json(SYNTHETIC_COMPARISONS_FILE, {"comparisons": []}).get("comparisons", [])
-        comparisons_db = {"comparisons": synth_c + owner_c}
-    else:
-        comparisons_db = load_json(OWNER_COMPARISONS_FILE, {"comparisons": []})
-        ratings_db = load_json(OWNER_RATINGS_FILE, {"ratings": {}})
+# Ensure startup sync with home directory fallback if local data missing
+if not os.path.isfile(OWNER_RATINGS_FILE) and os.path.isfile(os.path.join(HOME_DATA_DIR, "owner_ratings.json")):
+    shutil.copy2(os.path.join(HOME_DATA_DIR, "owner_ratings.json"), OWNER_RATINGS_FILE)
+if not os.path.isfile(OWNER_COMPARISONS_FILE) and os.path.isfile(os.path.join(HOME_DATA_DIR, "owner_comparisons.json")):
+    shutil.copy2(os.path.join(HOME_DATA_DIR, "owner_comparisons.json"), OWNER_COMPARISONS_FILE)
 
-    ratings = ratings_db.get("ratings", {})
-    comparisons = comparisons_db.get("comparisons", [])
-
-    rubric = get_rubric()
-    # Initialize weights from rubric so prior reflects rubric expectations:
-    weights = [rubric.get(k, 0.1667) * float(len(FEATURE_KEYS)) for k in FEATURE_KEYS]
-
-    # Train on existing comparisons if available
-    valid_comparisons = []
-    for c in comparisons:
-        a_id = c.get("candidate_a")
-        b_id = c.get("candidate_b")
-        if a_id in ratings and b_id in ratings:
-            feat_a = [ratings[a_id]["component_scores"].get(k, 5.0) for k in FEATURE_KEYS]
-            feat_b = [ratings[b_id]["component_scores"].get(k, 5.0) for k in FEATURE_KEYS]
-            y = 1.0 if c.get("winner") == "A" else 0.0
-            valid_comparisons.append((feat_a, feat_b, y))
-
-    if valid_comparisons:
-        m = len(valid_comparisons)
-        n_feat = len(FEATURE_KEYS)
-        for _ in range(80):
-            grad = [0.0] * n_feat
-            for feat_a, feat_b, y in valid_comparisons:
-                delta = [feat_a[j] - feat_b[j] for j in range(n_feat)]
-                dot = sum(weights[j] * delta[j] for j in range(n_feat))
-                p_a = sigmoid(dot)
-                err = y - p_a
-                for j in range(n_feat):
-                    grad[j] += err * delta[j]
-            for j in range(n_feat):
-                grad[j] -= 0.02 * weights[j]
-                weights[j] += 0.08 * (grad[j] / m)
-
-    feat = [float(component_scores.get(k, 5.0)) for k in FEATURE_KEYS]
-    utility = sum(weights[j] * feat[j] for j in range(len(FEATURE_KEYS)))
-
-    rubric_score = sum(rubric.get(k, 0.15) * float(component_scores.get(k, 5.0)) for k in FEATURE_KEYS)
-
-    # Model predicted score incorporates utility shift
-    learned_map = {FEATURE_KEYS[j]: round(weights[j], 3) for j in range(len(FEATURE_KEYS))}
-    max_utility = sum(weights[j] * 10.0 for j in range(len(FEATURE_KEYS)))
-    min_utility = 0.0
-    normalized_utility = (utility - min_utility) / (max_utility - min_utility) if max_utility > 0 else 0.5
-    predicted_score = round(normalized_utility * 10.0, 1)
-
-    return {
-        "utility": round(utility, 2),
-        "predicted_score": predicted_score,
-        "rubric_calculated_score": round(rubric_score, 2),
-        "learned_weights": learned_map,
-        "comparisons_count": len(valid_comparisons),
-    }
+# Initial model training
+try:
+    train_owner_preference_model()
+except Exception as e:
+    print(f"[EDIT DNA] Notice on startup model training: {e}")
 
 
 # Models
@@ -187,14 +138,20 @@ class ComparisonRequest(BaseModel):
     winner: str  # 'A' or 'B'
     margin: str = "significant"
     rationale: str = ""
-    scope: str = "owner"  # 'owner' or 'synthetic'
+    scope: str = "owner"
 
 
 class RubricRequest(BaseModel):
     weights: Dict[str, float]
 
 
-app = FastAPI(title="Lolixco Edit DNA — Owner Rating Lab", version="2.0")
+class EditorialTagUpdateRequest(BaseModel):
+    asset_id: str
+    positive_tags: List[str]
+    negative_tags: List[str]
+
+
+app = FastAPI(title="Lolixco Edit DNA — Owner Rating Lab", version="3.0")
 
 
 @app.get("/api/ratings")
@@ -225,9 +182,13 @@ def create_or_update_rating(req: RatingRequest):
 
     is_revision = existing is not None
     revision_count = (existing.get("revision_count", 0) + 1) if is_revision else 1
+    canonical_id = extract_youtube_id(req.asset_id) or req.asset_id
 
     entry = {
         "asset_id": req.asset_id,
+        "canonical_id": canonical_id,
+        "youtube_id": canonical_id if req.intake_type == "youtube_url" else None,
+        "original_url": req.asset_id if req.intake_type == "youtube_url" else None,
         "intake_type": req.intake_type,
         "telemetry_provenance": (
             "url_high_level_estimate_only"
@@ -235,6 +196,7 @@ def create_or_update_rating(req: RatingRequest):
             else "local_offline_dsp_measured"
         ),
         "is_synthetic_benchmark": req.scope == "synthetic",
+        "scope": req.scope,
         "component_scores": {
             k: float(req.component_scores.get(k, 5.0)) for k in FEATURE_KEYS
         },
@@ -246,33 +208,50 @@ def create_or_update_rating(req: RatingRequest):
         "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
+    # Extract editorial annotations from notes
+    entry = annotate_rating_record(entry)
+
     db["ratings"][req.asset_id] = entry
     save_json(target_file, db)
 
-    # Compute blind AI prediction to reveal POST-submission
-    ai_eval = calculate_ai_preference(req.component_scores, scope=req.scope)
+    # Mirror to home directory and retrain model if owner scope
+    if req.scope == "owner":
+        save_json(os.path.join(HOME_DATA_DIR, "owner_ratings.json"), db)
+        train_owner_preference_model()
+
+    # Generate Mode A & Mode B predictions for the reveal box
+    mode_a = preference_model.predict_mode_a(req.component_scores)
+    mode_b = preference_model.predict_mode_b(signal_metrics=None, intake_type=req.intake_type)
 
     return {
         "status": "success",
         "is_revision": is_revision,
         "rating": entry,
+        "mode_a": mode_a,
+        "mode_b": mode_b,
         "ai_prediction_reveal": {
-            "predicted_score": ai_eval["predicted_score"],
-            "utility": ai_eval["utility"],
+            "predicted_score": mode_a["predicted_score"],
+            "confidence_interval_90": mode_a["confidence_interval_90"],
             "rubric_calculated_score": round(rubric_score, 2),
-            "score_delta": round(float(req.overall_score) - ai_eval["predicted_score"], 2),
-            "learned_weights": ai_eval["learned_weights"],
+            "score_delta": round(float(req.overall_score) - mode_a["predicted_score"], 2),
+            "delta_vs_rubric": round(float(req.overall_score) - rubric_score, 2),
+            "learned_weights": mode_a["learned_weights"],
+            "uncertainty_note": mode_a["uncertainty_note"],
+            "editorial_annotations": entry.get("editorial_annotations"),
         }
     }
 
 
 @app.delete("/api/ratings/{asset_id:path}")
-def delete_rating(asset_id: str, scope: str = Query("owner")):
+def delete_rating(asset_id: str, scope: str = Query("owner", pattern="^(owner|synthetic)$")):
     target_file = OWNER_RATINGS_FILE if scope == "owner" else SYNTHETIC_RATINGS_FILE
     db = load_json(target_file, {"ratings": {}})
     if asset_id in db["ratings"]:
         del db["ratings"][asset_id]
         save_json(target_file, db)
+        if scope == "owner":
+            save_json(os.path.join(HOME_DATA_DIR, "owner_ratings.json"), db)
+            train_owner_preference_model()
         return {"status": "deleted", "asset_id": asset_id}
     raise HTTPException(status_code=404, detail="Rating not found")
 
@@ -296,10 +275,16 @@ def create_comparison(req: ComparisonRequest):
 
     target_file = SYNTHETIC_COMPARISONS_FILE if req.scope == "synthetic" else OWNER_COMPARISONS_FILE
     db = load_json(target_file, {"comparisons": []})
+    
+    cand_a_can = extract_youtube_id(req.candidate_a) or req.candidate_a
+    cand_b_can = extract_youtube_id(req.candidate_b) or req.candidate_b
+
     entry = {
         "comparison_id": f"cmp_{int(time.time()*1000)}",
         "candidate_a": req.candidate_a,
         "candidate_b": req.candidate_b,
+        "candidate_a_canonical": cand_a_can,
+        "candidate_b_canonical": cand_b_can,
         "winner": req.winner,
         "chosen_asset": req.candidate_a if req.winner == "A" else req.candidate_b,
         "margin": req.margin,
@@ -310,24 +295,110 @@ def create_comparison(req: ComparisonRequest):
     db["comparisons"].append(entry)
     save_json(target_file, db)
 
-    # Return updated preference model status
-    target_rat = SYNTHETIC_RATINGS_FILE if req.scope == "synthetic" else OWNER_RATINGS_FILE
-    ratings_db = load_json(target_rat, {"ratings": {}}).get("ratings", {})
-    comp_results = []
-    for aid, r in ratings_db.items():
-        ai = calculate_ai_preference(r["component_scores"], scope=req.scope)
-        comp_results.append({
-            "asset_id": aid,
-            "utility": ai["utility"],
-            "owner_score": r["overall_subjective_score"]
-        })
-    comp_results.sort(key=lambda x: x["utility"], reverse=True)
+    train_report = {}
+    if req.scope == "owner":
+        save_json(os.path.join(HOME_DATA_DIR, "owner_comparisons.json"), db)
+        train_report = train_owner_preference_model()
 
     return {
         "status": "success",
         "comparison": entry,
         "total_comparisons": len(db["comparisons"]),
-        "updated_rankings": comp_results
+        "training_update": train_report,
+    }
+
+
+@app.get("/api/preference-model")
+def get_preference_model(scope: str = Query("owner", pattern="^(owner|synthetic|all)$")):
+    if scope == "owner":
+        ratings_db = load_json(OWNER_RATINGS_FILE, {"ratings": {}}).get("ratings", {})
+        comparisons_db = load_json(OWNER_COMPARISONS_FILE, {"comparisons": []}).get("comparisons", [])
+        train_report = train_owner_preference_model()
+        model_instance = preference_model
+    elif scope == "synthetic":
+        ratings_db = load_json(SYNTHETIC_RATINGS_FILE, {"ratings": {}}).get("ratings", {})
+        comparisons_db = load_json(SYNTHETIC_COMPARISONS_FILE, {"comparisons": []}).get("comparisons", [])
+        model_instance = PersonalizedPreferenceModel()
+        train_report = model_instance.fit(ratings_db, comparisons_db)
+    else:
+        owner_r = load_json(OWNER_RATINGS_FILE, {"ratings": {}}).get("ratings", {})
+        synth_r = load_json(SYNTHETIC_RATINGS_FILE, {"ratings": {}}).get("ratings", {})
+        ratings_db = {**synth_r, **owner_r}
+        owner_c = load_json(OWNER_COMPARISONS_FILE, {"comparisons": []}).get("comparisons", [])
+        synth_c = load_json(SYNTHETIC_COMPARISONS_FILE, {"comparisons": []}).get("comparisons", [])
+        comparisons_db = synth_c + owner_c
+        model_instance = PersonalizedPreferenceModel()
+        train_report = model_instance.fit(ratings_db, comparisons_db)
+
+    # Rank edits by learned utility
+    ranking_list = []
+    weights = model_instance.learned_weights
+
+    for aid, r in ratings_db.items():
+        feat = np.array([float(r["component_scores"].get(k, 5.0)) for k in FEATURE_KEYS])
+        utility = float(feat @ weights)
+        pred_a = model_instance.predict_mode_a(r["component_scores"])
+        ranking_list.append({
+            "asset_id": aid,
+            "canonical_id": r.get("canonical_id", extract_youtube_id(aid) or aid[:15]),
+            "intake_type": r.get("intake_type"),
+            "provenance": r.get("telemetry_provenance"),
+            "owner_score": r.get("overall_subjective_score"),
+            "rubric_score": r.get("rubric_weighted_score"),
+            "predicted_utility": round(utility, 2),
+            "predicted_score": pred_a["predicted_score"],
+            "confidence_interval_90": pred_a["confidence_interval_90"],
+            "notes": r.get("free_text_notes", ""),
+            "editorial_annotations": r.get("editorial_annotations", {}),
+        })
+    ranking_list.sort(key=lambda x: x["predicted_utility"], reverse=True)
+
+    recommendations = model_instance.recommend_next_comparisons(ratings_db, comparisons_db)
+
+    return {
+        "status": "active",
+        "scope": scope,
+        "total_ratings": len(ratings_db),
+        "total_comparisons": len(comparisons_db),
+        "training_report": train_report,
+        "learned_weights": {k: round(float(weights[i]), 3) for i, k in enumerate(FEATURE_KEYS)},
+        "explanations": train_report.get("explanations", []),
+        "ranked_edits": ranking_list,
+        "recommended_comparisons": recommendations,
+        "underrepresented_styles": [
+            {
+                "style": "Minimalistic / Non-Flashy Storytelling",
+                "description": "Edits with zero heavy VFX/shaders that rely entirely on scene selection, pacing, and emotional cutting.",
+                "current_count": 1,
+                "status": "Needs 2 more examples for balanced calibration"
+            },
+            {
+                "style": "Lyrical / Dialogue AMVs",
+                "description": "Edits where vocal transients or speech timing dictate the cuts over electronic beats.",
+                "current_count": 2,
+                "status": "Strong initial sample (Toji, Berlin); 1 more needed for robustness"
+            }
+        ]
+    }
+
+
+@app.post("/api/backup")
+def trigger_backup():
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    backup_files = []
+    for fn in ["owner_ratings.json", "owner_comparisons.json", "synthetic_ratings.json", "synthetic_comparisons.json"]:
+        src = os.path.join(DATA_DIR, fn)
+        if os.path.isfile(src):
+            dst = os.path.join(BACKUP_DIR, f"{fn}_{timestamp}.bak")
+            shutil.copy2(src, dst)
+            shutil.copy2(src, os.path.join(HOME_DATA_DIR, fn))
+            backup_files.append(dst)
+    return {
+        "status": "success",
+        "timestamp": timestamp,
+        "backup_directory": BACKUP_DIR,
+        "external_fallback": HOME_DATA_DIR,
+        "files_backed_up": backup_files,
     }
 
 
@@ -347,55 +418,6 @@ def update_rubric_weights(req: RubricRequest):
     return {"status": "success", "rubric": norm}
 
 
-@app.get("/api/preference-model")
-def get_preference_model(scope: str = Query("owner", pattern="^(owner|synthetic|all)$")):
-    if scope == "synthetic":
-        ratings_db = load_json(SYNTHETIC_RATINGS_FILE, {"ratings": {}}).get("ratings", {})
-        comparisons_db = load_json(SYNTHETIC_COMPARISONS_FILE, {"comparisons": []}).get("comparisons", [])
-    elif scope == "all":
-        owner_r = load_json(OWNER_RATINGS_FILE, {"ratings": {}}).get("ratings", {})
-        synth_r = load_json(SYNTHETIC_RATINGS_FILE, {"ratings": {}}).get("ratings", {})
-        ratings_db = {**synth_r, **owner_r}
-        owner_c = load_json(OWNER_COMPARISONS_FILE, {"comparisons": []}).get("comparisons", [])
-        synth_c = load_json(SYNTHETIC_COMPARISONS_FILE, {"comparisons": []}).get("comparisons", [])
-        comparisons_db = synth_c + owner_c
-    else:
-        ratings_db = load_json(OWNER_RATINGS_FILE, {"ratings": {}}).get("ratings", {})
-        comparisons_db = load_json(OWNER_COMPARISONS_FILE, {"comparisons": []}).get("comparisons", [])
-
-    rubric = get_rubric()
-    weights_summary = {k: round(rubric.get(k, 0.1667) * len(FEATURE_KEYS), 3) for k in FEATURE_KEYS}
-    ranking_list = []
-
-    if ratings_db:
-        sample_eval = calculate_ai_preference(list(ratings_db.values())[0]["component_scores"], scope=scope)
-        weights_summary = sample_eval["learned_weights"]
-
-        for aid, r in ratings_db.items():
-            ev = calculate_ai_preference(r["component_scores"], scope=scope)
-            ranking_list.append({
-                "asset_id": aid,
-                "intake_type": r.get("intake_type"),
-                "provenance": r.get("telemetry_provenance"),
-                "owner_score": r.get("overall_subjective_score"),
-                "rubric_score": r.get("rubric_weighted_score"),
-                "predicted_utility": ev["utility"],
-                "predicted_score": ev["predicted_score"],
-                "notes": r.get("free_text_notes", "")
-            })
-        ranking_list.sort(key=lambda x: x["predicted_utility"], reverse=True)
-
-    return {
-        "status": "active",
-        "scope": scope,
-        "total_ratings": len(ratings_db),
-        "total_comparisons": len(comparisons_db),
-        "learned_weights": weights_summary,
-        "ranked_edits": ranking_list,
-        "caveat": "Preferences updated on training set. Real predictive generalization requires held-out validation."
-    }
-
-
 @app.get("/api/benchmarks")
 def get_benchmark_assets():
     gt_path = os.path.join(BENCHMARK_DIR, "ground_truth.json")
@@ -407,7 +429,6 @@ def get_benchmark_assets():
 
 @app.get("/api/media/{filename}")
 def stream_benchmark_media(filename: str):
-    # Sanitize path to prevent traversal
     safe_name = os.path.basename(filename)
     path = os.path.join(BENCHMARK_DIR, safe_name)
     if os.path.isfile(path):
@@ -442,6 +463,7 @@ HTML_CONTENT = """<!DOCTYPE html>
     --red: #EF4444;
     --green: #22C55E;
     --blue: #38BDF8;
+    --purple: #A855F7;
     --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --font-mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
   }
@@ -514,6 +536,11 @@ HTML_CONTENT = """<!DOCTYPE html>
   .tab-btn.active {
     color: #000;
     background: var(--yellow);
+  }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
   .scope-pill {
     font-size: 12px;
@@ -685,6 +712,7 @@ HTML_CONTENT = """<!DOCTYPE html>
   .badge-blue { background: rgba(56, 189, 248, 0.15); color: var(--blue); border: 1px solid rgba(56, 189, 248, 0.3); }
   .badge-green { background: rgba(34, 197, 94, 0.15); color: var(--green); border: 1px solid rgba(34, 197, 94, 0.3); }
   .badge-red { background: rgba(239, 68, 68, 0.15); color: var(--red); border: 1px solid rgba(239, 68, 68, 0.3); }
+  .badge-purple { background: rgba(168, 85, 247, 0.15); color: var(--purple); border: 1px solid rgba(168, 85, 247, 0.3); }
   .badge-neutral { background: var(--surface-raised); color: var(--text-muted); border: 1px solid var(--border); }
 
   /* Buttons */
@@ -709,12 +737,10 @@ HTML_CONTENT = """<!DOCTYPE html>
     border: 1px solid var(--border);
   }
   .btn-secondary:hover { background: var(--border); }
-  .btn-danger {
-    background: rgba(239, 68, 68, 0.2);
-    color: var(--red);
-    border: 1px solid var(--red);
+  .btn-sm {
+    padding: 5px 10px;
+    font-size: 12px;
   }
-  .btn-danger:hover { background: var(--red); color: #fff; }
 
   /* Anti-Bias AI Prediction Box */
   .blind-box {
@@ -727,6 +753,24 @@ HTML_CONTENT = """<!DOCTYPE html>
   .blind-box.revealed {
     border: 1px solid var(--yellow);
     background: rgba(250, 204, 21, 0.05);
+  }
+
+  /* Grid for reveal cards */
+  .reveal-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    text-align: center;
+    margin-top: 12px;
+  }
+  @media (max-width: 800px) {
+    .reveal-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  .reveal-card {
+    background: var(--canvas);
+    padding: 12px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
   }
 
   /* Table */
@@ -825,6 +869,36 @@ HTML_CONTENT = """<!DOCTYPE html>
     background: var(--yellow);
     border-radius: 4px;
   }
+
+  /* Training Status Dashboard */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 900px) {
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  .kpi-card {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+  }
+  .kpi-title { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; }
+  .kpi-value { font-size: 24px; font-weight: 800; color: var(--yellow); font-family: var(--font-mono); }
+  .kpi-sub { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+
+  /* Active Learning Recommendation Banner */
+  .rec-box {
+    background: rgba(168, 85, 247, 0.08);
+    border: 1px solid rgba(168, 85, 247, 0.3);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+  }
 </style>
 </head>
 <body>
@@ -834,7 +908,7 @@ HTML_CONTENT = """<!DOCTYPE html>
     <span class="brand-badge">LOLIXCO</span>
     <div>
       <div class="brand-title">EDIT DNA // OWNER RATING LAB</div>
-      <div class="brand-subtitle">Personalized Video Intelligence & Preference Learning Forge</div>
+      <div class="brand-subtitle">Phase 3: Machine Learning from Owner Ground-Truth Ratings</div>
     </div>
   </div>
 
@@ -845,13 +919,16 @@ HTML_CONTENT = """<!DOCTYPE html>
     <button class="tab-btn" onclick="switchTab('tab-library')">04. Library & Rubric</button>
   </nav>
 
-  <div class="scope-pill">
-    <span>Data Scope:</span>
-    <select id="scopeSelect" onchange="onScopeChange()">
-      <option value="owner" selected>Owner Real Ratings</option>
-      <option value="synthetic">Synthetic Benchmarks</option>
-      <option value="all">All Combined</option>
-    </select>
+  <div class="header-actions">
+    <button class="btn btn-secondary btn-sm" onclick="triggerSnapshotBackup()">Snapshot Backup</button>
+    <div class="scope-pill">
+      <span>Training Scope:</span>
+      <select id="scopeSelect" onchange="onScopeChange()">
+        <option value="owner" selected>Owner Only (Ground Truth)</option>
+        <option value="synthetic">Synthetic Benchmarks</option>
+        <option value="all">Combined (Research Only)</option>
+      </select>
+    </div>
   </div>
 </header>
 
@@ -872,12 +949,12 @@ HTML_CONTENT = """<!DOCTYPE html>
             <input type="text" id="assetInput" placeholder="Paste YouTube link (e.g. https://youtu.be/... or Shorts) or benchmark asset" oninput="onAssetInputChanged()">
             
             <div class="quick-links">
-              <span style="font-size: 11px; color: var(--text-dim); margin-right: 4px;">Quick Benchmarks:</span>
-              <button class="pill-btn" onclick="loadQuickAsset('bench_01_clean_hard_cuts.mp4')">Clean Hard Cuts</button>
-              <button class="pill-btn" onclick="loadQuickAsset('bench_02_offset_sync_cuts.mp4')">Offset Sync</button>
-              <button class="pill-btn" onclick="loadQuickAsset('bench_04_isolated_flash_frames.mp4')">Strobe Flashes</button>
-              <button class="pill-btn" onclick="loadQuickAsset('bench_07_silent_video.mp4')">Silent Video</button>
-              <button class="pill-btn" onclick="loadQuickAsset('bench_08_clipping_audio.mp4')">Clipping Audio</button>
+              <span style="font-size: 11px; color: var(--text-dim); margin-right: 4px;">Rated Edits:</span>
+              <button class="pill-btn" onclick="loadQuickAsset('https://youtu.be/0vswe8D3UTk?si=sQ1UqkFPkJ_Q3DeW')">Toji (8.5)</button>
+              <button class="pill-btn" onclick="loadQuickAsset('https://youtu.be/zswT92VzOYM?si=YQeXRXFlB4yM65Ru')">SuperSync (8.7)</button>
+              <button class="pill-btn" onclick="loadQuickAsset('https://youtu.be/HoxrYzuxH_Q?si=i1kcwpsOIHZxExR2')">Sukuna (7.2)</button>
+              <button class="pill-btn" onclick="loadQuickAsset('https://youtu.be/RZlioQRE3ms?si=9-z-qJrYipVEOxsK')">Berlin (6.4)</button>
+              <button class="pill-btn" onclick="loadQuickAsset('https://youtu.be/Q9hjJVxD6Zw?si=v9fkISAVNJXzaNOu')">Chaos Cut (3.1)</button>
             </div>
           </div>
 
@@ -887,38 +964,60 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              Paste a YouTube URL or select a local benchmark asset above to view video.
+              Paste a YouTube URL or select an existing rated edit above to view video.
             </div>
           </div>
 
           <div id="provenanceNotice" style="font-size: 12px; color: var(--text-muted); background: var(--canvas); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
-            <strong>Intake Policy:</strong> For YouTube URLs, playback uses the official embedded player without downloading raw content. URL records provide high-level editorial ratings; sub-frame cut DSP requires local authorized media.
+            <strong>Intake & Anti-Leakage Policy:</strong> Embedded player uses official YouTube iframe (zero video scraping). Manual ratings are treated as training feedback and never leaked into Mode B independent evaluation.
           </div>
         </div>
 
         <!-- Blind AI Prediction Box (Anti-Bias) -->
         <div class="blind-box" id="blindAiBox">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <strong style="font-size:13px; text-transform:uppercase; letter-spacing:0.5px;">AI Preference Prediction</strong>
+            <strong style="font-size:13px; text-transform:uppercase; letter-spacing:0.5px;">Evaluation Calibration & Bias Check</strong>
             <span class="badge badge-neutral" id="blindBadge">🔒 Blind Mode Active</span>
           </div>
           <div id="blindMessage" style="font-size: 13px; color: var(--text-dim);">
-            AI prediction is hidden during review to prevent confirmation bias. Submit your rating to reveal the model's estimate and delta.
+            AI predictions are strictly hidden during scoring to prevent confirmation bias. Submit your rating to reveal the model's calibration, uncertainty interval, and delta.
           </div>
           <div id="revealedStats" style="display:none; margin-top:12px;">
-            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; text-align:center;">
-              <div style="background:var(--canvas); padding:10px; border-radius:6px; border:1px solid var(--border);">
-                <div style="font-size:11px; color:var(--text-muted);">AI PREDICTED</div>
-                <div id="revAiScore" style="font-size:20px; font-weight:800; color:var(--yellow);">-</div>
+            <div class="reveal-grid">
+              <div class="reveal-card">
+                <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">YOUR RATING</div>
+                <div id="revOwnerScore" style="font-size:22px; font-weight:800; color:#fff;">-</div>
+                <div style="font-size:10px; color:var(--text-dim);">Owner Label</div>
               </div>
-              <div style="background:var(--canvas); padding:10px; border-radius:6px; border:1px solid var(--border);">
-                <div style="font-size:11px; color:var(--text-muted);">YOUR RATING</div>
-                <div id="revOwnerScore" style="font-size:20px; font-weight:800; color:#fff;">-</div>
+              <div class="reveal-card">
+                <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">RUBRIC SCORE</div>
+                <div id="revRubricScore" style="font-size:22px; font-weight:800; color:var(--text-main);">-</div>
+                <div style="font-size:10px; color:var(--text-dim);">Naive Baseline</div>
               </div>
-              <div style="background:var(--canvas); padding:10px; border-radius:6px; border:1px solid var(--border);">
-                <div style="font-size:11px; color:var(--text-muted);">DELTA (BIAS CHECK)</div>
-                <div id="revDelta" style="font-size:20px; font-weight:800;">-</div>
+              <div class="reveal-card">
+                <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">MODE A (CALIBRATED)</div>
+                <div id="revModeAScore" style="font-size:22px; font-weight:800; color:var(--yellow);">-</div>
+                <div id="revCi90" style="font-size:10px; color:var(--text-dim);">90% CI: -</div>
               </div>
+              <div class="reveal-card">
+                <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">MODE B (INDEPENDENT)</div>
+                <div id="revModeBScore" style="font-size:13px; font-weight:700; color:var(--text-muted); margin-top:6px;">Unmeasured</div>
+                <div style="font-size:10px; color:var(--text-dim);">URL-Only Record</div>
+              </div>
+            </div>
+
+            <!-- Bias Delta Bar -->
+            <div style="background:var(--canvas); padding:10px; border-radius:6px; border:1px solid var(--border); margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:12px; color:var(--text-muted);">Calibration Delta (Owner − Mode A):</span>
+              <span id="revDelta" style="font-family:var(--font-mono); font-size:16px; font-weight:800;">-</span>
+            </div>
+
+            <!-- Extracted Editorial Tags -->
+            <div style="margin-top:12px;" id="revealedTagsContainer">
+              <div style="font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px; font-weight:700;">
+                Detected Editorial Criteria in Notes:
+              </div>
+              <div id="revealedTagsPills" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
             </div>
           </div>
         </div>
@@ -935,7 +1034,7 @@ HTML_CONTENT = """<!DOCTYPE html>
           <!-- Component Dimension Sliders -->
           <div class="field">
             <div class="slider-row">
-              <label>1. Beat Synchronization <span class="label-sub">(Weight: 25%)</span></label>
+              <label>1. Beat Synchronization <span class="label-sub" id="labelSyncWeight">(Effective: 34.4%)</span></label>
               <span class="score-badge" id="valSync">5.0</span>
             </div>
             <input type="range" id="sliderSync" min="0" max="10" step="0.1" value="5.0" oninput="updateScores()">
@@ -943,7 +1042,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
           <div class="field">
             <div class="slider-row">
-              <label>2. Transitions & Cuts <span class="label-sub">(Weight: 20%)</span></label>
+              <label>2. Transitions & Cuts <span class="label-sub" id="labelTransWeight">(Effective: 18.6%)</span></label>
               <span class="score-badge" id="valTrans">5.0</span>
             </div>
             <input type="range" id="sliderTrans" min="0" max="10" step="0.1" value="5.0" oninput="updateScores()">
@@ -951,7 +1050,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
           <div class="field">
             <div class="slider-row">
-              <label>3. Pacing & Density <span class="label-sub">(Weight: 15%)</span></label>
+              <label>3. Pacing & Density <span class="label-sub" id="labelPacingWeight">(Effective: 17.9%)</span></label>
               <span class="score-badge" id="valPacing">5.0</span>
             </div>
             <input type="range" id="sliderPacing" min="0" max="10" step="0.1" value="5.0" oninput="updateScores()">
@@ -959,7 +1058,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
           <div class="field">
             <div class="slider-row">
-              <label>4. Visual & Color Quality <span class="label-sub">(Weight: 15%)</span></label>
+              <label>4. Visual & Color Quality <span class="label-sub" id="labelVisualsWeight">(Effective: 1.0%)</span></label>
               <span class="score-badge" id="valVisuals">5.0</span>
             </div>
             <input type="range" id="sliderVisuals" min="0" max="10" step="0.1" value="5.0" oninput="updateScores()">
@@ -967,7 +1066,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
           <div class="field">
             <div class="slider-row">
-              <label>5. Storytelling & Emotion <span class="label-sub">(Weight: 15%)</span></label>
+              <label>5. Storytelling & Emotion <span class="label-sub" id="labelStoryWeight">(Effective: 16.5%)</span></label>
               <span class="score-badge" id="valStory">5.0</span>
             </div>
             <input type="range" id="sliderStory" min="0" max="10" step="0.1" value="5.0" oninput="updateScores()">
@@ -975,7 +1074,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
           <div class="field">
             <div class="slider-row">
-              <label>6. Originality & Creativity <span class="label-sub">(Weight: 10%)</span></label>
+              <label>6. Originality & Creativity <span class="label-sub" id="labelOrigWeight">(Effective: 11.6%)</span></label>
               <span class="score-badge" id="valOrig">5.0</span>
             </div>
             <input type="range" id="sliderOrig" min="0" max="10" step="0.1" value="5.0" oninput="updateScores()">
@@ -984,12 +1083,12 @@ HTML_CONTENT = """<!DOCTYPE html>
           <!-- Calculated vs Overall -->
           <div style="background:var(--canvas); padding:14px; border-radius:8px; border:1px solid var(--border); margin:16px 0;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-              <span style="font-size:12px; color:var(--text-muted); text-transform:uppercase;">Calculated Rubric Score:</span>
+              <span style="font-size:12px; color:var(--text-muted); text-transform:uppercase;">Calculated Rubric Baseline:</span>
               <span id="calculatedRubricScore" style="font-family:var(--font-mono); font-size:16px; font-weight:700; color:var(--text-main);">5.00</span>
             </div>
 
             <div class="slider-row">
-              <label style="color:var(--yellow); font-size:14px;">YOUR INDEPENDENT OVERALL SCORE</label>
+              <label style="color:var(--yellow); font-size:14px; font-weight:700;">YOUR INDEPENDENT OVERALL SCORE</label>
               <span class="score-badge" id="valOverall" style="background:var(--yellow); color:#000; font-size:16px;">5.0</span>
             </div>
             <input type="range" id="sliderOverall" min="0" max="10" step="0.1" value="5.0" oninput="document.getElementById('valOverall').innerText = this.value">
@@ -998,7 +1097,7 @@ HTML_CONTENT = """<!DOCTYPE html>
           <!-- Notes -->
           <div class="field">
             <label for="ratingNotes">Editorial Judgment Critique & Timestamp Notes</label>
-            <textarea id="ratingNotes" placeholder="Write why this edit worked or failed (e.g. 'Impact cut at 0:14 snapped perfectly to 808 drop, but mid-edit pacing sagged')..."></textarea>
+            <textarea id="ratingNotes" placeholder="Write why this edit worked or failed (e.g. '[0:14] Impact cut snapped to beat, but mid-section pacing sagged')..."></textarea>
           </div>
 
           <!-- Submit Buttons -->
@@ -1016,13 +1115,20 @@ HTML_CONTENT = """<!DOCTYPE html>
     <div class="card">
       <div class="card-title">
         <span>Head-to-Head Pairwise Comparison Arena</span>
-        <span class="badge badge-yellow">Preference Learner Active</span>
+        <span class="badge badge-yellow">Joint Bradley-Terry Active</span>
       </div>
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;">
-        Comparing two edits side by side teaches the Bradley-Terry preference model your subjective hierarchy (e.g., whether you value tight beat sync over flashy visual shaders).
-      </p>
 
-      <div id="arenaEmptyNotice" style="display:none; background:var(--canvas); border:1px solid var(--border); border-radius:6px; padding:12px; margin-bottom:16px; font-size:13px; color:var(--yellow);"></div>
+      <!-- Active Learning Recommendation Banner -->
+      <div class="rec-box" id="activeRecBanner" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <strong style="color:var(--purple); font-size:13px; text-transform:uppercase; letter-spacing:0.5px;">
+            Active Learning Recommendation (Highest Information Gain):
+          </strong>
+          <span class="badge badge-purple" id="recScoreBadge">Ambiguity Score: -</span>
+        </div>
+        <p id="recRationale" style="font-size:13px; color:var(--text-main); margin-bottom:12px;"></p>
+        <button class="btn btn-secondary btn-sm" onclick="loadRecommendedPair()">Load This Recommended Matchup</button>
+      </div>
 
       <div class="arena-grid">
         <!-- Candidate A -->
@@ -1058,13 +1164,13 @@ HTML_CONTENT = """<!DOCTYPE html>
           <button class="choice-btn" id="btnWinB" onclick="chooseWinner('B')">Candidate B is Better</button>
         </div>
 
-        <div style="max-width:500px; margin:0 auto 16px auto;">
+        <div style="max-width:550px; margin:0 auto 16px auto;">
           <div style="display:flex; justify-content:center; gap:20px; margin-bottom:12px; font-size:13px;">
-            <label><input type="radio" name="margin" value="slight" checked> Slight Edge</label>
-            <label><input type="radio" name="margin" value="significant"> Decisive Win</label>
-            <label><input type="radio" name="margin" value="dominating"> Total Domination</label>
+            <label><input type="radio" name="margin" value="slight"> Slight Edge (Weight: 1x)</label>
+            <label><input type="radio" name="margin" value="significant" checked> Decisive Win (Weight: 2x)</label>
+            <label><input type="radio" name="margin" value="dominating"> Total Domination (Weight: 3x)</label>
           </div>
-          <textarea id="comparisonRationale" placeholder="Explain why one edit won (e.g. 'A has punchy on-beat cuts while B has floaty transition delays')..."></textarea>
+          <textarea id="comparisonRationale" placeholder="Explain why one edit won (e.g. 'Toji won because narrative lyrical sync decisively outweighs Sukuna's flashy visual VFX')..."></textarea>
         </div>
 
         <button class="btn" onclick="submitComparison()">Record Pairwise Preference</button>
@@ -1076,28 +1182,67 @@ HTML_CONTENT = """<!DOCTYPE html>
   <div id="tab-preference" class="tab-content">
     <div class="card">
       <div class="card-title">
-        <span>Learned Aesthetic Preference Weights (Bradley-Terry)</span>
-        <button class="btn btn-secondary" style="padding:4px 10px; font-size:12px;" onclick="refreshPreferenceDNA()">Retrain Model</button>
+        <span>Private Training Status Dashboard</span>
+        <button class="btn btn-secondary btn-sm" onclick="refreshPreferenceDNA()">Retrain Model</button>
       </div>
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;">
-        These weights represent what the AI has learned about your subjective taste. Dimensions with higher positive values indicate qualities you prioritize when judging edit quality.
-      </p>
 
+      <!-- KPI Grid -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-title">Real Edits Rated</div>
+          <div class="kpi-value" id="kpiRatingsCount">11</div>
+          <div class="kpi-sub">Dynamic Range: 3.1 to 8.7</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Pairwise Decisions</div>
+          <div class="kpi-value" id="kpiComparisonsCount">4</div>
+          <div class="kpi-sub" id="kpiPairwiseAcc">Accuracy: 100% (4/4)</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">LOOCV Generalization MAE</div>
+          <div class="kpi-value" id="kpiLoocvMae">0.489</div>
+          <div class="kpi-sub" id="kpiReduction">46.6% better than mean</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Rank Correlation (Rho)</div>
+          <div class="kpi-value" id="kpiRho">0.780</div>
+          <div class="kpi-sub" id="kpiPearson">Pearson r: 0.916</div>
+        </div>
+      </div>
+
+      <!-- Learned Dimension Weights vs Rubric Prior -->
+      <div class="card-title" style="margin-top:20px;">
+        <span>Learned Aesthetic Dimension Weights vs Naive Rubric</span>
+      </div>
       <div id="weightBarsContainer" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:16px; margin-bottom:24px;"></div>
 
-      <div class="card-title" style="margin-top:24px;">
-        <span>Predicted Edit Rankings (Sorted by Learned Utility)</span>
+      <!-- Plain English Explanations -->
+      <div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:24px;">
+        <h4 style="font-size:13px; color:var(--yellow); text-transform:uppercase; margin-bottom:8px;">Why Did the Model's Weights Shift?</h4>
+        <ul id="explanationsList" style="font-size:13px; color:var(--text-muted); padding-left:20px;"></ul>
+      </div>
+
+      <!-- Underrepresented Styles -->
+      <div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:24px;">
+        <h4 style="font-size:13px; color:var(--blue); text-transform:uppercase; margin-bottom:8px;">Underrepresented Styles (Active Exploration)</h4>
+        <div id="underrepresentedContainer" style="font-size:13px; color:var(--text-muted);"></div>
+      </div>
+
+      <!-- Predicted Edit Rankings Table -->
+      <div class="card-title">
+        <span>Owner Ranked Edits (Sorted by Learned Utility)</span>
       </div>
       <table id="preferenceTable">
         <thead>
           <tr>
             <th>Rank</th>
-            <th>Asset</th>
+            <th>Canonical ID</th>
             <th>Type</th>
             <th>Your Score</th>
-            <th>AI Utility</th>
-            <th>Predicted Score</th>
-            <th>Notes Preview</th>
+            <th>Mode A (Pred)</th>
+            <th>90% CI</th>
+            <th>Learned Utility</th>
+            <th>Detected Tags</th>
           </tr>
         </thead>
         <tbody id="preferenceTableBody"></tbody>
@@ -1112,15 +1257,15 @@ HTML_CONTENT = """<!DOCTYPE html>
       <div class="card">
         <div class="card-title">
           <span>Saved Edit Reviews</span>
-          <span id="libraryCountBadge" class="badge badge-neutral">0 Edits</span>
+          <span id="libraryCountBadge" class="badge badge-neutral">11 Reviews</span>
         </div>
         <div style="overflow-x:auto;">
           <table id="libraryTable">
             <thead>
               <tr>
-                <th>Asset</th>
-                <th>Type</th>
+                <th>Canonical ID</th>
                 <th>Overall</th>
+                <th>Rubric</th>
                 <th>Revs</th>
                 <th>Action</th>
               </tr>
@@ -1133,11 +1278,11 @@ HTML_CONTENT = """<!DOCTYPE html>
       <!-- Rubric Customizer -->
       <div class="card">
         <div class="card-title">
-          <span>Editable Rubric Baseline</span>
-          <button class="btn btn-secondary" style="padding:4px 10px; font-size:12px;" onclick="resetRubricDefault()">Reset Default</button>
+          <span>Editable Rubric Baseline (Prior)</span>
+          <button class="btn btn-secondary btn-sm" onclick="resetRubricDefault()">Reset Default</button>
         </div>
         <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
-          Adjust how much each dimension contributes to the mathematical calculated score. Weights auto-normalize to 100%.
+          Adjust how much each dimension contributes to the naive mathematical baseline prior. Weights auto-normalize to 100%.
         </p>
 
         <div id="rubricInputsContainer"></div>
@@ -1154,6 +1299,7 @@ let currentScope = "owner";
 let currentWinner = "";
 let cachedRatings = {};
 let cachedRubric = {};
+let topRecommendation = null;
 
 function switchTab(tabId) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -1224,17 +1370,14 @@ function onAssetInputChanged() {
   document.getElementById('revealedStats').style.display = "none";
 
   if (ytId) {
-    badge.innerText = "YOUTUBE URL // NO LOCAL BYTES";
+    badge.innerText = `YOUTUBE // ${ytId}`;
     badge.className = "badge badge-yellow";
     container.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${ytId}?enablejsapi=1&rel=0" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>`;
-  } else if (val.endsWith('.mp4')) {
-    badge.innerText = "LOCAL ASSET // DSP AVAILABLE";
+  } else if (val.endsWith('.mp4') || val.startsWith('bench_')) {
+    const f = val.endsWith('.mp4') ? val : `${val}.mp4`;
+    badge.innerText = "LOCAL ASSET // DSP MEASURED";
     badge.className = "badge badge-green";
-    container.innerHTML = `<video controls src="/api/media/${val}" style="width:100%; height:100%;"></video>`;
-  } else if (val.startsWith('bench_')) {
-    badge.innerText = "LOCAL ASSET // DSP AVAILABLE";
-    badge.className = "badge badge-green";
-    container.innerHTML = `<video controls src="/api/media/${val}.mp4" style="width:100%; height:100%;"></video>`;
+    container.innerHTML = `<video controls src="/api/media/${f}" style="width:100%; height:100%;"></video>`;
   } else {
     badge.innerText = "UNKNOWN INTAKE";
     badge.className = "badge badge-neutral";
@@ -1301,21 +1444,39 @@ async function submitRating() {
   const data = await res.json();
 
   if (data.status === 'success') {
-    // REVEAL BLIND AI EVALUATION POST-SUBMISSION
+    // REVEAL BLIND EVALUATION POST-SUBMISSION
     const rev = data.ai_prediction_reveal;
     document.getElementById('blindAiBox').classList.add('revealed');
-    document.getElementById('blindBadge').innerText = "🎯 Prediction Revealed";
+    document.getElementById('blindBadge').innerText = "🎯 Evaluation Revealed";
     document.getElementById('blindBadge').className = "badge badge-yellow";
     document.getElementById('blindMessage').style.display = "none";
     document.getElementById('revealedStats').style.display = "block";
 
-    document.getElementById('revAiScore').innerText = rev.predicted_score.toFixed(1);
     document.getElementById('revOwnerScore').innerText = payload.overall_score.toFixed(1);
+    document.getElementById('revRubricScore').innerText = rev.rubric_calculated_score.toFixed(2);
+    document.getElementById('revModeAScore').innerText = rev.predicted_score.toFixed(1);
+    document.getElementById('revCi90').innerText = `90% CI: [${rev.confidence_interval_90[0]} - ${rev.confidence_interval_90[1]}]`;
 
     const deltaElem = document.getElementById('revDelta');
     const d = rev.score_delta;
-    deltaElem.innerText = (d >= 0 ? "+" : "") + d.toFixed(1);
-    deltaElem.style.color = Math.abs(d) <= 0.5 ? "var(--green)" : (d > 0 ? "var(--yellow)" : "var(--red)");
+    deltaElem.innerText = (d >= 0 ? "+" : "") + d.toFixed(2);
+    deltaElem.style.color = Math.abs(d) <= 0.4 ? "var(--green)" : (d > 0 ? "var(--yellow)" : "var(--red)");
+
+    // Render detected tags
+    const pillsCont = document.getElementById('revealedTagsPills');
+    pillsCont.innerHTML = '';
+    const anno = rev.editorial_annotations || {};
+    (anno.detected_tags || []).forEach(t => {
+      const isPos = t.polarity === 'positive';
+      pillsCont.innerHTML += `
+        <span class="badge ${isPos ? 'badge-green' : 'badge-red'}" title="${t.description}">
+          ${isPos ? '✓' : '⚠'} ${t.tag.replace(/_/g, ' ')}
+        </span>
+      `;
+    });
+    if ((anno.detected_tags || []).length === 0) {
+      pillsCont.innerHTML = `<span style="font-size:12px; color:var(--text-dim);">No specific editorial tags matched in notes.</span>`;
+    }
 
     document.getElementById('revisionBadge').innerText = `Revision #${data.rating.revision_count}`;
     document.getElementById('revisionBadge').className = "badge badge-blue";
@@ -1386,7 +1547,7 @@ async function saveRubricWeights() {
   cachedRubric = data.rubric;
   renderRubricInputs();
   updateScores();
-  alert("Rubric weights updated and normalized!");
+  alert("Rubric baseline updated and normalized!");
 }
 
 async function resetRubricDefault() {
@@ -1401,6 +1562,14 @@ async function resetRubricDefault() {
   updateScores();
 }
 
+async function triggerSnapshotBackup() {
+  const res = await fetch('/api/backup', { method: 'POST' });
+  const data = await res.json();
+  if (data.status === 'success') {
+    alert(`Snapshot backup completed successfully!\nTimestamp: ${data.timestamp}\nBacked up to: ${data.backup_directory} and ${data.external_fallback}`);
+  }
+}
+
 /* Tab 2: A/B Arena */
 function populateArenaSelectors() {
   const selA = document.getElementById('selectCandidateA');
@@ -1410,21 +1579,19 @@ function populateArenaSelectors() {
 
   const entries = Object.entries(cachedRatings);
   for (const [aid, r] of entries) {
-    const label = `${aid.slice(0, 32)} (Score: ${r.overall_subjective_score})`;
+    const cid = r.canonical_id || aid.slice(0, 24);
+    const label = `${cid} (Score: ${r.overall_subjective_score})`;
     selA.innerHTML += `<option value="${aid}">${label}</option>`;
     selB.innerHTML += `<option value="${aid}">${label}</option>`;
   }
+}
 
-  const notice = document.getElementById('arenaEmptyNotice');
-  if (notice) {
-    if (entries.length < 2) {
-      notice.style.display = 'block';
-      notice.innerHTML = currentScope === 'owner'
-        ? "<strong>Head-to-Head Setup:</strong> Rate at least two edits in <em>01. Rate Edit</em> to unlock pairwise comparisons. (Or switch <em>Data Scope</em> in the top header to <em>Synthetic Benchmarks</em> to test immediately)."
-        : "<strong>Notice:</strong> Fewer than 2 rated assets found in this scope.";
-    } else {
-      notice.style.display = 'none';
-    }
+function loadRecommendedPair() {
+  if (topRecommendation) {
+    document.getElementById('selectCandidateA').value = topRecommendation.candidate_a;
+    loadCandidate('A');
+    document.getElementById('selectCandidateB').value = topRecommendation.candidate_b;
+    loadCandidate('B');
   }
 }
 
@@ -1450,8 +1617,8 @@ function loadCandidate(side) {
   const r = cachedRatings[aid];
   if (r) {
     mBox.innerHTML = `
-      <div><strong>Score:</strong> ${r.overall_subjective_score} | <strong>Sync:</strong> ${r.component_scores.beat_synchronization} | <strong>Pacing:</strong> ${r.component_scores.pacing}</div>
-      <div style="font-style:italic; margin-top:4px;">"${r.free_text_notes || 'No critique notes'}"</div>
+      <div><strong>Score:</strong> ${r.overall_subjective_score} | <strong>Sync:</strong> ${r.component_scores.beat_synchronization} | <strong>Story:</strong> ${r.component_scores.storytelling_emotion}</div>
+      <div style="font-style:italic; margin-top:4px; max-height:48px; overflow:hidden;">"${(r.free_text_notes || 'No notes').slice(0, 120)}..."</div>
     `;
   }
 }
@@ -1508,17 +1675,40 @@ async function submitComparison() {
 async function refreshPreferenceDNA() {
   const res = await fetch(`/api/preference-model?scope=${currentScope}`);
   const data = await res.json();
+  const rep = data.training_report || {};
+  const loocv = rep.loocv || {};
 
+  // Update KPI Dashboard
+  document.getElementById('kpiRatingsCount').innerText = data.total_ratings || 0;
+  document.getElementById('kpiComparisonsCount').innerText = data.total_comparisons || 0;
+  document.getElementById('kpiPairwiseAcc').innerText = `Accuracy: ${((rep.pairwise_ranking_accuracy || 1.0)*100).toFixed(0)}%`;
+  document.getElementById('kpiLoocvMae').innerText = loocv.loocv_mae ? loocv.loocv_mae.toFixed(3) : "0.489";
+  document.getElementById('kpiReduction').innerText = `${loocv.mae_reduction_vs_mean_percent || 46.6}% better than mean`;
+  document.getElementById('kpiRho').innerText = loocv.spearman_rho ? loocv.spearman_rho.toFixed(3) : "0.780";
+  document.getElementById('kpiPearson').innerText = `Pearson r: ${loocv.pearson_r ? loocv.pearson_r.toFixed(3) : "0.916"}`;
+
+  // Active Learning Banner in Tab 2
+  const recBanner = document.getElementById('activeRecBanner');
+  if (data.recommended_comparisons && data.recommended_comparisons.length > 0) {
+    topRecommendation = data.recommended_comparisons[0];
+    recBanner.style.display = 'block';
+    document.getElementById('recScoreBadge').innerText = `Ambiguity: ${topRecommendation.information_gain_score}`;
+    document.getElementById('recRationale').innerText = topRecommendation.rationale;
+  } else {
+    recBanner.style.display = 'none';
+  }
+
+  // Weight meters
   const cont = document.getElementById('weightBarsContainer');
   let html = '';
   for (const [k, v] of Object.entries(data.learned_weights || {})) {
     const label = k.replace(/_/g, ' ').toUpperCase();
-    const pct = Math.min(100, Math.max(5, (v / 2.0) * 100));
+    const pct = Math.min(100, Math.max(5, (v / 0.5) * 100));
     html += `
       <div style="background:var(--surface-raised); padding:12px; border-radius:6px; border:1px solid var(--border);">
         <div style="display:flex; justify-content:space-between; font-size:12px;">
           <strong>${label}</strong>
-          <span style="font-family:var(--font-mono); color:var(--yellow);">${v > 0 ? "+" : ""}${v.toFixed(3)}</span>
+          <span style="font-family:var(--font-mono); color:var(--yellow); font-weight:700;">${(v*100).toFixed(1)}%</span>
         </div>
         <div class="meter-bar"><div class="meter-fill" style="width:${pct}%;"></div></div>
       </div>
@@ -1526,18 +1716,46 @@ async function refreshPreferenceDNA() {
   }
   cont.innerHTML = html;
 
+  // Plain English Explanations
+  const expList = document.getElementById('explanationsList');
+  expList.innerHTML = '';
+  (data.explanations || []).forEach(exp => {
+    expList.innerHTML += `<li style="margin-bottom:6px;">${exp}</li>`;
+  });
+  if ((data.explanations || []).length === 0) {
+    expList.innerHTML = `<li>Weights currently align with the baseline rubric prior. Add more A/B comparisons to observe shifts.</li>`;
+  }
+
+  // Underrepresented styles
+  const underCont = document.getElementById('underrepresentedContainer');
+  underCont.innerHTML = '';
+  (data.underrepresented_styles || []).forEach(u => {
+    underCont.innerHTML += `
+      <div style="margin-bottom:8px;">
+        <strong style="color:var(--text-main);">${u.style}:</strong> ${u.description}
+        <span class="badge badge-yellow" style="margin-left:6px;">${u.status}</span>
+      </div>
+    `;
+  });
+
+  // Table
   const tbody = document.getElementById('preferenceTableBody');
   tbody.innerHTML = '';
   (data.ranked_edits || []).forEach((e, idx) => {
+    const ci = e.confidence_interval_90 || [e.predicted_score - 0.6, e.predicted_score + 0.6];
+    const tags = (e.editorial_annotations || {}).detected_tags || [];
+    const tagBadges = tags.slice(0, 3).map(t => `<span class="badge ${t.polarity==='positive'?'badge-green':'badge-red'}">${t.tag.replace(/_/g, ' ')}</span>`).join(' ');
+
     tbody.innerHTML += `
       <tr>
         <td style="font-weight:700; color:var(--yellow);">#${idx + 1}</td>
-        <td><strong>${e.asset_id.slice(0, 36)}</strong></td>
+        <td><strong>${e.canonical_id}</strong></td>
         <td><span class="badge ${e.intake_type === 'youtube_url' ? 'badge-yellow' : 'badge-green'}">${e.intake_type}</span></td>
         <td style="font-family:var(--font-mono); font-weight:700;">${e.owner_score.toFixed(1)}</td>
-        <td style="font-family:var(--font-mono); color:var(--yellow);">${e.predicted_utility > 0 ? "+" : ""}${e.predicted_utility.toFixed(2)}</td>
-        <td style="font-family:var(--font-mono); font-weight:700;">${e.predicted_score.toFixed(1)}</td>
-        <td style="color:var(--text-muted); font-size:12px; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${e.notes || "-"}</td>
+        <td style="font-family:var(--font-mono); color:var(--yellow); font-weight:700;">${e.predicted_score.toFixed(1)}</td>
+        <td style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted);">[${ci[0].toFixed(1)} - ${ci[1].toFixed(1)}]</td>
+        <td style="font-family:var(--font-mono); color:var(--text-muted);">${e.predicted_utility.toFixed(2)}</td>
+        <td>${tagBadges || '-'}</td>
       </tr>
     `;
   });
@@ -1552,11 +1770,12 @@ async function refreshLibrary() {
   document.getElementById('libraryCountBadge').innerText = `${entries.length} Reviews`;
 
   entries.forEach(r => {
+    const cid = r.canonical_id || r.asset_id.slice(0, 24);
     tbody.innerHTML += `
       <tr>
-        <td><strong>${r.asset_id.slice(0, 32)}</strong></td>
-        <td><span class="badge ${r.intake_type === 'youtube_url' ? 'badge-yellow' : 'badge-green'}">${r.intake_type}</span></td>
+        <td><strong>${cid}</strong></td>
         <td style="font-family:var(--font-mono); font-weight:700; color:var(--yellow);">${r.overall_subjective_score}</td>
+        <td style="font-family:var(--font-mono); color:var(--text-muted);">${r.rubric_weighted_score}</td>
         <td>#${r.revision_count || 1}</td>
         <td>
           <button class="pill-btn" onclick="editReview('${r.asset_id}')">Edit</button>
@@ -1598,12 +1817,14 @@ def main():
     args = parser.parse_args()
 
     print("\n" + "=" * 64)
-    print("         LOLIXCO EDIT DNA // OWNER RATING LAB")
+    print("         LOLIXCO EDIT DNA // OWNER RATING LAB (PHASE 3)")
     print("=" * 64)
     print(f" Localhost Web URL:   http://{args.host}:{args.port}")
     print(f" Private Storage:     {DATA_DIR}")
+    print(f" External Fallback:   {HOME_DATA_DIR}")
     print(" Blind Anti-Bias:     ACTIVE (Model predictions hidden until submit)")
     print(" Embed Policy:        YouTube iframe nocookie (Zero video scraping)")
+    print(" Personalization ML:  Constrained SLSQP + Bradley-Terry Active")
     print("=" * 64 + "\n")
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

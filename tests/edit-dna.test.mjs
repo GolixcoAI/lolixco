@@ -421,3 +421,90 @@ print("WEB_LAB_TEST_PASS")
   assert.ok(stdout.includes("WEB_LAB_TEST_PASS"));
 });
 
+test("Lolixco Edit DNA — Phase 3: Editorial annotation extracts timestamp intervals & criteria tags", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const testScript = `
+import sys
+sys.path.insert(0, "${projectRoot}/scripts/edit-dna")
+from editorial_annotator import extract_editorial_tags
+
+sample_text = (
+    "[0:00 - 0:23] Pacing & Storytelling: Deliberate, atmospheric slow pacing. "
+    "At [0:14], the edit achieves high-impact beat sync, perfectly locking visual hits to audio transients. "
+    "However, transitions rely heavily on repetitive zoom effects and automated templates."
+)
+
+result = extract_editorial_tags(sample_text)
+assert len(result["intervals"]) >= 2
+assert "atmospheric_tension_pacing" in result["positive_tags"]
+assert "kinetic_transient_sync" in result["positive_tags"]
+assert "repetitive_template_transitions" in result["negative_tags"]
+print("EDITORIAL_ANNOTATOR_PASS")
+`;
+
+  const stdout = execFileSync(
+    pythonBin,
+    ["-c", testScript],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  assert.ok(stdout.includes("EDITORIAL_ANNOTATOR_PASS"));
+});
+
+test("Lolixco Edit DNA — Phase 3: Personalized preference model trains on 11 real reviews without collapsing", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const testScript = `
+import sys
+sys.path.insert(0, "${projectRoot}/scripts/edit-dna")
+from preference_learner import train_owner_preference_model, preference_model
+
+report = train_owner_preference_model()
+assert report["samples_count"] == 11
+assert report["comparisons_count"] == 4
+assert report["pairwise_ranking_accuracy"] == 1.0
+
+# Verify non-collapsing dynamic range: lowest score and highest score predictions
+lo_pred = preference_model.predict_mode_a({
+    "beat_synchronization": 3.9,
+    "transitions": 2.5,
+    "pacing": 3.9,
+    "visual_quality": 0.5,
+    "storytelling_emotion": 2.0,
+    "originality_creativity": 2.4
+})
+hi_pred = preference_model.predict_mode_a({
+    "beat_synchronization": 9.8,
+    "transitions": 9.6,
+    "pacing": 8.8,
+    "visual_quality": 7.7,
+    "storytelling_emotion": 5.7,
+    "originality_creativity": 7.0
+})
+
+# Low must be <= 4.0, High must be >= 8.0 (spread > 4.0 points, no collapse to 7.0)
+assert lo_pred["predicted_score"] <= 4.0
+assert hi_pred["predicted_score"] >= 8.0
+assert hi_pred["predicted_score"] - lo_pred["predicted_score"] >= 4.0
+
+# Verify Mode B strictly avoids data leakage on raw YouTube URL
+mode_b_eval = preference_model.predict_mode_b(signal_metrics=None, intake_type="youtube_url")
+assert mode_b_eval["status"] == "unmeasured_signal"
+assert mode_b_eval["independent_technical_score"] is None
+assert "anti-leakage" in mode_b_eval["statement"]
+
+print("PREFERENCE_LEARNER_PASS")
+`;
+
+  const stdout = execFileSync(
+    pythonBin,
+    ["-c", testScript],
+    { encoding: "utf8", timeout: 15000 }
+  );
+
+  assert.ok(stdout.includes("PREFERENCE_LEARNER_PASS"));
+});
+

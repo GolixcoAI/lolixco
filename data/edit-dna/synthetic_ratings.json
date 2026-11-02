@@ -4,6 +4,8 @@
       "asset_id": "bench_01_clean_hard_cuts",
       "intake_type": "local_asset",
       "telemetry_provenance": "local_offline_dsp_measured",
+      "is_synthetic_benchmark": true,
+      "scope": "synthetic",
       "component_scores": {
         "beat_synchronization": 9.5,
         "transitions": 8.5,
@@ -14,16 +16,15 @@
       },
       "overall_subjective_score": 9,
       "rubric_weighted_score": 8.3,
-      "free_text_notes": "Flawless on-beat snap",
-      "revision_count": 1,
-      "created_at": "2026-11-02T08:39:53Z",
-      "updated_at": "2026-11-02T08:39:53Z",
-      "is_synthetic_benchmark": true
+      "free_text_notes": "Flawless on-beat snap (synthetic test baseline)",
+      "revision_count": 1
     },
     "bench_02_offset_sync_cuts": {
       "asset_id": "bench_02_offset_sync_cuts",
       "intake_type": "local_asset",
       "telemetry_provenance": "local_offline_dsp_measured",
+      "is_synthetic_benchmark": true,
+      "scope": "synthetic",
       "component_scores": {
         "beat_synchronization": 2,
         "transitions": 5.5,
@@ -34,11 +35,8 @@
       },
       "overall_subjective_score": 3,
       "rubric_weighted_score": 4.45,
-      "free_text_notes": "Revised: After second listen, desync is unacceptable",
-      "revision_count": 2,
-      "created_at": "2026-11-02T08:39:53Z",
-      "updated_at": "2026-11-02T08:40:00Z",
-      "is_synthetic_benchmark": true
+      "free_text_notes": "Desync is unacceptable (synthetic test baseline)",
+      "revision_count": 1
     },
     "test_edit_asset_99": {
       "asset_id": "test_edit_asset_99",
@@ -57,8 +55,8 @@
       "rubric_weighted_score": 8.62,
       "free_text_notes": "Revised: better sync than initially credited",
       "revision_count": 2,
-      "created_at": "2026-11-02T10:01:07Z",
-      "updated_at": "2026-11-02T10:01:07Z"
+      "created_at": "2026-11-02T15:41:51Z",
+      "updated_at": "2026-11-02T15:41:51Z"
     }
   }
 }
