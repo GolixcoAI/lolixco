@@ -80,9 +80,20 @@ Evaluate visual atmosphere, narrative structure, and estimated editing pacing.`
         uri: youtubeUrl
       }
     ],
-    // Enforce structured JSON output
-    generation_config: {
-      response_mime_type: "application/json"
+    // Enforce structured JSON output (Interactions API response_format schema)
+    response_format: {
+      type: "text",
+      mime_type: "application/json",
+      schema: {
+        type: "object",
+        properties: {
+          franchise_hypothesis: { type: "string" },
+          character_focus: { type: "array", items: { type: "string" } },
+          visual_atmosphere: { type: "string" },
+          estimated_pacing_style: { type: "string" }
+        },
+        required: ["franchise_hypothesis", "visual_atmosphere"]
+      }
     }
   });
 

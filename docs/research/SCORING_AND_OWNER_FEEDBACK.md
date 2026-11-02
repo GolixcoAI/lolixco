@@ -203,7 +203,9 @@ Because this objective is strictly convex, it is optimized via L-BFGS or Newton-
 #### 4.4 Layer 4: Active Learning & Informative Sampling
 To minimize the number of videos the owner must manually review, the system selects candidate edits using **Uncertainty Sampling**:
 $$\text{InformativeScore}(A, B) = 1.0 - 2 \cdot \left| P(A \succ B) - 0.5 \right|$$
-Pairs where the model is most ambivalent ($P(A \succ B) \approx 0.50$) provide maximal information gain per click, reducing the training set required for 90% preference agreement by over 60%.
+Pairs where the model is most ambivalent ($P(A \succ B) \approx 0.50$) provide maximal theoretical information gain per click (active learning hypothesis). Real annotation reduction must be empirically benchmarked against uniform random sampling once an owner cohort dataset is gathered.
+
+The prototype implementation is provided in `scripts/edit-dna/rating_lab.py` and unit tested in `tests/edit-dna.test.mjs`.
 
 #### 4.5 Optional Future LoRA Adaptation Policy
 - **Strict Guardrail:** We will **not** train or fine-tune LoRA weights on large foundation models (such as Qwen2.5-VL or Gemini) during initial R&D.

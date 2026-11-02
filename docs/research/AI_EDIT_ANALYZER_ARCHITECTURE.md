@@ -133,7 +133,7 @@ Operates on local CPU/worker instances without GPU requirements.
   2. Narrative Arc (e.g., "Villain introduction leading to climactic confrontation").
   3. Visual Atmosphere & Color Grading (e.g., "Moody neo-noir cyberpunk with saturated magenta accents").
   4. Editing Originality & Creativity Assessment.
-- **Structured Output Guard:** Output is constrained via native JSON schema enforcement (`response_mime_type="application/json"`). Generative text is parsed and validated against `EditDnaSynthesisSchema`.
+- **Structured Output Guard:** Output is constrained via native JSON schema enforcement using the modern `response_format` object (`response_format: { type: "text", mime_type: "application/json", schema: ... }`). Generative text is parsed and validated against `EditDnaSynthesisSchema`.
 
 #### Tier 5: Owner Quality Scoring & Personalization Engine
 - **Three-Tier Score Separation:**

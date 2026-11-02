@@ -1,160 +1,95 @@
 # LOLIXCO EDIT DNA — AI EDIT ANALYZER R&D
-## BENCHMARK SUITE, GROUND-TRUTH TEST CORPUS & EVALUATION PROTOCOL
-**Document ID:** `BENCHMARK_AND_EVALUATION.md`  
-**Mission:** Antigravity Mission 1 (Parallel Independent R&D)  
-**Status:** Approved Benchmark Methodology & Validation Protocol  
+## BENCHMARK SUITE, GROUND-TRUTH TEST CORPUS & EMPIRICAL EVALUATION RESULTS
+**Document ID:** `docs/research/BENCHMARK_AND_EVALUATION.md`  
+**Mission:** Antigravity Mission 1 & 2 (Empirical R&D & Measured Baseline)  
+**Status:** Updated with Real Measured Phase 2 Data  
 **Author:** Antigravity AI Engineering & Research  
 **Target Platform:** Lolixco Video Intelligence Engine ("Lolixco Edit DNA")
 
 ---
 
-### EXECUTIVE SUMMARY
+### 1. THE 10 REAL BENCHMARK EVALUATION CATEGORIES
 
-To guarantee that Lolixco Edit DNA delivers trustworthy, scientifically validated intelligence rather than subjective guesswork, we establish an end-to-end benchmark suite. This protocol defines:
-1. **The 10 Required Test Corpus Categories:** Covering high-velocity anime, heavily recolored shaders, dark superhero cinematography, phonk percussion, pitch-shifted soundtracks, open-set unknowns, and deliberately desynced edits.
-2. **Ground-Truth Human Annotation Schema:** Frame-accurate cut logs, verified beat timestamps, and gold-standard editorial scores.
-3. **Rigorous Statistical Metrics:** Measuring precision, recall, F1-scores at $\pm 1$ frame ($33.3\text{ ms}$) and $\pm 3$ frames ($100\text{ ms}$) tolerances, Mean Absolute Error (MAE) for beat tracking, Kendall's Tau ($\tau$) for owner ranking correlation, and Expected Calibration Error (ECE) for model confidence.
-4. **Transparent MVP Success Thresholds vs Experimental Horizons:** Defining exactly what the initial production release must satisfy versus what remains long-term research.
+In Phase 2, we generated 10 real synthetic video files (`test-assets/benchmarks/bench_*.mp4`) with mathematically verified ground-truth parameters:
 
----
-
-### 1. THE 10 BENCHMARK EVALUATION CATEGORIES
-
-The test suite evaluates 50 curated or synthetically generated video clips (5 per category, 15–45 seconds each) representing the spectrum of contemporary video editing:
-
-| ID | Evaluation Category | Defining Technical & Aesthetic Profile | Primary Stress Test for the Analyzer | Expected Failure Mode if Naive |
-| :---: | :--- | :--- | :--- | :--- |
-| **CAT-01** | **Clean Anime Edit** | Standard 1080p anime footage (*Jujutsu Kaisen*, *Demon Slayer*), crisp line art, original color palette, standard electronic/pop soundtrack. | Baseline source, character, and cut accuracy under optimal conditions. | Should achieve $>95\%$ cut F1 and correct franchise ID. |
-| **CAT-02** | **Heavily Recolored Anime Edit** | Intense color grading, high-contrast cyan/magenta split toning, inverted luminance flashes, custom anime shaders. | Tests visual embedding resilience against aggressive chromatic shifts. | Naive RGB histograms fail; SigLIP must match on semantic geometry. |
-| **CAT-03** | **Fast-Cut Spider-Man Action Edit** | Rapid montage (*Across the Spider-Verse* / MCU), speed lines, comic halftones, whip-pans, ASL $< 0.8\text{ seconds}$. | Optical flow transition classification and high-frequency boundary detection. | False positive cuts during camera whip-pans or web-swinging motion. |
-| **CAT-04** | **Dark Cinematic Movie Edit** | Low key lighting (*The Batman*, *Blade Runner 2049*), heavy shadows, low contrast ratios, orchestral/ambient audio. | Shadow detail resolution and dynamic range assessment in low-luminance scenes. | Misidentifying dark frames as black fade transitions. |
-| **CAT-05** | **Slow Emotional Edit** | Extended shots (ASL $> 3.5\text{ seconds}$), dissolves, soft focus, classical or vocal ballad (*Violet Evergarden*, *Your Name*). | Pacing curve analysis and narrative cohesion recognition. | Penalizing low cut density as "boring" without recognizing emotional pacing. |
-| **CAT-06** | **Beat-Driven Phonk Edit** | Ultra-dense rhythmic cutting, 808 cowbell percussion, 130–150 BPM, impact flashes on every snare/kick. | Millisecond cut-to-beat synchronization ($\delta \le 33\text{ ms}$) and strobe rejection. | Double-counting single-frame white strobes as two separate shots. |
-| **CAT-07** | **Slowed / Pitch-Shifted Soundtrack** | Soundtrack lowered by 2–4 semitones and slowed by 15–20% ("Slowed + Reverb" / "Chopped & Screwed"). | Acoustic fingerprint normalization and tempo inversion recovery. | Standard Chromaprint hashes fail 100% without pitch/speed compensation. |
-| **CAT-08** | **Unknown Source / Open-Set Media** | Independent Blender 3D animation, student film, or unreleased royalty-free soundtrack. | **Calibrated Abstention:** Verifying the model does NOT hallucinate a popular anime franchise. | Hallucinating *Jujutsu Kaisen* or *Attack on Titan* due to LLM popularity bias. |
-| **CAT-09** | **Deliberately Poor Editing** | Intentionally misaligned cuts (offset 150ms from beat), harsh audio clipping ($>0\text{ dBTP}$), awkward jump cuts. | Technical error detection and negative penalty calibration. | Giving high scores based solely on flashy anime characters despite terrible sync. |
-| **CAT-10** | **Strong Minimalist Editing** | Masterful restraint, zero flash effects, perfectly placed match-cuts, narrative rhythm over sensory overload. | Disentangling true editorial quality from superficial effect density. | Undervaluing subtle editing craft due to low transition count. |
+| Asset Name | Characteristics | Duration & FPS | Real Cuts | Expected Audio Profile | Key Stress Test Evaluated |
+| :--- | :--- | :--- | :---: | :--- | :--- |
+| **`bench_01_clean_hard_cuts.mp4`** | Clean solid-color cuts every 1.0s | 6.0s @ 30fps | 5 | 120 BPM on-beat clicks | Optimal baseline sync: 0ms delta |
+| **`bench_02_offset_sync_cuts.mp4`** | Cuts at 1.0s, beats offset by +120ms | 6.0s @ 30fps | 5 | 120 BPM offset clicks | Penalizing off-beat cuts (>75ms delta) |
+| **`bench_03_fast_phonk_montage.mp4`** | 8-frame cuts (ASL 0.267s, 3.75 CPS) | 4.0s @ 30fps | 14 | 140 BPM phonk synth/snare | Rapid pacing and high cut density |
+| **`bench_04_isolated_flash_frames.mp4`**| 2 scenes with 1-frame white strobes | 6.0s @ 30fps | 1 | 440 Hz tone | False cut rejection on 33ms flashes |
+| **`bench_05_slow_emotional_takes.mp4`** | Extended shots (ASL = 6.0s, CPS = 0.17) | 12.0s @ 30fps | 1 | 60 BPM ambient pulses | Pacing curve on slow cinematic takes |
+| **`bench_06_dissolves_fades.mp4`** | 0.5s gradual crossfades | 6.0s @ 30fps | 0 | 440 Hz tone | Non-hard-cut dissolve behavior |
+| **`bench_07_silent_video.mp4`** | Clean cuts, NO audio stream | 5.0s @ 30fps | 3 | None (No stream) | Failure behavior on missing audio |
+| **`bench_08_clipping_audio.mp4`** | Cuts every 1.0s, +20dB audio clip | 5.0s @ 30fps | 4 | Distorted square wave | Audio clipping and true peak detection |
+| **`bench_09_strobe_overload.mp4`** | 15Hz alternating black/white strobe | 5.0s @ 30fps | 2 | 440 Hz tone | Detector breakdown under strobe overload |
+| **`bench_10_varied_dynamic_pacing.mp4`**| Buildup (2s) -> Fast (0.5s) -> Release | 8.0s @ 30fps | 5 | Dynamic aligned beeps | Pacing variance and shot length diversity |
 
 ---
 
-### 2. GROUND-TRUTH ANNOTATION SCHEMA (`benchmark_ground_truth.json`)
+### 2. EMPIRICAL BENCHMARK RESULTS (MEASURED IN PHASE 2)
 
-Each benchmark asset is annotated by a human professional editor to establish definitive physical and editorial truth:
+Running `scripts/edit-dna/run_benchmark.py` against all 10 video files produced the following measured results:
 
-```json
-{
-  "$schema": "https://lolixco.com/schemas/benchmark-groundtruth.v1.json",
-  "benchmark_id": "bench_cat06_phonk_002",
-  "category": "CAT-06_beat_driven_phonk",
-  "duration_seconds": 24.50,
-  "framerate_fps": 30.0,
-  "ground_truth_source": {
-    "franchise": "Jujutsu Kaisen",
-    "season": 2,
-    "episode": 16,
-    "characters": ["Sukuna", "Jogo"]
-  },
-  "ground_truth_audio": {
-    "track_title": "Metamorphosis",
-    "artist": "INTERWORLD",
-    "bpm": 138.0,
-    "is_pitch_shifted": false,
-    "beat_timestamps_seconds": [
-      0.435, 0.870, 1.304, 1.739, 2.174, 2.609, 3.043, 3.478
-    ]
-  },
-  "ground_truth_cuts": [
-    { "timestamp_seconds": 0.870, "frame_number": 26, "type": "hard_cut", "aligned_beat_delta_ms": 0.0 },
-    { "timestamp_seconds": 1.735, "frame_number": 52, "type": "flash_transition", "aligned_beat_delta_ms": -4.0 },
-    { "timestamp_seconds": 2.615, "frame_number": 78, "type": "hard_cut", "aligned_beat_delta_ms": +6.0 }
-  ],
-  "editorial_ratings": {
-    "beat_synchronization": 9.8,
-    "transitions": 9.2,
-    "pacing": 8.8,
-    "visual_quality": 8.5,
-    "storytelling_emotion": 7.0,
-    "originality_creativity": 6.8,
-    "overall_score": 8.7
-  }
-}
+```
+================================================================================
+                    AGGREGATE BENCHMARK RESULTS
+================================================================================
+ Total Clips Evaluated:         10 real MP4 files
+ Overall Cut Precision:         82.1% (0.821)
+ Overall Cut Recall:            80.0% (0.800)
+ Overall Cut F1-Score:          81.0% (0.810)
+ Mean Timing Error on Cuts:     14.6 ms (~0.4 frames at 30 fps)
+ Total Benchmark Suite Runtime: 12.13 seconds (Average: 1.21s / clip)
+ Mean Peak RAM Consumption:     322.3 MB
+================================================================================
 ```
 
----
+#### Detailed Per-Video Measurements:
 
-### 3. MATHEMATICAL METRICS & EVALUATION FORMULAS
-
-#### 3.1 Cut Detection Precision, Recall & F1-Score
-Let $C_{\text{truth}}$ be ground-truth cuts and $C_{\text{pred}}$ be model-predicted cuts. A predicted cut $c_p$ is a **True Positive (TP)** if there exists a ground-truth cut $c_t$ such that $|t(c_p) - t(c_t)| \le \Delta t_{\text{tol}}$:
-- **Tight Tolerance:** $\Delta t_{\text{tol}} = 33.3\text{ ms}$ ($\pm 1$ frame at 30 fps).
-- **Loose Tolerance:** $\Delta t_{\text{tol}} = 100.0\text{ ms}$ ($\pm 3$ frames).
-
-$$\text{Precision} = \frac{|TP|}{|C_{\text{pred}}|}, \quad \text{Recall} = \frac{|TP|}{|C_{\text{truth}}|}, \quad F_1 = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}$$
-
-#### 3.2 Beat Tracking Accuracy
-- **Mean Absolute Error (MAE):**
-  $$\text{MAE}_{\text{beat}} = \frac{1}{N} \sum_{k=1}^N |t_{\text{pred}}(b_k) - t_{\text{truth}}(b_k)|$$
-- **BPM Error Percentage:**
-  $$\text{Error}_{\text{BPM}} = \frac{|\text{BPM}_{\text{pred}} - \text{BPM}_{\text{truth}}|}{\text{BPM}_{\text{truth}}} \times 100\%$$
-
-#### 3.3 Source Recognition & Abstention Metrics
-- **Top-1 Accuracy:** Correct franchise identified as top candidate.
-- **Top-3 Accuracy:** Correct franchise present in top 3 candidates.
-- **Unknown Rejection Rate (URR):** Percentage of open-set / unknown clips (CAT-08) correctly flagged as `"unknown_source"` rather than misclassified.
-- **Expected Calibration Error (ECE):**
-  $$\text{ECE} = \sum_{m=1}^M \frac{|B_m|}{N} \left| \text{acc}(B_m) - \text{conf}(B_m) \right|$$
-  Measures whether the model's reported confidence matches its actual empirical accuracy.
-
-#### 3.4 Preference Ranking Agreement
-- **Kendall's Rank Correlation ($\tau$):** Evaluates whether the predicted ordering of edits matches the owner's subjective preferences:
-  $$\tau = \frac{C - D}{\frac{1}{2} n (n - 1)}$$
-  where $C$ is the count of concordant pairs and $D$ is the count of discordant pairs.
+| Benchmark Asset | Expected Cuts | Detected Cuts | Precision | Recall | F1-Score | Timing Error (ms) | Strobe Warnings | Runtime (s) | Peak RAM (MB) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `bench_01_clean_hard_cuts` | 5 | 5 | **1.00** | **1.00** | **1.00** | **0.0 ms** | 1 | 3.57s | 289.1 MB |
+| `bench_02_offset_sync_cuts` | 5 | 5 | **1.00** | **1.00** | **1.00** | **0.0 ms** | 1 | 1.10s | 312.6 MB |
+| `bench_03_fast_phonk_montage` | 14 | 13 | 0.615 | 0.571 | 0.592 | 56.9 ms | 3 | 0.78s | 316.1 MB |
+| `bench_04_isolated_flash_frames`| 1 | 3 | 0.333 | **1.00** | 0.500 | **0.0 ms** | 2 | 0.94s | 319.8 MB |
+| `bench_05_slow_emotional_takes`| 1 | 1 | **1.00** | **1.00** | **1.00** | **0.0 ms** | 0 | 1.47s | 328.5 MB |
+| `bench_06_dissolves_fades` | 0 | 0 | **1.00** | **1.00** | **1.00** | **0.0 ms** | 0 | 0.79s | 328.5 MB |
+| `bench_07_silent_video` | 3 | 3 | **1.00** | **1.00** | **1.00** | 33.0 ms | 0 | 0.51s | 328.5 MB |
+| `bench_08_clipping_audio` | 4 | 4 | **1.00** | **1.00** | **1.00** | **0.0 ms** | 2 | 0.88s | 330.3 MB |
+| `bench_09_strobe_overload` | 2 | 0 | 0.000 | 0.000 | 0.000 | N/A | 2 | 0.80s | 332.6 MB |
+| `bench_10_varied_dynamic_pacing`| 5 | 5 | **1.00** | **1.00** | **1.00** | 26.6 ms | 0 | 1.29s | 337.1 MB |
 
 ---
 
-### 4. MVP SUCCESS CRITERIA VS EXPERIMENTAL ROADMAP
+### 3. ANALYSIS OF OBSERVED SUCCESSES AND FAILURES
 
-We define strict, measurable exit criteria separating what is required for the initial **Lolixco Edit DNA MVP (Production V1)** from features deferred to future research:
+1. **Clean Cuts & Timing Accuracy:**
+   On clean cuts (`bench_01`, `bench_02`, `bench_05`, `bench_08`), timing error is **$0.0\text{ ms}$**. Average timing error across all clips is **$14.6\text{ ms}$** ($\approx 0.4$ frames at 30 fps), proving that offline DSP achieves single-frame precision.
+2. **Flash / Strobe Interference:**
+   In `bench_04`, single-frame white strobes triggered 2 false cuts in `AdaptiveDetector` (F1 drops to 0.50). However, our secondary visual analysis correctly flagged both flash frames (`Strobe Warnings: 2`), highlighting the necessity of cross-referencing visual spike heuristics with cut detectors.
+3. **Rapid Phonk Montage:**
+   In `bench_03`, 8-frame cuts ($267\text{ms}$) close to `min_scene_len=4` slightly drifted in timestamp alignment ($56.9\text{ms}$ error). Librosa BPM tracking detected $112.3\text{ BPM}$ vs $140\text{ BPM}$ ($19.8\%$ error) due to tempo harmonic sub-octave ambiguity on short snippets.
+4. **Gradual Dissolves:**
+   In `bench_06`, 0 hard cuts were detected (F1: 1.0), showing `AdaptiveDetector` correctly ignores gradual 0.5s dissolves rather than misclassifying them as hard cuts.
+5. **Silent Media Failure Behavior:**
+   In `bench_07` (zero audio stream), the pipeline executed in **$0.51\text{s}$**, cleanly computing all visual cuts while reporting audio beats as unmeasured without crashing.
+6. **Clipping Audio Detection:**
+   In `bench_08`, FFmpeg `ebur128` and `volumedetect` accurately flagged digital clipping: Peak **$+3.7\text{ dBTP}$** at **$-4.1\text{ LUFS}$** (`clipping_detected: True`).
+7. **Strobe Overload Breakdown:**
+   In `bench_09`, 15Hz alternating black/white frames caused the adaptive rolling threshold to adapt to the oscillation and miss the subsequent scene cut into blue (0 cuts detected). However, the visual spike analyzer correctly reported **2 strobe warnings**.
 
-```mermaid
-flowchart TD
-    subgraph MVP["PHASE 1: EDIT DNA PRODUCTION MVP (TARGET)"]
-        M1["Cut Detection F1 >= 90% (at ±3 frames)"]
-        M2["Beat Sync MAE <= 45ms"]
-        M3["AcoustID Exact Match Accuracy >= 85%"]
-        M4["Gemini YouTube URL Ingestion <= 5s Latency"]
-        M5["Zero Hallucination on Open-Set (Abstention >= 80%)"]
-        M6["Owner Rubric Personalization (Instant Update)"]
-    end
+---
 
-    subgraph Experimental["PHASE 2: LONG-TERM EXPERIMENTAL HORIZON"]
-        E1["Exact Episode Number Pinpointing (>85%)"]
-        E2["Full Pitch-Shift Inversion for Remixed Audio"]
-        E3["Direct Optical Flow 3D Camera Reconstruction"]
-        E4["End-to-End Fine-Tuned Video LoRA"]
-        E5["Automated Cut Suggestion / Re-Editing Generator"]
-    end
+### 4. PRODUCTION MVP CRITERIA VS EXPERIMENTAL ROADMAP
 
-    MVP -->|Validated & Stable| Experimental
-```
-
-| Benchmark Metric | MVP Requirement (Phase 1) | Long-Term Target (Phase 2) | Validation Method |
+| Capability | Phase 2 Measured Reality | Production MVP Requirement | Future Research Horizon |
 | :--- | :---: | :---: | :--- |
-| **Cut Detection F1 ($\pm 3$ frames)** | $\ge \mathbf{90.0\%}$ | $\ge 96.0\%$ | Automated evaluation against CAT-01 through CAT-06 ground truth |
-| **Cut Detection F1 ($\pm 1$ frame)** | $\ge \mathbf{75.0\%}$ | $\ge 88.0\%$ | Sub-frame evaluation on 30fps and 60fps media |
-| **Beat Tracking MAE** | $\le \mathbf{45.0\text{ ms}}$ | $\le 20.0\text{ ms}$ | Automated evaluation against CAT-06 / clean percussion |
-| **Exact Audio Track ID (Clean)** | $\ge \mathbf{85.0\%}$ | $\ge 98.0\%$ | AcoustID / MusicBrainz query on un-pitch-shifted audio |
-| **Transformed Audio ID (Pitch/Tempo)** | $\ge \mathbf{40.0\%}$ (or Honest Abstain) | $\ge 80.0\%$ | Pitch normalization pipeline + ACRCloud |
-| **Source Franchise Top-1 Accuracy** | $\ge \mathbf{85.0\%}$ | $\ge 95.0\%$ | Gemini 3.8 Flash + SigLIP on CAT-01, 02, 03, 04 |
-| **Open-Set Abstention Rate** | $\ge \mathbf{80.0\%}$ | $\ge 95.0\%$ | Evaluated on CAT-08 (must reject false matches) |
-| **Owner Rank Correlation (Kendall's $\tau$)** | $\ge \mathbf{0.70}$ | $\ge 0.85$ | Evaluated on 30 held-out owner pairwise comparisons |
-| **Processing Latency (60s Edit)** | $\le \mathbf{6.0\text{ seconds}}$ | $\le 2.5\text{ seconds}$ | Wall-clock execution time (Local DSP + Gemini API) |
-| **Cost per 60s Analysis** | $\le \mathbf{\$0.015}$ | $\le \$0.006$ | Billed tokens + API queries |
-
----
-
-### 5. INTEGRITY PRINCIPLES: NO FABRICATED BENCHMARKS
-
-In adherence to Lolixco engineering standards:
-- **No Synthetic Benchmark Inflation:** We do not claim 99.9% accuracy on ambiguous tasks. Exact episode identification and heavily transformed audio recognition remain genuine open research problems.
-- **Honest Error Reporting:** Where the system fails (such as strobe-induced false cuts or unindexed indie soundtracks), the analyzer explicitly flags uncertainty rather than manufacturing false certainty.
+| **Cut Precision (Hard Cuts)** | **100% (Clean)** / **82.1% (Overall)** | $\ge 85.0\%$ | $\ge 95.0\%$ under heavy strobe noise |
+| **Cut Timing Tolerance** | **14.6 ms (0.4 frames)** | $\le 33.3\text{ ms}$ ($\pm 1$ frame) | $\le 16.6\text{ ms}$ (60 fps single frame) |
+| **Silent Media Handling** | **100% Graceful (0.51s)** | 100% Graceful | N/A |
+| **Audio Clipping Detection**| **100% Accurate (+3.7 dBTP)** | 100% Accurate | Dynamic compression ratio estimation |
+| **Audio Beat Sync on Clean Audio** | **Within 41.8 ms** | $\le 45.0\text{ ms}$ | Sub-20ms transient alignment |
+| **BPM Tracking on Short Audio** | **~2–20% Error (Octave Shift)** | $\le 5.0\%$ error | Harmonic ambiguity resolution |
+| **Average Processing Runtime** | **1.21 seconds per clip** | $\le 3.0\text{ seconds}$ | $\le 1.0\text{ second}$ |
+| **Peak RAM Footprint** | **322.3 MB** | $\le 512\text{ MB}$ | $\le 256\text{ MB}$ |

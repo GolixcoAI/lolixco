@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   classifySyncDelta,
@@ -271,3 +275,79 @@ test("Lolixco Edit DNA — ASCII summary card generator", () => {
   assert.ok(text.includes("Jujutsu Kaisen"));
   assert.ok(text.includes("Beat Sync:"));
 });
+
+test("Lolixco Edit DNA — Phase 2: Offline analyzer processes real video bytes", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+  const scriptPath = resolve(projectRoot, "scripts/edit-dna/offline_analyzer.py");
+  const testVideo = resolve(projectRoot, "test-assets/benchmarks/bench_07_silent_video.mp4");
+
+  const stdout = execFileSync(
+    pythonBin,
+    [scriptPath, testVideo, "--format", "json"],
+    { encoding: "utf8", timeout: 15000 }
+  );
+
+  const report = JSON.parse(stdout);
+  assert.equal(report.target_file, "bench_07_silent_video.mp4");
+  assert.equal(report.technical_metadata.has_audio, false);
+  assert.equal(report.editing_pacing.total_cuts, 3);
+  assert.equal(report.editing_pacing.detected_cut_timestamps.length, 3);
+  assert.ok(report.execution_telemetry.runtime_seconds < 5.0);
+  assert.ok(report.execution_telemetry.peak_ram_mb > 10.0);
+});
+
+test("Lolixco Edit DNA — Phase 2: Owner rating lab records and revises ratings", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+  const scriptPath = resolve(projectRoot, "scripts/edit-dna/rating_lab.py");
+
+  // Record rating
+  execFileSync(
+    pythonBin,
+    [
+      scriptPath,
+      "rate",
+      "test_edit_asset_99",
+      "--sync", "9.0",
+      "--trans", "8.0",
+      "--pacing", "8.5",
+      "--visuals", "9.0",
+      "--story", "7.5",
+      "--orig", "8.0",
+      "--overall", "8.7",
+      "--notes", "Initial review"
+    ],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  // Revise rating
+  execFileSync(
+    pythonBin,
+    [
+      scriptPath,
+      "rate",
+      "test_edit_asset_99",
+      "--sync", "9.5",
+      "--trans", "8.5",
+      "--pacing", "8.5",
+      "--visuals", "9.0",
+      "--story", "7.5",
+      "--orig", "8.0",
+      "--overall", "8.9",
+      "--notes", "Revised: better sync than initially credited"
+    ],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  const ratingsPath = resolve(projectRoot, "data/edit-dna/owner_ratings.json");
+  const db = JSON.parse(readFileSync(ratingsPath, "utf8"));
+  const record = db.ratings["test_edit_asset_99"];
+
+  assert.ok(record, "Expected record to exist in database");
+  assert.equal(record.overall_subjective_score, 8.9);
+  assert.equal(record.revision_count, 2);
+  assert.equal(record.free_text_notes, "Revised: better sync than initially credited");
+  assert.equal(record.telemetry_provenance, "local_offline_dsp_measured");
+});
+
