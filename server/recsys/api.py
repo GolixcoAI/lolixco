@@ -188,6 +188,7 @@ class RecommendationResponseModel(StrictBaseModel):
 def create_app(
     catalog: Optional[Catalog] = None,
     catalog_path: Optional[Path | str] = None,
+    catalog_version: Optional[str] = None,
 ) -> FastAPI:
     """Create and configure the FastAPI recommendation service."""
 
@@ -198,6 +199,12 @@ def create_app(
         "catalog_path": Path(catalog_path or os.getenv("LOLIXCO_CATALOG_PATH") or DEFAULT_SNAPSHOT_PATH),
     }
 
+    expected_version = catalog_version or os.getenv("LOLIXCO_CATALOG_VERSION") or "demo-catalog-v1"
+    if expected_version not in ("demo-catalog-v1", "catalog-v2"):
+        raise ValueError("Unsupported recommendation catalog version")
+    if catalog is not None and catalog.catalog_version != expected_version:
+        raise ValueError("Injected catalog does not match configured version")
+
     # Initialize catalog if not already provided
     if app_state["catalog"] is not None:
         try:
@@ -206,7 +213,7 @@ def create_app(
             app_state["catalog_error"] = str(e)
     else:
         try:
-            loaded_cat = load_catalog_from_json(app_state["catalog_path"])
+            loaded_cat = load_catalog_from_json(app_state["catalog_path"], expected_version=expected_version)
             app_state["catalog"] = loaded_cat
             app_state["engine"] = RecommendationEngine(loaded_cat)
         except Exception as e:

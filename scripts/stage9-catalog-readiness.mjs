@@ -9,7 +9,11 @@ import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { compileCatalog } from "./compile-catalog.mjs";
 
-export async function reviewStage9(youtubeAudit, hostedAudit) {
+export async function reviewStage9(
+  youtubeAudit,
+  hostedAudit,
+  { policy = { approvedOrigins: [] }, requireFullRelease = false } = {},
+) {
   assert.equal(
     hostedAudit?.items?.length,
     30,
@@ -24,7 +28,7 @@ export async function reviewStage9(youtubeAudit, hostedAudit) {
   const result = await compileCatalog({
     youtubeAudit,
     hostedAudit,
-    policy: { approvedOrigins: [] },
+    policy,
     catalogVersion: "catalog-v2",
   });
   assert.equal(
@@ -34,13 +38,15 @@ export async function reviewStage9(youtubeAudit, hostedAudit) {
   );
   assert.equal(result.written, false);
   const real = result.catalog.slice(17);
+  const youtube = real.filter((e) => e.sourceType === "youtube_embed");
+  const hosted = real.filter((e) => e.sourceType === "licensed_local_media");
   assert.equal(
-    real.length,
+    youtube.length,
     28,
-    "Only the approved 28 YouTube edits may enter this candidate",
+    "Exactly the approved 28 YouTube edits are required",
   );
   assert.deepEqual(
-    real.map((e) => ({
+    youtube.map((e) => ({
       id: e.id,
       youtubeVideoId: e.youtubeVideoId,
       title: e.title,
@@ -51,21 +57,31 @@ export async function reviewStage9(youtubeAudit, hostedAudit) {
     selection,
   );
   assert.ok(
-    real.every(
+    youtube.every(
       (e) =>
         e.sourceType === "youtube_embed" &&
         e.source === `https://www.youtube.com/watch?v=${e.youtubeVideoId}`,
     ),
   );
+  if (requireFullRelease)
+    assert.equal(
+      real.length,
+      58,
+      "Full release requires 28 YouTube plus 30 eligible hosted edits; partial release forbidden",
+    );
   return {
     result,
     report: {
       status: "dry-run passed; publication decision pending",
       total: result.catalog.length,
       protectedDemos: 17,
-      youtubeVideos: real.filter((e) => e.format === "video").length,
-      youtubeShorts: real.filter((e) => e.format === "short").length,
-      hostedPublished: 0,
+      youtubeVideos: youtube.filter((e) => e.format === "video").length,
+      youtubeShorts: youtube.filter((e) => e.format === "short").length,
+      hostedPublished: hosted.length,
+      targetRealEdits: 58,
+      eligibleRealEdits: real.length,
+      remainingHosted: 30 - hosted.length,
+      completeReleaseReady: real.length === 58,
       hostedAuditItems: hostedAudit.items.length,
       sourceSha256: createHash("sha256").update(result.source).digest("hex"),
       snapshotSha256: createHash("sha256")

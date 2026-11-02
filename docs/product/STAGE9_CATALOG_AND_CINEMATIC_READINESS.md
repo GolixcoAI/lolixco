@@ -37,10 +37,7 @@ selected identity/title/category/format/duration with the approved manifest. It
 rejects publication flags and does not refresh evidence, allocate IDs or write the
 production pair. It returns 45 records: the exact 17 protected demos plus 28 YouTube
 edits, zero approved hosted entries. Candidate snapshot version is `catalog-v2`,
-which the existing API client accepts. The Python candidate loads and serves real
-recommendations when its expected version is supplied explicitly. The default
-FastAPI file loader remains pinned to `demo-catalog-v1` and returns 503 for this
-new version: a future live-backend release must configure/review that loader first.
+which the existing API client accepts. The Python API now accepts explicit `catalog_version` or `LOLIXCO_CATALOG_VERSION=catalog-v2`. The default stays `demo-catalog-v1`; file/version mismatch returns readiness 503, unsupported versions and mismatched injected catalogs fail closed. Tests cover these paths.
 The proposed static launch uses API-disabled local fallback. Source and snapshot SHA-256s are recorded
 in the private check report for later review.
 
@@ -113,3 +110,18 @@ and `VERIFY_OUTPUT_DIR` to a private evidence directory. Optional explicit
 case; only compiler-projected public records enter the browser. Requests outside
 loopback are blocked, and Vite uses an empty environment directory. The production
 pair and frozen demo artifact remain byte-for-byte equal to merged main.
+
+## Full 58-edit master review
+
+The release target is exactly 28 YouTube + 30 hosted real edits, with 17 unchanged
+protected demos retained and hidden from real discovery. The 45-record eligible
+projection is intermediate evidence, never an approved reduced release.
+`reviewStage9(..., { requireFullRelease: true })` rejects partial eligibility.
+An entirely synthetic 75-record compiler rehearsal tests full discovery and negative
+audio-rights, aspect and playback gates without fabricating real approvals.
+
+The private handoff contains all 75 actual planned metadata records, with loopback
+media paths and explicit UNPUBLISHED/UNAPPROVED status. This review manifest is not
+a compiler-approved release pair. The production source and snapshot are untouched.
+Hosted credit rendering now uses reviewed creator attribution, including Immersion.
+No attribution names or licenses were invented. Policy drafts remain unpublished.

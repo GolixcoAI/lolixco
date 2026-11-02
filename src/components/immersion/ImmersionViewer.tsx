@@ -1,3 +1,4 @@
+import { publicSource } from "../../utils/publicSource";
 import { useSessionAudio } from "../../hooks/useSessionAudio";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import type { Edit } from "../../data/edits";
@@ -318,9 +319,9 @@ export default function ImmersionViewer({
             <span className="immersion-title">
               {currentEdit?.title || "Curated Edit"}
             </span>
-            {currentEdit?.channelTitle && (
+            {currentEdit && publicSource(currentEdit).attribution && (
               <span className="immersion-channel">
-                by {currentEdit.channelTitle}
+                by {publicSource(currentEdit).attribution}
               </span>
             )}
           </div>
