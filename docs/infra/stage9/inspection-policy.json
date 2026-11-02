@@ -1,0 +1,56 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InspectDedicatedBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetBucketOwnershipControls",
+        "s3:GetBucketVersioning",
+        "s3:GetBucketPolicy",
+        "s3:GetBucketPolicyStatus",
+        "s3:GetLifecycleConfiguration",
+        "s3:GetBucketTagging",
+        "s3:GetBucketAcl"
+      ],
+      "Resource": "arn:aws:s3:::${MEDIA_BUCKET}"
+    },
+    {
+      "Sid": "InspectCurrentIdentity",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetUser",
+        "iam:ListAttachedUserPolicies",
+        "iam:ListUserPolicies",
+        "iam:GetUserPolicy",
+        "iam:ListGroupsForUser"
+      ],
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:user/lolixco-codex"
+    },
+    {
+      "Sid": "InspectManagedVersions",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion"
+      ],
+      "Resource": [
+        "arn:aws:iam::${ACCOUNT_ID}:policy/*",
+        "arn:aws:iam::aws:policy/*"
+      ]
+    },
+    {
+      "Sid": "InspectGroups",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListAttachedGroupPolicies",
+        "iam:ListGroupPolicies",
+        "iam:GetGroupPolicy"
+      ],
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:group/*"
+    }
+  ]
+}
