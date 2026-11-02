@@ -1,3 +1,4 @@
+import { discoveryCatalog } from "./utils/discoveryCatalog";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Header from "./components/layout/Header";
 import Sidebar from "./components/layout/Sidebar";
@@ -183,10 +184,11 @@ export function syncUrl(
 }
 
 export default function App({
-  initialEdits = edits,
+  initialEdits: suppliedEdits = edits,
 }: {
   initialEdits?: Edit[];
 } = {}) {
+  const initialEdits = useMemo(() => discoveryCatalog(suppliedEdits), [suppliedEdits]);
   const [expanded, setExpanded] = useState(() => innerWidth >= 1440);
   const [mobile, setMobile] = useState(() => innerWidth < 768);
   const [drawer, setDrawer] = useState(false);

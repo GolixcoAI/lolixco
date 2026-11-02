@@ -13,7 +13,10 @@ export function publicSource(edit: Edit): {
   if (edit.sourceType === "licensed_local_media")
     return {
       label: edit.format === "short" ? "Lolixco Short" : "Lolixco",
-      attribution: null,
+      attribution:
+        edit.creator?.trim() && edit.creator.trim() !== "Attribution pending"
+          ? edit.creator.trim()
+          : null,
     };
   return { label: "Demo / Sample", attribution: null };
 }

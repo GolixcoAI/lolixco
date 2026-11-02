@@ -8,7 +8,7 @@ import "@fontsource/rajdhani/700.css";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import App from "../../src/App";
-import { edits } from "../../src/data/edits";
+import { type Edit, edits } from "../../src/data/edits";
 import {
   youtube,
   hosted,
@@ -72,6 +72,7 @@ function render(name: keyof typeof catalogs = "mixed") {
 }
 (window as any).homepageTest = {
   render,
+  renderCatalog: (catalog: Edit[]) => flushSync(() => root.render(<App initialEdits={catalog} />)),
   catalogs,
   coordinator: playbackCoordinator,
 };

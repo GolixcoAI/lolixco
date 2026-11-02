@@ -1,0 +1,230 @@
+{
+  "status": "review-only; no publication authorization",
+  "source": "Stage 8 handoff; docs/product/STAGE8_YOUTUBE_INTAKE_READINESS.md",
+  "items": [
+    {
+      "id": 100,
+      "youtubeVideoId": "0vswe8D3UTk",
+      "title": "Toji Fushiguro \u2014 Sorcerer Killer [Blu-Ray AMV]",
+      "category": "Anime",
+      "format": "video",
+      "duration": "2:15"
+    },
+    {
+      "id": 101,
+      "youtubeVideoId": "HoxrYzuxH_Q",
+      "title": "Sukuna \u2014 Neon Blade [Jujutsu Kaisen AMV]",
+      "category": "Anime",
+      "format": "video",
+      "duration": "0:39"
+    },
+    {
+      "id": 102,
+      "youtubeVideoId": "uo0_I2ZNOds",
+      "title": "Jujutsu Kaisen \u2014 London View Flow Edit",
+      "category": "Anime",
+      "format": "video",
+      "duration": "0:22"
+    },
+    {
+      "id": 103,
+      "youtubeVideoId": "yLhjFXkPpck",
+      "title": "Attack on Titan \u2014 Enemy [4K AMV]",
+      "category": "Anime",
+      "format": "video",
+      "duration": "1:01"
+    },
+    {
+      "id": 104,
+      "youtubeVideoId": "yuwmyuXg9_k",
+      "title": "Doctor Doom \u2014 I Am Doom [4K Cinematic Edit]",
+      "category": "Movies",
+      "format": "video",
+      "duration": "0:23"
+    },
+    {
+      "id": 105,
+      "youtubeVideoId": "aV-rL-vObE0",
+      "title": "The Karate Kid \u2014 Cheng Combat Phonk [4K Edit]",
+      "category": "Movies",
+      "format": "video",
+      "duration": "0:24"
+    },
+    {
+      "id": 106,
+      "youtubeVideoId": "zswT92VzOYM",
+      "title": "Spider-Man \u2014 Polyester Web-Slinger Edit",
+      "category": "Movies",
+      "format": "video",
+      "duration": "0:19"
+    },
+    {
+      "id": 107,
+      "youtubeVideoId": "Z2qIpiDKqtU",
+      "title": "Animal \u2014 Untitled #13 Ranvijay 4K Edit",
+      "category": "Movies",
+      "format": "video",
+      "duration": "0:43"
+    },
+    {
+      "id": 108,
+      "youtubeVideoId": "RZlioQRE3ms",
+      "title": "Money Heist \u2014 Berlin Charisma [HD Edit]",
+      "category": "Series",
+      "format": "video",
+      "duration": "0:35"
+    },
+    {
+      "id": 109,
+      "youtubeVideoId": "ZMbYQIK5B5I",
+      "title": "Game of Thrones \u2014 King in the North [Jon Snow 4K]",
+      "category": "Series",
+      "format": "video",
+      "duration": "0:44"
+    },
+    {
+      "id": 110,
+      "youtubeVideoId": "Q9hjJVxD6Zw",
+      "title": "Game of Thrones \u2014 Westeros Realm [4K Flow Edit]",
+      "category": "Series",
+      "format": "video",
+      "duration": "0:19"
+    },
+    {
+      "id": 111,
+      "youtubeVideoId": "9h7AGDjttSQ",
+      "title": "Game of Thrones \u2014 Battle of the Bastards [4K Duel]",
+      "category": "Series",
+      "format": "video",
+      "duration": "0:29"
+    },
+    {
+      "id": 112,
+      "youtubeVideoId": "1fHuksvJTxA",
+      "title": "David Goggins \u2014 Metamorphosis [4K Gym Phonk Edit]",
+      "category": "Motivation",
+      "format": "video",
+      "duration": "0:27"
+    },
+    {
+      "id": 200,
+      "youtubeVideoId": "wEjDTQFeVxU",
+      "title": "Shin-chan & Shiro \u2014 Ultimate Nostalgia Edit",
+      "category": "Anime",
+      "format": "short",
+      "duration": "0:10"
+    },
+    {
+      "id": 201,
+      "youtubeVideoId": "Qx3IrEUvflE",
+      "title": "Attack on Titan \u2014 Eren's Betrayal [Shorts Edit]",
+      "category": "Anime",
+      "format": "short",
+      "duration": "0:21"
+    },
+    {
+      "id": 202,
+      "youtubeVideoId": "KY0xrjzfFLA",
+      "title": "Valorant \u2014 Radiant Clutch [4K Gameplay Edit]",
+      "category": "Gaming",
+      "format": "short",
+      "duration": "0:34"
+    },
+    {
+      "id": 203,
+      "youtubeVideoId": "DvC9pK3CpEw",
+      "title": "GTA 6 \u2014 Vice City Hype [Raya Slowed Edit]",
+      "category": "Gaming",
+      "format": "short",
+      "duration": "0:20"
+    },
+    {
+      "id": 204,
+      "youtubeVideoId": "kR-USMTLxQk",
+      "title": "Avengers Doomsday \u2014 The OGs Return [Shorts Edit]",
+      "category": "Movies",
+      "format": "short",
+      "duration": "0:25"
+    },
+    {
+      "id": 205,
+      "youtubeVideoId": "fLK7a4vLFNg",
+      "title": "Batman \u2014 Dark Knight Legacy [Bale vs Pattinson]",
+      "category": "Movies",
+      "format": "short",
+      "duration": "0:09"
+    },
+    {
+      "id": 206,
+      "youtubeVideoId": "q55SLQ2o8Yk",
+      "title": "Spider-Man \u2014 Multi-Spidey Showcase [Shorts Edit]",
+      "category": "Movies",
+      "format": "short",
+      "duration": "0:17"
+    },
+    {
+      "id": 207,
+      "youtubeVideoId": "a7_od1YCcns",
+      "title": "Animal \u2014 Don't Stop [GLXXMSTRIDER Phonk Edit]",
+      "category": "Movies",
+      "format": "short",
+      "duration": "0:39"
+    },
+    {
+      "id": 208,
+      "youtubeVideoId": "BddGwfy_hq0",
+      "title": "Ramayana \u2014 Ravana Raj [Montagem Tyrant Phonk]",
+      "category": "Movies",
+      "format": "short",
+      "duration": "0:31"
+    },
+    {
+      "id": 209,
+      "youtubeVideoId": "RzjQCa4oOj8",
+      "title": "Power Rangers \u2014 Morphin Grid Power [Shorts Edit]",
+      "category": "Series",
+      "format": "short",
+      "duration": "0:48"
+    },
+    {
+      "id": 210,
+      "youtubeVideoId": "gA1KUzOhyfE",
+      "title": "Money Heist \u2014 The Professor's Masterplan [4K Short]",
+      "category": "Series",
+      "format": "short",
+      "duration": "0:23"
+    },
+    {
+      "id": 211,
+      "youtubeVideoId": "-kYk7nRzV_8",
+      "title": "Stranger Things \u2014 Upside Down Horror [Vazio Eterno]",
+      "category": "Series",
+      "format": "short",
+      "duration": "0:33"
+    },
+    {
+      "id": 212,
+      "youtubeVideoId": "2dCzYwWfmzE",
+      "title": "Stranger Things \u2014 Steve Harrington Babysitter Edit",
+      "category": "Series",
+      "format": "short",
+      "duration": "0:53"
+    },
+    {
+      "id": 213,
+      "youtubeVideoId": "DvzaLGOH2vw",
+      "title": "Squid Game \u2014 Player 218 Cho Sang-woo [Shorts Edit]",
+      "category": "Series",
+      "format": "short",
+      "duration": "0:15"
+    },
+    {
+      "id": 214,
+      "youtubeVideoId": "W4E_UW0r6FA",
+      "title": "David Goggins \u2014 Still I Grind [Mindset Short]",
+      "category": "Motivation",
+      "format": "short",
+      "duration": "0:47"
+    }
+  ]
+}

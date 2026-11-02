@@ -2207,19 +2207,17 @@ dialog .fine-print {
   .player[data-orientation="landscape"] .eyebrow { font-size: 10px; }
 }
 
-/* A fresh playback/source or interaction starts a three-second information window. */
+/* Keep the complete information group in one cinematic cycle. Opacity preserves
+   its tab stops: focusing any action reveals the group before activation. */
 .moment-label { display: inline-flex; align-items: center; gap: 5px; }
 .hero-info h1 { font-size: clamp(20px, 2.2vw, 32px); }
-.hero-info h1, .hero-info .hero-meta, .hero-info .moment-label, .hero-info > .watch {
-  transition: opacity 240ms ease, visibility 240ms;
+.hero-info { transition: opacity 240ms ease; }
+.player[data-info-hidden="true"] .hero-info:not(:focus-within) {
+  opacity: 0;
 }
-.player[data-info-hidden="true"] .hero-info h1,
-.player[data-info-hidden="true"] .hero-info .hero-meta,
-.player[data-info-hidden="true"] .hero-info .moment-label,
-.player[data-info-hidden="true"] .hero-info > .watch:not(:focus-visible) {
-  opacity: 0; visibility: hidden; pointer-events: none !important;
+.player[data-info-hidden="true"] .hero-info:not(:focus-within) * {
+  pointer-events: none !important;
 }
 @media (prefers-reduced-motion: reduce) {
-  .hero-info h1, .hero-info .hero-meta, .hero-info .moment-label, .hero-info > .watch { transition: none; }
+  .hero-info { transition: none; }
 }
-.player[data-info-hidden="true"] .hero-info .eyebrow { background: transparent; }

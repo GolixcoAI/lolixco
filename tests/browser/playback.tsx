@@ -135,6 +135,10 @@ function render(next: any = {}) {
       {next.featured !== false && (
         <VideoPlayer
           edit={featured}
+          onShuffle={() => {
+            (window as any).shuffleCalls = ((window as any).shuffleCalls || 0) + 1;
+            render({ ...next, featured: next.featured === "youtube" ? "youtube2" : "native2" });
+          }}
           isOverlayActive={!!next.viewer || next.overlay}
         />
       )}

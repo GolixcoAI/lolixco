@@ -591,3 +591,28 @@ class TestRecommendationAPI(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestCatalogVersionConfiguration(unittest.TestCase):
+    def test_catalog_v2_file_loads_only_with_matching_configuration(self):
+        data = json.loads(SNAPSHOT_PATH.read_text())
+        data['catalog_version'] = 'catalog-v2'
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'catalog.json'
+            path.write_text(json.dumps(data))
+            self.assertEqual(TestClient(create_app(catalog_path=path)).get('/api/v1/ready').status_code, 503)
+            with TestClient(create_app(catalog_path=path, catalog_version='catalog-v2')) as client:
+                self.assertEqual(client.get('/api/v1/ready').json()['catalog_version'], 'catalog-v2')
+                response = client.post('/api/v1/recommendations', json={'surface':'home','limit':4})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()['catalog_version'], 'catalog-v2')
+
+    def test_environment_version_and_unsupported_version_fail_closed(self):
+        from unittest.mock import patch
+        with patch.dict('os.environ', {'LOLIXCO_CATALOG_VERSION':'catalog-v2'}):
+            self.assertEqual(TestClient(create_app()).get('/api/v1/ready').status_code, 503)
+            self.assertEqual(TestClient(create_app(catalog_version='demo-catalog-v1')).get('/api/v1/ready').status_code, 200)
+        with self.assertRaises(ValueError):
+            create_app(catalog_version='accept-anything')
+        catalog = load_catalog_from_json(SNAPSHOT_PATH)
+        with self.assertRaises(ValueError):
+            create_app(catalog=catalog, catalog_version='catalog-v2')
