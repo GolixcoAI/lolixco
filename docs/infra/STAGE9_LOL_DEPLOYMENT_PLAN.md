@@ -60,10 +60,7 @@ or credentialed CORS. Set `VITE_RECSYS_ENABLED=true` and the exact `/api/v1` bas
 after readiness and version checks. The current client accepts `demo-catalog-v1`
 and `catalog-v2`; use a mutually supported approved version and synchronized pair.
 Do not expose a new candidate version without updating/reviewing this contract.
-The default FastAPI file loader currently pins `demo-catalog-v1`; simply changing
-`LOLIXCO_CATALOG_PATH` to the candidate `catalog-v2` snapshot makes readiness fail.
-The future backend adapter must explicitly load the approved expected version and
-pass the validated Catalog, or implement reviewed version configuration. Also exclude
+The source review branch now supports `LOLIXCO_CATALOG_VERSION=catalog-v2` (or an explicit factory argument). Set it together with `LOLIXCO_CATALOG_PATH`; mismatched files fail readiness. Defaults remain `demo-catalog-v1`. The source change must be reviewed with any future backend deployment. Also exclude
 protected demo IDs from API ranking requests/candidate pools to avoid wasting slots;
 the frontend already rejects IDs absent from its real discovery catalog.
 
@@ -100,8 +97,8 @@ make delivered videos private to viewers.
 
 ## Future release and rollback
 
-1. Resolve private-media rights/IAM/budget gates and independently decide whether
-   the first release is YouTube-only. Approve exact publication manifest and paired
+1. Resolve private-media rights/IAM/budget gates for all 30 hosted edits; the fixed
+   first-release requirement is 28 YouTube plus 30 hosted edits. Approve exact publication manifest and paired
    compiler outputs; run the Stage 9 read-only review again with fresh evidence.
 2. Approve account, new frontend resource names, distribution/plan, certificate,
    DNS-only diff, operator, monitoring, cost envelope, test window and cleanup owner.
@@ -133,6 +130,5 @@ make delivered videos private to viewers.
    downloaded media cannot be recalled. Inventory residual resources and charges
    after billing lag; cleanup only explicitly approved dedicated resources.
 
-Remaining owner decisions: parent hosting/complete zone evidence, YouTube-only vs
-hosted launch, backend requirement, rights resolution, exact approved resource and
+Remaining owner decisions: parent hosting/complete zone evidence, full-collection eligibility, backend requirement, rights resolution, exact approved resource and
 DNS plan, launch budget/monitoring, and separate publication/deployment approval.

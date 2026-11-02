@@ -1,0 +1,32 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadOnlyApprovedStagingVersion",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObjectVersion"
+      ],
+      "Resource": "${EXACT_STAGING_OBJECT_ARN}",
+      "Condition": {
+        "StringEquals": {
+          "s3:VersionId": "${APPROVED_SOURCE_VERSION_ID}"
+        }
+      }
+    },
+    {
+      "Sid": "CopyOnlyApprovedPairToReviewedDeliveryKey",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject"
+      ],
+      "Resource": "${EXACT_DELIVERY_OBJECT_ARN}",
+      "Condition": {
+        "StringEquals": {
+          "s3:x-amz-copy-source": "${EXACT_ENCODED_BUCKET_KEY_AND_VERSION}",
+          "s3:x-amz-server-side-encryption": "AES256"
+        }
+      }
+    }
+  ]
+}
