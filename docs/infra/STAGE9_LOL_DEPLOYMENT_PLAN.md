@@ -60,6 +60,12 @@ or credentialed CORS. Set `VITE_RECSYS_ENABLED=true` and the exact `/api/v1` bas
 after readiness and version checks. The current client accepts `demo-catalog-v1`
 and `catalog-v2`; use a mutually supported approved version and synchronized pair.
 Do not expose a new candidate version without updating/reviewing this contract.
+The default FastAPI file loader currently pins `demo-catalog-v1`; simply changing
+`LOLIXCO_CATALOG_PATH` to the candidate `catalog-v2` snapshot makes readiness fail.
+The future backend adapter must explicitly load the approved expected version and
+pass the validated Catalog, or implement reviewed version configuration. Also exclude
+protected demo IDs from API ranking requests/candidate pools to avoid wasting slots;
+the frontend already rejects IDs absent from its real discovery catalog.
 
 ## HTTPS, routing and security
 
