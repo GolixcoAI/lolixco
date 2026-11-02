@@ -21,8 +21,10 @@ from typing import Dict, Any, List
 DATA_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../../data/edit-dna")
 )
-RATINGS_FILE = os.path.join(DATA_DIR, "owner_ratings.json")
-COMPARISONS_FILE = os.path.join(DATA_DIR, "owner_comparisons.json")
+OWNER_RATINGS_FILE = os.path.join(DATA_DIR, "owner_ratings.json")
+SYNTHETIC_RATINGS_FILE = os.path.join(DATA_DIR, "synthetic_ratings.json")
+OWNER_COMPARISONS_FILE = os.path.join(DATA_DIR, "owner_comparisons.json")
+SYNTHETIC_COMPARISONS_FILE = os.path.join(DATA_DIR, "synthetic_comparisons.json")
 RUBRIC_FILE = os.path.join(DATA_DIR, "owner_rubric.json")
 
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -52,6 +54,14 @@ def save_json(path, data):
         json.dump(data, f, indent=2)
 
 
+def get_ratings_file(scope: str = "owner"):
+    return SYNTHETIC_RATINGS_FILE if scope == "synthetic" else OWNER_RATINGS_FILE
+
+
+def get_comparisons_file(scope: str = "owner"):
+    return SYNTHETIC_COMPARISONS_FILE if scope == "synthetic" else OWNER_COMPARISONS_FILE
+
+
 def get_rubric():
     return load_json(RUBRIC_FILE, DEFAULT_RUBRIC)
 
@@ -71,9 +81,11 @@ def record_rating(
     intake_type: str,
     component_scores: Dict[str, float],
     overall_score: float,
-    notes: str = ""
+    notes: str = "",
+    scope: str = "owner"
 ):
-    ratings_db = load_json(RATINGS_FILE, {"ratings": {}})
+    target_file = get_ratings_file(scope)
+    ratings_db = load_json(target_file, {"ratings": {}})
     existing = ratings_db["ratings"].get(asset_id)
 
     rubric = get_rubric()
@@ -94,6 +106,7 @@ def record_rating(
             if intake_type == "youtube_url"
             else "local_offline_dsp_measured"
         ),
+        "is_synthetic_benchmark": scope == "synthetic",
         "component_scores": {
             "beat_synchronization": float(component_scores.get("beat_synchronization", 5.0)),
             "transitions": float(component_scores.get("transitions", 5.0)),
@@ -111,7 +124,7 @@ def record_rating(
     }
 
     ratings_db["ratings"][asset_id] = entry
-    save_json(RATINGS_FILE, ratings_db)
+    save_json(target_file, ratings_db)
     return entry
 
 
@@ -120,12 +133,14 @@ def record_comparison(
     candidate_b: str,
     winner: str,  # 'A' or 'B'
     margin: str = "significant",
-    rationale: str = ""
+    rationale: str = "",
+    scope: str = "owner"
 ):
     if winner not in ("A", "B"):
         raise ValueError("Winner must be 'A' or 'B'")
 
-    comparisons_db = load_json(COMPARISONS_FILE, {"comparisons": []})
+    target_file = get_comparisons_file(scope)
+    comparisons_db = load_json(target_file, {"comparisons": []})
 
     entry = {
         "comparison_id": f"cmp_{int(time.time()*1000)}",
@@ -135,11 +150,12 @@ def record_comparison(
         "chosen_asset": candidate_a if winner == "A" else candidate_b,
         "margin": margin,
         "rationale": rationale,
+        "scope": scope,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     }
 
     comparisons_db["comparisons"].append(entry)
-    save_json(COMPARISONS_FILE, comparisons_db)
+    save_json(target_file, comparisons_db)
     return entry
 
 
@@ -150,16 +166,23 @@ def sigmoid(z):
     return 1.0 / (1.0 + math.exp(-z))
 
 
-def train_preference_model(learning_rate=0.08, iterations=100, l2_reg=0.02):
+def train_preference_model(learning_rate=0.08, iterations=100, l2_reg=0.02, scope="owner"):
     """
     Trains Bradley-Terry preference weights theta based on stored A/B comparisons.
     Uses component scores as feature vectors.
     """
-    ratings_db = load_json(RATINGS_FILE, {"ratings": {}})
-    comparisons_db = load_json(COMPARISONS_FILE, {"comparisons": []})
-
-    ratings = ratings_db.get("ratings", {})
-    comparisons = comparisons_db.get("comparisons", [])
+    if scope == "all":
+        owner_r = load_json(OWNER_RATINGS_FILE, {"ratings": {}}).get("ratings", {})
+        synth_r = load_json(SYNTHETIC_RATINGS_FILE, {"ratings": {}}).get("ratings", {})
+        ratings = {**synth_r, **owner_r}
+        owner_c = load_json(OWNER_COMPARISONS_FILE, {"comparisons": []}).get("comparisons", [])
+        synth_c = load_json(SYNTHETIC_COMPARISONS_FILE, {"comparisons": []}).get("comparisons", [])
+        comparisons = synth_c + owner_c
+    else:
+        target_r = get_ratings_file(scope)
+        target_c = get_comparisons_file(scope)
+        ratings = load_json(target_r, {"ratings": {}}).get("ratings", {})
+        comparisons = load_json(target_c, {"comparisons": []}).get("comparisons", [])
 
     feature_keys = [
         "beat_synchronization",
@@ -243,6 +266,7 @@ def main():
     # Rate command
     rate_p = subparsers.add_parser("rate", help="Record or revise an edit rating")
     rate_p.add_argument("asset_id", help="Asset ID or YouTube URL")
+    rate_p.add_argument("--scope", choices=["owner", "synthetic"], default="owner", help="Partition scope (default: owner)")
     rate_p.add_argument("--type", choices=["local_asset", "youtube_url"], default="local_asset")
     rate_p.add_argument("--sync", type=float, default=5.0, help="Beat synchronization (1-10)")
     rate_p.add_argument("--trans", type=float, default=5.0, help="Transitions rating (1-10)")
@@ -257,6 +281,7 @@ def main():
     cmp_p = subparsers.add_parser("compare", help="Record pairwise comparison between two edits")
     cmp_p.add_argument("candidate_a", help="Asset ID for Edit A")
     cmp_p.add_argument("candidate_b", help="Asset ID for Edit B")
+    cmp_p.add_argument("--scope", choices=["owner", "synthetic"], default="owner", help="Partition scope (default: owner)")
     cmp_p.add_argument("--winner", choices=["A", "B"], required=True, help="Winner: A or B")
     cmp_p.add_argument("--margin", choices=["slight", "significant"], default="significant")
     cmp_p.add_argument("--notes", default="", help="Why this edit won")
@@ -271,10 +296,12 @@ def main():
     w_p.add_argument("--orig", type=float, default=0.10)
 
     # Train command
-    subparsers.add_parser("train", help="Train preference model and display utility predictions")
+    train_p = subparsers.add_parser("train", help="Train preference model and display utility predictions")
+    train_p.add_argument("--scope", choices=["owner", "synthetic", "all"], default="owner", help="Scope to train on")
 
     # List command
-    subparsers.add_parser("list", help="List all recorded ratings and comparisons")
+    list_p = subparsers.add_parser("list", help="List all recorded ratings and comparisons")
+    list_p.add_argument("--scope", choices=["owner", "synthetic", "all"], default="owner", help="Scope to display")
 
     args = parser.parse_args()
 
@@ -287,8 +314,8 @@ def main():
             "storytelling_emotion": args.story,
             "originality_creativity": args.orig,
         }
-        res = record_rating(args.asset_id, args.type, scores, args.overall, args.notes)
-        print(f"\n[OWNER RATING LAB] Recorded rating for: {args.asset_id}")
+        res = record_rating(args.asset_id, args.type, scores, args.overall, args.notes, scope=args.scope)
+        print(f"\n[OWNER RATING LAB] Recorded rating for: {args.asset_id} [Scope: {args.scope}]")
         print(f"  Provenance: {res['telemetry_provenance']}")
         print(f"  Overall Score: {res['overall_subjective_score']} | Rubric Weighted: {res['rubric_weighted_score']}")
         print(f"  Revision Count: {res['revision_count']}")
@@ -296,8 +323,8 @@ def main():
             print(f"  Notes: {res['free_text_notes']}")
 
     elif args.action == "compare":
-        res = record_comparison(args.candidate_a, args.candidate_b, args.winner, args.margin, args.notes)
-        print(f"\n[OWNER RATING LAB] Recorded comparison: {res['candidate_a']} vs {res['candidate_b']}")
+        res = record_comparison(args.candidate_a, args.candidate_b, args.winner, args.margin, args.notes, scope=args.scope)
+        print(f"\n[OWNER RATING LAB] Recorded comparison: {res['candidate_a']} vs {res['candidate_b']} [Scope: {args.scope}]")
         print(f"  Winner: Edit {res['winner']} ({res['chosen_asset']}) [{res['margin']} margin]")
         if res['rationale']:
             print(f"  Rationale: {res['rationale']}")
@@ -317,9 +344,9 @@ def main():
             print(f"  {k:25}: {v*100:.1f}%")
 
     elif args.action == "train":
-        res = train_preference_model()
+        res = train_preference_model(scope=args.scope)
         print("\n" + "=" * 60)
-        print("         OWNER PREFERENCE LEARNING RESULTS")
+        print(f"         OWNER PREFERENCE LEARNING RESULTS [Scope: {args.scope}]")
         print("=" * 60)
         print(f" Status:           {res['status']}")
         if res['status'] == 'trained':
@@ -336,12 +363,23 @@ def main():
         print("=" * 60 + "\n")
 
     elif args.action == "list":
-        ratings_db = load_json(RATINGS_FILE, {"ratings": {}})
-        cmps_db = load_json(COMPARISONS_FILE, {"comparisons": []})
+        if args.scope == "synthetic":
+            ratings_db = load_json(SYNTHETIC_RATINGS_FILE, {"ratings": {}})
+            cmps_db = load_json(SYNTHETIC_COMPARISONS_FILE, {"comparisons": []})
+        elif args.scope == "all":
+            owner_r = load_json(OWNER_RATINGS_FILE, {"ratings": {}}).get("ratings", {})
+            synth_r = load_json(SYNTHETIC_RATINGS_FILE, {"ratings": {}}).get("ratings", {})
+            ratings_db = {"ratings": {**synth_r, **owner_r}}
+            owner_c = load_json(OWNER_COMPARISONS_FILE, {"comparisons": []}).get("comparisons", [])
+            synth_c = load_json(SYNTHETIC_COMPARISONS_FILE, {"comparisons": []}).get("comparisons", [])
+            cmps_db = {"comparisons": synth_c + owner_c}
+        else:
+            ratings_db = load_json(OWNER_RATINGS_FILE, {"ratings": {}})
+            cmps_db = load_json(OWNER_COMPARISONS_FILE, {"comparisons": []})
         rubric = get_rubric()
 
         print("\n" + "=" * 70)
-        print("                  LOLIXCO OWNER RATING LAB DATABASE")
+        print(f"           LOLIXCO OWNER RATING LAB DATABASE [Scope: {args.scope}]")
         print("=" * 70)
         print(" CURRENT RUBRIC WEIGHTS:")
         for k, v in rubric.items():
@@ -349,7 +387,7 @@ def main():
 
         print("\n RECORDED EDIT RATINGS:")
         if not ratings_db.get("ratings"):
-            print("   (No ratings recorded yet)")
+            print("   (No ratings recorded yet in this scope)")
         for aid, r in ratings_db.get("ratings", {}).items():
             print(f"   * {aid} [{r['intake_type']}]")
             print(f"     Overall: {r['overall_subjective_score']} | Weighted: {r['rubric_weighted_score']} | Rev: {r['revision_count']}")
@@ -359,7 +397,7 @@ def main():
 
         print("\n RECORDED PAIRWISE COMPARISONS:")
         if not cmps_db.get("comparisons"):
-            print("   (No comparisons recorded yet)")
+            print("   (No comparisons recorded yet in this scope)")
         for c in cmps_db.get("comparisons", []):
             print(f"   * {c['candidate_a']} vs {c['candidate_b']} -> Winner: Edit {c['winner']} ({c['margin']})")
             if c.get("rationale"):
@@ -372,3 +410,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

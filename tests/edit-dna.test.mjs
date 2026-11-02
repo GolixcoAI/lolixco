@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -301,14 +301,23 @@ test("Lolixco Edit DNA — Phase 2: Owner rating lab records and revises ratings
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
   const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
   const scriptPath = resolve(projectRoot, "scripts/edit-dna/rating_lab.py");
+  const ratingsPath = resolve(projectRoot, "data/edit-dna/synthetic_ratings.json");
 
-  // Record rating
+  // Clean test key if present
+  const initialDb = JSON.parse(readFileSync(ratingsPath, "utf8"));
+  if (initialDb.ratings && initialDb.ratings["test_edit_asset_99"]) {
+    delete initialDb.ratings["test_edit_asset_99"];
+    writeFileSync(ratingsPath, JSON.stringify(initialDb, null, 2));
+  }
+
+  // Record rating into synthetic partition
   execFileSync(
     pythonBin,
     [
       scriptPath,
       "rate",
       "test_edit_asset_99",
+      "--scope", "synthetic",
       "--sync", "9.0",
       "--trans", "8.0",
       "--pacing", "8.5",
@@ -328,6 +337,7 @@ test("Lolixco Edit DNA — Phase 2: Owner rating lab records and revises ratings
       scriptPath,
       "rate",
       "test_edit_asset_99",
+      "--scope", "synthetic",
       "--sync", "9.5",
       "--trans", "8.5",
       "--pacing", "8.5",
@@ -340,7 +350,6 @@ test("Lolixco Edit DNA — Phase 2: Owner rating lab records and revises ratings
     { encoding: "utf8", timeout: 10000 }
   );
 
-  const ratingsPath = resolve(projectRoot, "data/edit-dna/owner_ratings.json");
   const db = JSON.parse(readFileSync(ratingsPath, "utf8"));
   const record = db.ratings["test_edit_asset_99"];
 
@@ -349,5 +358,66 @@ test("Lolixco Edit DNA — Phase 2: Owner rating lab records and revises ratings
   assert.equal(record.revision_count, 2);
   assert.equal(record.free_text_notes, "Revised: better sync than initially credited");
   assert.equal(record.telemetry_provenance, "local_offline_dsp_measured");
+});
+
+test("Lolixco Edit DNA — Phase 2: Web Lab API endpoints and anti-bias blind reveal", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const testScript = `
+import sys
+sys.path.insert(0, "${projectRoot}/scripts/edit-dna")
+from fastapi.testclient import TestClient
+import web_lab
+
+client = TestClient(web_lab.app)
+
+# 1. Verify SPA delivery
+res = client.get("/")
+assert res.status_code == 200
+assert "Lolixco Edit DNA // Owner Rating Lab" in res.text
+
+# 2. Verify synthetic benchmarks list
+res = client.get("/api/ratings?scope=synthetic")
+assert res.status_code == 200
+data = res.json()
+assert "bench_01_clean_hard_cuts" in data["ratings"]
+
+# 3. Verify blind reveal on new rating submission
+res = client.post("/api/ratings", json={
+    "asset_id": "test_web_asset_01",
+    "intake_type": "local_asset",
+    "scope": "synthetic",
+    "component_scores": {
+        "beat_synchronization": 8.0,
+        "transitions": 8.0,
+        "pacing": 8.0,
+        "visual_quality": 8.0,
+        "storytelling_emotion": 8.0,
+        "originality_creativity": 8.0
+    },
+    "overall_score": 8.5,
+    "notes": "Testing blind reveal via web api"
+})
+assert res.status_code == 200
+data = res.json()
+assert data["status"] == "success"
+reveal = data["ai_prediction_reveal"]
+assert "predicted_score" in reveal
+assert "score_delta" in reveal
+assert reveal["score_delta"] == round(8.5 - reveal["predicted_score"], 2)
+
+# Clean up test asset
+client.delete("/api/ratings/test_web_asset_01?scope=synthetic")
+print("WEB_LAB_TEST_PASS")
+`;
+
+  const stdout = execFileSync(
+    pythonBin,
+    ["-c", testScript],
+    { encoding: "utf8", timeout: 15000 }
+  );
+
+  assert.ok(stdout.includes("WEB_LAB_TEST_PASS"));
 });
 

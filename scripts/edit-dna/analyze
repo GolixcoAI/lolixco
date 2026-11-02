@@ -17,3 +17,4 @@ else
 fi
 
 exec "$PYTHON_BIN" "$SCRIPT_DIR/offline_analyzer.py" "$@"
+

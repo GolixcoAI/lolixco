@@ -1,0 +1,64 @@
+{
+  "ratings": {
+    "bench_01_clean_hard_cuts": {
+      "asset_id": "bench_01_clean_hard_cuts",
+      "intake_type": "local_asset",
+      "telemetry_provenance": "local_offline_dsp_measured",
+      "component_scores": {
+        "beat_synchronization": 9.5,
+        "transitions": 8.5,
+        "pacing": 8,
+        "visual_quality": 8,
+        "storytelling_emotion": 7.5,
+        "originality_creativity": 7
+      },
+      "overall_subjective_score": 9,
+      "rubric_weighted_score": 8.3,
+      "free_text_notes": "Flawless on-beat snap",
+      "revision_count": 1,
+      "created_at": "2026-11-02T08:39:53Z",
+      "updated_at": "2026-11-02T08:39:53Z",
+      "is_synthetic_benchmark": true
+    },
+    "bench_02_offset_sync_cuts": {
+      "asset_id": "bench_02_offset_sync_cuts",
+      "intake_type": "local_asset",
+      "telemetry_provenance": "local_offline_dsp_measured",
+      "component_scores": {
+        "beat_synchronization": 2,
+        "transitions": 5.5,
+        "pacing": 4.5,
+        "visual_quality": 7,
+        "storytelling_emotion": 4.5,
+        "originality_creativity": 4.5
+      },
+      "overall_subjective_score": 3,
+      "rubric_weighted_score": 4.45,
+      "free_text_notes": "Revised: After second listen, desync is unacceptable",
+      "revision_count": 2,
+      "created_at": "2026-11-02T08:39:53Z",
+      "updated_at": "2026-11-02T08:40:00Z",
+      "is_synthetic_benchmark": true
+    },
+    "test_edit_asset_99": {
+      "asset_id": "test_edit_asset_99",
+      "intake_type": "local_asset",
+      "telemetry_provenance": "local_offline_dsp_measured",
+      "is_synthetic_benchmark": true,
+      "component_scores": {
+        "beat_synchronization": 9.5,
+        "transitions": 8.5,
+        "pacing": 8.5,
+        "visual_quality": 9.0,
+        "storytelling_emotion": 7.5,
+        "originality_creativity": 8.0
+      },
+      "overall_subjective_score": 8.9,
+      "rubric_weighted_score": 8.62,
+      "free_text_notes": "Revised: better sync than initially credited",
+      "revision_count": 2,
+      "created_at": "2026-11-02T10:01:07Z",
+      "updated_at": "2026-11-02T10:01:07Z"
+    }
+  }
+}
