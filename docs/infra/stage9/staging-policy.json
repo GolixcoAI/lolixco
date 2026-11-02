@@ -1,0 +1,38 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "WriteReviewedStagingObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "${EXACT_CLEARED_STAGING_OBJECT_ARN}"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "s3:x-amz-server-side-encryption": "AES256"
+        }
+      }
+    },
+    {
+      "Sid": "NeverWriteDeliveryOrPrivateEvidence",
+      "Effect": "Deny",
+      "Action": [
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion",
+        "s3:PutObjectAcl",
+        "s3:PutObjectTagging"
+      ],
+      "Resource": [
+        "arn:aws:s3:::${MEDIA_BUCKET}/optimized/*",
+        "arn:aws:s3:::${MEDIA_BUCKET}/posters/*",
+        "arn:aws:s3:::${MEDIA_BUCKET}/masters/*",
+        "arn:aws:s3:::${MEDIA_BUCKET}/audit/*",
+        "arn:aws:s3:::${MEDIA_BUCKET}/quarantine/*"
+      ]
+    }
+  ]
+}
