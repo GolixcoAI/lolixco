@@ -217,7 +217,7 @@ export default function App({
     return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", visible); };
   }, []);
   const initialLandscapeVideo = useMemo(
-    () => selectEditOfTheMoment(initialEdits.filter(isVideo), today), [initialEdits, today],
+    () => selectEditOfTheMoment(initialEdits, today), [initialEdits, today],
   );
 
   // Initialize navigation state from URL query parameters
@@ -227,7 +227,7 @@ export default function App({
   const [fandom, setFandom] = useState(initialParams.fandom);
   const [selection, setSelection] = useState<{ catalog: Edit[]; id: number } | null>(null);
   const selected = selection?.catalog === initialEdits
-    ? initialEdits.find((e) => e.id === selection.id && isVideo(e)) ?? initialLandscapeVideo
+    ? initialEdits.find((e) => e.id === selection.id) ?? initialLandscapeVideo
     : initialLandscapeVideo;
   const setSelected = (edit: Edit) => setSelection({ catalog: initialEdits, id: edit.id });
   useEffect(() => { shuffleOffset.current = 0; }, [initialEdits]);
@@ -537,12 +537,12 @@ export default function App({
   }
 
   const handleShuffleFeatured = useCallback(() => {
-    const nextFeatured = selectEditOfTheMoment(initialEdits, new Date(), ++shuffleOffset.current);
+    let nextFeatured = selectEditOfTheMoment(initialEdits, new Date(), ++shuffleOffset.current);
+    if (nextFeatured?.id === selected?.id && initialEdits.length > 1) nextFeatured = selectEditOfTheMoment(initialEdits, new Date(), ++shuffleOffset.current);
     if (nextFeatured) {
-      if (nextFeatured.format === "short") setActiveShort(nextFeatured);
-      else { setActiveShort(null); setSelection({ catalog: initialEdits, id: nextFeatured.id }); }
+      setActiveShort(null); setSelection({ catalog: initialEdits, id: nextFeatured.id });
     }
-  }, [initialEdits]);
+  }, [initialEdits, selected?.id]);
 
   function navigate(name: string) {
     setDrawer(false);
@@ -772,7 +772,7 @@ export default function App({
           )
         ) : !browsing ? (
           <>
-            {selected && isVideo(selected) && (
+            {selected && (
               <div className="featured-row">
                 <div className="featured-player-stage">
                 <VideoPlayer
