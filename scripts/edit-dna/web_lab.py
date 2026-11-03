@@ -43,10 +43,12 @@ SYNTHETIC_RATINGS_FILE = os.path.join(DATA_DIR, "synthetic_ratings.json")
 OWNER_COMPARISONS_FILE = os.path.join(DATA_DIR, "owner_comparisons.json")
 SYNTHETIC_COMPARISONS_FILE = os.path.join(DATA_DIR, "synthetic_comparisons.json")
 RUBRIC_FILE = os.path.join(DATA_DIR, "owner_rubric.json")
+ANNOTATIONS_DIR = os.path.join(HOME_DATA_DIR, "annotations")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(BACKUP_DIR, exist_ok=True)
 os.makedirs(HOME_DATA_DIR, exist_ok=True)
+os.makedirs(ANNOTATIONS_DIR, exist_ok=True)
 
 # Import Phase 3 ML modules
 sys.path.insert(0, os.path.join(BASE_DIR, "scripts", "edit-dna"))
@@ -149,6 +151,27 @@ class EditorialTagUpdateRequest(BaseModel):
     asset_id: str
     positive_tags: List[str]
     negative_tags: List[str]
+
+
+class MusicOverrideRequest(BaseModel):
+    asset_id: str
+    corrected_title: str
+    corrected_artist: str
+    notes: str = ""
+
+
+class SourceOverrideRequest(BaseModel):
+    asset_id: str
+    corrected_franchise: str
+    corrected_title: str
+    notes: str = ""
+
+
+class IntentionalCutRequest(BaseModel):
+    asset_id: str
+    cut_timestamp: float
+    rhythm_role: str = "anticipatory_lead_in"
+    notes: str = ""
 
 
 app = FastAPI(title="Lolixco Edit DNA — Owner Rating Lab", version="3.0")
@@ -434,6 +457,63 @@ def stream_benchmark_media(filename: str):
     if os.path.isfile(path):
         return FileResponse(path, media_type="video/mp4")
     raise HTTPException(status_code=404, detail="File not found")
+
+
+@app.post("/api/v6/override-music")
+def override_music_annotation(req: MusicOverrideRequest):
+    file_path = os.path.join(ANNOTATIONS_DIR, "music_overrides.json")
+    data = load_json(file_path, {})
+    data[req.asset_id] = {
+        "asset_id": req.asset_id,
+        "corrected_title": req.corrected_title,
+        "corrected_artist": req.corrected_artist,
+        "notes": req.notes,
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    save_json(file_path, data)
+    return {"status": "success", "override_type": "music", "record": data[req.asset_id]}
+
+
+@app.post("/api/v6/override-source")
+def override_source_annotation(req: SourceOverrideRequest):
+    file_path = os.path.join(ANNOTATIONS_DIR, "source_overrides.json")
+    data = load_json(file_path, {})
+    data[req.asset_id] = {
+        "asset_id": req.asset_id,
+        "corrected_franchise": req.corrected_franchise,
+        "corrected_title": req.corrected_title,
+        "notes": req.notes,
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    save_json(file_path, data)
+    return {"status": "success", "override_type": "source", "record": data[req.asset_id]}
+
+
+@app.post("/api/v6/tag-intentional-cut")
+def tag_intentional_cut(req: IntentionalCutRequest):
+    file_path = os.path.join(ANNOTATIONS_DIR, "intentional_cuts.json")
+    data = load_json(file_path, {})
+    cuts_for_asset = data.get(req.asset_id, [])
+    cuts_for_asset.append({
+        "timestamp": req.cut_timestamp,
+        "rhythm_role": req.rhythm_role,
+        "notes": req.notes,
+        "tagged_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    })
+    data[req.asset_id] = cuts_for_asset
+    save_json(file_path, data)
+    return {"status": "success", "asset_id": req.asset_id, "total_tagged_cuts": len(cuts_for_asset)}
+
+
+@app.get("/api/v6/evaluation-summary")
+def get_v6_evaluation_summary():
+    eval_file = os.path.join(DATA_DIR, "owner_evaluations", "owner_model_honest_evaluation.json")
+    if not os.path.isfile(eval_file):
+        eval_file = os.path.join(HOME_DATA_DIR, "owner_evaluations", "owner_model_honest_evaluation.json")
+    if os.path.isfile(eval_file):
+        with open(eval_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"status": "INSUFFICIENT_EVALUATION_DATA", "message": "Evaluation report not found."}
 
 
 @app.get("/", response_class=HTMLResponse)

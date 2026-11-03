@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-03T06:17:15Z",
+  "timestamp": "2026-11-03T08:10:15Z",
   "benchmark_summary": {
     "total_queries": 12,
     "visual_metrics": {
@@ -35,7 +35,7 @@
       "accuracy": 1.0,
       "false_positive_rate": 0.0
     },
-    "mean_latency_ms": 836.05
+    "mean_latency_ms": 633.35
   },
   "query_details": [
     {
@@ -48,7 +48,7 @@
       "predicted_target": "synth_proto_v1_crimson_slash",
       "confidence": 0.978,
       "is_correct": true,
-      "latency_ms": 932.74,
+      "latency_ms": 904.58,
       "diagnostics": {
         "similarity_score": 0.978,
         "runner_up_margin": 0.089,
@@ -67,7 +67,7 @@
       "predicted_target": "synth_proto_v2_comic_halftone",
       "confidence": 0.812,
       "is_correct": true,
-      "latency_ms": 994.46,
+      "latency_ms": 681.51,
       "diagnostics": {
         "similarity_score": 0.812,
         "runner_up_margin": 0.1,
@@ -86,7 +86,7 @@
       "predicted_target": "synth_proto_v1_crimson_slash",
       "confidence": 0.978,
       "is_correct": true,
-      "latency_ms": 864.12,
+      "latency_ms": 657.05,
       "diagnostics": {
         "similarity_score": 0.978,
         "runner_up_margin": 0.091,
@@ -105,7 +105,7 @@
       "predicted_target": "synth_proto_v3_sepia_clouds",
       "confidence": 0.954,
       "is_correct": true,
-      "latency_ms": 902.06,
+      "latency_ms": 789.13,
       "diagnostics": {
         "similarity_score": 0.954,
         "runner_up_margin": 0.282,
@@ -124,7 +124,7 @@
       "predicted_target": null,
       "confidence": 0.711,
       "is_correct": true,
-      "latency_ms": 953.31,
+      "latency_ms": 772.21,
       "diagnostics": {}
     },
     {
@@ -137,7 +137,7 @@
       "predicted_target": null,
       "confidence": 0.322,
       "is_correct": true,
-      "latency_ms": 768.33,
+      "latency_ms": 505.85,
       "diagnostics": {}
     },
     {
@@ -150,7 +150,7 @@
       "predicted_target": "synth_proto_a1_phonk_cowbell",
       "confidence": 0.998,
       "is_correct": true,
-      "latency_ms": 771.51,
+      "latency_ms": 572.42,
       "diagnostics": {
         "similarity_score": 0.998,
         "runner_up_margin": 0.294
@@ -166,7 +166,7 @@
       "predicted_target": "synth_proto_a1_phonk_cowbell",
       "confidence": 0.775,
       "is_correct": true,
-      "latency_ms": 711.8,
+      "latency_ms": 494.06,
       "diagnostics": {
         "similarity_score": 0.775,
         "runner_up_margin": 0.427
@@ -182,7 +182,7 @@
       "predicted_target": "synth_proto_a2_trap_brass",
       "confidence": 0.912,
       "is_correct": true,
-      "latency_ms": 867.49,
+      "latency_ms": 453.16,
       "diagnostics": {
         "similarity_score": 0.912,
         "runner_up_margin": 0.247
@@ -198,7 +198,7 @@
       "predicted_target": "synth_proto_a3_piano_arpeggio",
       "confidence": 0.77,
       "is_correct": true,
-      "latency_ms": 655.25,
+      "latency_ms": 438.59,
       "diagnostics": {
         "similarity_score": 0.77,
         "runner_up_margin": 0.103
@@ -214,7 +214,7 @@
       "predicted_target": null,
       "confidence": 0.568,
       "is_correct": true,
-      "latency_ms": 728.13,
+      "latency_ms": 624.63,
       "diagnostics": {}
     },
     {
@@ -227,7 +227,7 @@
       "predicted_target": null,
       "confidence": 0.393,
       "is_correct": true,
-      "latency_ms": 883.41,
+      "latency_ms": 707.01,
       "diagnostics": {}
     }
   ]

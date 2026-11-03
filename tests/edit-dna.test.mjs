@@ -664,6 +664,148 @@ print("REPORT_SECTIONS_VERIFIED")
   assert.ok(stdout.includes("REPORT_SECTIONS_VERIFIED"));
 });
 
+test("Lolixco Edit DNA — Phase 6: Evidence scoring engine withdraws subjective heuristics to NOT_YET_ASSESSED", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+sys.path.insert(0, "scripts/edit-dna")
+from evidence_scoring_engine import EvidenceScoringEngine, StatusTag
+
+engine = EvidenceScoringEngine()
+cuts = engine.reconcile_cuts_and_shots([1.2, 2.5, 4.0, 5.8], 8.0, [2.0])
+rhythm = engine.evaluate_multi_grid_rhythm(cuts["internal_cut_timestamps"], [1.2, 2.4, 3.6, 4.8, 6.0], 100.0)
+card = engine.evaluate_scorecard(cuts, rhythm, {"width": 1280, "height": 720, "fps": 30.0}, {"rms_db": -12.0})
+
+assert card["scorecard"]["beat_synchronization"]["status"] == StatusTag.MEASURED_SIGNAL
+assert card["scorecard"]["pacing"]["status"] == StatusTag.NOT_YET_ASSESSED
+assert card["scorecard"]["pacing"]["score"] is None
+assert card["scorecard"]["visual_quality"]["status"] == StatusTag.NOT_YET_ASSESSED
+assert card["scorecard"]["storytelling_emotion"]["status"] == StatusTag.NOT_YET_ASSESSED
+assert card["scorecard"]["originality_creativity"]["status"] == StatusTag.NOT_YET_ASSESSED
+assert card["overall_prediction"]["status"] == StatusTag.NOT_YET_ASSESSED
+assert card["overall_prediction"]["predicted_score"] is None
+print("PHASE6_EVIDENCE_SCORING_WITHDRAWAL_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  assert.ok(stdout.includes("PHASE6_EVIDENCE_SCORING_WITHDRAWAL_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 6: Music evidence resolver flags acoustic contradiction as CONFLICT and retracts false matches", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+sys.path.insert(0, "scripts/edit-dna")
+from music_evidence_resolver import MusicEvidenceResolver
+
+resolver = MusicEvidenceResolver()
+# Classical reference candidate matching loud modern clipped trailer audio
+res = resolver.resolve_recognition(
+    raw_candidates=[{"ref_id": "bach_ref", "title": "Bach Brandenburg 3", "artist": "J.S. Bach", "similarity": 0.72}],
+    measured_bpm=112.3,
+    measured_rms_db=-9.0,
+    has_clipping=True,
+    audio_duration_sec=36.4
+)
+
+assert res["status"] == "CONFLICT"
+assert res["matched_track"] is None
+assert res["conflict_details"]["reason"] == "acoustic_genre_and_loudness_contradiction"
+print("PHASE6_MUSIC_CONFLICT_RESOLUTION_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  assert.ok(stdout.includes("PHASE6_MUSIC_CONFLICT_RESOLUTION_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 6: Cut/beat reconciliation accounts for shots vs transitions and evaluates multi-tempo grids", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+sys.path.insert(0, "scripts/edit-dna")
+from evidence_scoring_engine import EvidenceScoringEngine
+
+engine = EvidenceScoringEngine()
+# Test reconciliation on 10 cut timestamps dividing a 10s video
+raw_cuts = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+recon = engine.reconcile_cuts_and_shots(raw_cuts, 10.0, [2.5, 5.5])
+
+assert recon["shots_count"] == 10
+assert recon["cut_transitions_count"] == 9
+assert recon["intra_shot_flashes_count"] == 2
+
+# Test rhythm on primary, half-time, and double-time grids
+beats = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+rhythm = engine.evaluate_multi_grid_rhythm(recon["internal_cut_timestamps"], beats, 120.0)
+
+assert rhythm["primary_bpm"] == 120.0
+assert rhythm["half_time_bpm"] == 60.0
+assert rhythm["double_time_bpm"] == 240.0
+assert rhythm["primary_grid"]["tight_sync_percent"] == 100.0
+print("PHASE6_CUT_RHYTHM_RECONCILIATION_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  assert.ok(stdout.includes("PHASE6_CUT_RHYTHM_RECONCILIATION_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 6: Honest evaluation framework computes LOOCV errors without false calibration claims", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [resolve(projectRoot, "scripts/edit-dna/evaluate_owner_model.py")],
+    { encoding: "utf8", timeout: 25000 }
+  );
+
+  assert.ok(stdout.includes("OWNER MODEL HONEST EVALUATION REPORT"));
+  assert.ok(stdout.includes("Total Owner Reviews: 11"));
+  assert.ok(stdout.includes("LOOCV Prediction Errors:"));
+  assert.ok(stdout.includes("Preference Model:"));
+  assert.ok(stdout.includes("Mean Predictor Base:"));
+  assert.ok(stdout.includes("Uniform Rubric Base:"));
+  assert.ok(stdout.includes("A/B Ranking Accuracy:"));
+});
+
+test("Lolixco Edit DNA — Phase 6: Production Schema v6.0 validator enforces per-field status and provenance contract", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [resolve(projectRoot, "scripts/edit-dna/edit_dna_schema_v6.py")],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  assert.ok(stdout.includes("Schema v6.0.0 validation passed successfully."));
+});
+
+
 
 
 
