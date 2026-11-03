@@ -1,3 +1,4 @@
+import CreatorStudio from "./components/studio/CreatorStudio";
 import { discoveryCatalog } from "./utils/discoveryCatalog";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Header from "./components/layout/Header";
@@ -96,6 +97,7 @@ export function parseUrlParams(catalog: Edit[] = edits): {
   }
 
   let normView = "Home";
+  if (rawView.toLowerCase() === "studio") normView = "Creator Studio";
   if (rawView.toLowerCase() === "explore") {
     normView = "Explore";
   } else if (rawView.toLowerCase() === "shorts") {
@@ -125,7 +127,9 @@ export function syncUrl(
   if (typeof window === "undefined") return;
 
   const params = new URLSearchParams();
-  if (view && view.toLowerCase() === "explore") {
+  if (view === "Creator Studio") {
+    params.set("view", "studio");
+  } else if (view && view.toLowerCase() === "explore") {
     params.set("view", "explore");
   } else if (view && view.toLowerCase() === "shorts") {
     params.set("view", "shorts");
@@ -582,6 +586,9 @@ export default function App({
         viewerSessionIdRef.current = null;
         syncUrl("All", "", "", "Shorts", null, true, null);
       }
+    } else if (name === "Creator Studio") {
+      setActive("Creator Studio"); setActiveShort(null); setQuery(""); setCategory("All"); setFandom("");
+      syncUrl("All", "", "", "Creator Studio", null, true);
     } else if (name === "Immersion") {
       setImmersionOpen(true);
     } else {
@@ -701,13 +708,13 @@ export default function App({
         </Dialog>
       )}
       <main id="main">
-        <CategoryBar
+        {active !== "Creator Studio" && <CategoryBar
           category={category}
           onSelectCategory={handleCategoryChange}
           fandomId={fandom}
           onSelectFandom={handleFandomChange}
-        />
-        {active === "Shorts" ? (
+        />}
+        {active === "Creator Studio" ? <CreatorStudio /> : active === "Shorts" ? (
           catalogShorts.length === 0 ? (
             <div
               className="shorts-empty-state"
