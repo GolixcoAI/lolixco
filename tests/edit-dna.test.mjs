@@ -581,5 +581,89 @@ test("Lolixco Edit DNA — Phase 4: Multi-source mixed edit analyzer generates s
   assert.ok(stdout.includes("Identified Visual Sources"));
 });
 
+test("Lolixco Edit DNA — Phase 5: Gemini video provider abstraction & fallback handling", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [resolve(projectRoot, "scripts/edit-dna/test_gemini_experiment.py")],
+    { encoding: "utf8", timeout: 15000 }
+  );
+
+  assert.ok(stdout.includes("EXPERIMENT 1: GEMINI VIDEO UNDERSTANDING"));
+  assert.ok(stdout.includes("Target YouTube URL : https://youtu.be/_yrPlcZY2jw"));
+  assert.ok(stdout.includes("Report written to data/edit-dna/gemini_youtube_experiment_report.json"));
+});
+
+test("Lolixco Edit DNA — Phase 5: Semantic visual representation benchmark evaluates blur, overlays & negatives", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [resolve(projectRoot, "scripts/edit-dna/test_semantic_visual_benchmark.py")],
+    { encoding: "utf8", timeout: 25000 }
+  );
+
+  assert.ok(stdout.includes("SEMANTIC VISUAL vs GEOMETRIC BASELINE BENCHMARK"));
+  assert.ok(stdout.includes("Semantic Accuracy"));
+  assert.ok(stdout.includes("Detailed benchmark report saved"));
+});
+
+test("Lolixco Edit DNA — Phase 5: Real music identifier evaluates authorized master recordings & abstains on unknowns", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [resolve(projectRoot, "scripts/edit-dna/real_music_identifier.py")],
+    { encoding: "utf8", timeout: 25000 }
+  );
+
+  assert.ok(stdout.includes("REAL MUSIC IDENTIFICATION EXPERIMENT"));
+  assert.ok(stdout.includes("Symphony No. 5"));
+  assert.ok(stdout.includes("Brandenburg Concerto No. 3"));
+  assert.ok(stdout.includes("UNKNOWN / ABSTAIN"));
+});
+
+test("Lolixco Edit DNA — Phase 5: Unified 5-part Edit DNA report separates facts, hypotheses, and unknowns", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+sys.path.insert(0, "scripts/edit-dna")
+from edit_dna_report import EditDNAReportCompiler
+
+compiler = EditDNAReportCompiler()
+rep = compiler.compile_report(
+    media_id="test_edit.mp4",
+    media_type="authorized_video_bytes",
+    visual_recognition={"status": "identified", "matched_entity": {"title": "Test"}},
+    music_recognition={"status": "identified", "matched_entity": {"title": "Beethoven"}},
+    technical_measurements={"duration_seconds": 15.0, "cuts_count": 8, "cuts_per_second": 0.53, "beat_sync_percent": 87.5},
+)
+
+assert "section_a_visual_recognition" in rep
+assert "section_b_music_recognition" in rep
+assert "section_c_technical_measurements" in rep
+assert "section_d_personalized_preferences" in rep
+assert "section_e_unknowns_and_boundaries" in rep
+assert rep["section_d_personalized_preferences"]["predicted_owner_overall_score"] is not None
+print("REPORT_SECTIONS_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  assert.ok(stdout.includes("REPORT_SECTIONS_VERIFIED"));
+});
+
+
 
 

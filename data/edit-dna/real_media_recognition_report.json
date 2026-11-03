@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-02T16:40:48Z",
+  "timestamp": "2026-11-03T06:17:21Z",
   "provenance": "authorized_local_video_bytes_public_media_motion_study_webm",
   "results": [
     {
@@ -10,7 +10,7 @@
       "predicted_target": "ref_real_motion_study",
       "confidence": 0.804,
       "is_correct": true,
-      "latency_ms": 1309.51,
+      "latency_ms": 1651.36,
       "evidence": {
         "similarity_score": 0.804,
         "runner_up_margin": 0.804,
@@ -27,7 +27,7 @@
       "predicted_target": "ref_real_motion_study",
       "confidence": 0.962,
       "is_correct": true,
-      "latency_ms": 1351.4,
+      "latency_ms": 1622.32,
       "evidence": {
         "similarity_score": 0.962,
         "runner_up_margin": 0.962,
@@ -44,7 +44,7 @@
       "predicted_target": null,
       "confidence": 0.342,
       "is_correct": true,
-      "latency_ms": 873.6,
+      "latency_ms": 919.5,
       "evidence": {}
     }
   ],

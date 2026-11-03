@@ -1,0 +1,50 @@
+{
+  "experiment_timestamp": "2026-11-03T06:17:37Z",
+  "target_url": "https://youtu.be/_yrPlcZY2jw?si=YIb3fHK5Ftet75iy",
+  "canonical_url": "https://www.youtube.com/watch?v=_yrPlcZY2jw",
+  "evaluation_protocol": "metadata_blind_prompting",
+  "provider_status": "missing_credentials",
+  "has_live_credentials": false,
+  "quota_and_terms": {
+    "api_endpoint": "https://generativelanguage.googleapis.com/v1beta/interactions",
+    "model": "gemini-3.8-flash",
+    "feature_status": "Preview (available at no charge for public YouTube URLs)",
+    "free_tier_daily_limit": "Up to 8 hours of YouTube video processing per day",
+    "terms_data_handling": "Free tier inputs/outputs may be reviewed to improve products. Paid tier has zero-day retention.",
+    "google_ai_pro_distinction": "Google AI Pro subscription grants higher web Playground quotas, but API keys are governed separately by Gemini Developer API tiers."
+  },
+  "missing_access_details": {
+    "reason": "GEMINI_API_KEY environment variable not populated.",
+    "setup_guide": {
+      "step1": "Visit Google AI Studio: https://aistudio.google.com/apikey",
+      "step2": "Create a free Gemini API key (no credit card or paid billing required).",
+      "step3": "Export the key locally in your shell: export GEMINI_API_KEY='your_key_here'",
+      "step4": "Re-run Lolixco Edit DNA to enable hybrid semantic analysis."
+    },
+    "ready_for_key": true
+  },
+  "evidence_gap_analysis": {
+    "metadata_claims": {
+      "title": "DHURANDHAR ft. Raga of revenge | Anirudh | Ranveer Singh .",
+      "author": "The Bad Speaker",
+      "claimed_movie": "Dhurandhar",
+      "claimed_actor": "Ranveer Singh",
+      "claimed_soundtrack": "Raga of revenge (Anirudh Ravichander)"
+    },
+    "unverified_signals_without_byte_stream": [
+      "Cannot confirm whether Anirudh's actual audio master is playing or a third-party cover/mashup.",
+      "Cannot measure precise beat-sync synchronization deltas in URL-only mode.",
+      "Cannot compute frame-accurate cut frequency or pacing without raw frame access."
+    ],
+    "what_gemini_adds_when_active": [
+      "Direct Google-side decoding of public YouTube video frames and audio track without scraping.",
+      "High-level scene recognition, actor face verification, and narrative sequence summary.",
+      "Identification of visible transitions, macro pacing, and soundtrack changes."
+    ],
+    "what_local_system_retains": [
+      "100% offline mathematical precision on authorized video bytes (FFmpeg/OpenCV).",
+      "Private owner rating preference model (11 reviews, 4 comparisons) completely shielded from third parties.",
+      "Zero third-party dependency for core technical measurement pipeline."
+    ]
+  }
+}

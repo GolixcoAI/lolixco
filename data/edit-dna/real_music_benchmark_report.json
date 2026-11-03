@@ -1,0 +1,93 @@
+{
+  "benchmark_timestamp": "2026-11-03T06:18:00Z",
+  "catalog_size": 3,
+  "total_queries": 5,
+  "accuracy_percent": 60.0,
+  "query_results": [
+    {
+      "query_id": "q_m1_clean_beethoven",
+      "condition": "clean_excerpt",
+      "expected_target": "ref_real_beethoven_sym5",
+      "matched_id": "ref_real_beethoven_sym5",
+      "matched_title": "Symphony No. 5 in C minor, Op. 67 (1. Allegro con brio)",
+      "status": "identified",
+      "confidence": 0.851,
+      "latency_ms": 637.3,
+      "diagnostics": {},
+      "correct": true
+    },
+    {
+      "query_id": "q_m2_slowed_chopin",
+      "condition": "slowed_0_85x",
+      "expected_target": "ref_real_chopin_nocturne",
+      "matched_id": null,
+      "matched_title": "UNKNOWN / ABSTAIN",
+      "status": "abstain",
+      "confidence": 0.63,
+      "latency_ms": 687.0,
+      "diagnostics": {},
+      "correct": false
+    },
+    {
+      "query_id": "q_m3_pitched_bach",
+      "condition": "pitched_plus2_semitones",
+      "expected_target": "ref_real_bach_brandenburg3",
+      "matched_id": "ref_real_bach_brandenburg3",
+      "matched_title": "Brandenburg Concerto No. 3 in G major, BWV 1048 (1. Allegro)",
+      "status": "identified",
+      "confidence": 0.652,
+      "latency_ms": 672.8,
+      "diagnostics": {},
+      "correct": true
+    },
+    {
+      "query_id": "q_m4_dialogue_beethoven",
+      "condition": "dialogue_overlay",
+      "expected_target": "ref_real_beethoven_sym5",
+      "matched_id": null,
+      "matched_title": "UNKNOWN / ABSTAIN",
+      "status": "abstain",
+      "confidence": 0.543,
+      "latency_ms": 675.0,
+      "diagnostics": {},
+      "correct": false
+    },
+    {
+      "query_id": "q_m5_unknown_acoustic",
+      "condition": "out_of_catalog_unknown",
+      "expected_target": null,
+      "matched_id": null,
+      "matched_title": "UNKNOWN / ABSTAIN",
+      "status": "abstain",
+      "confidence": 0.546,
+      "latency_ms": 594.9,
+      "diagnostics": {},
+      "correct": true
+    }
+  ],
+  "commercial_services_proposal": {
+    "acoustid_status": "Non-commercial only. AcoustID cannot be used in a commercial product without a commercial license agreement, and Chromaprint is algorithmically fragile to pitch and speed shifts.",
+    "commercial_options": [
+      {
+        "provider": "AudD Music Recognition API",
+        "features": "Direct music recognition with massive catalog, official Apple Music / Spotify links, supports humming and partial clips.",
+        "pricing": "$5.00 / 1,000 requests (or $20/month base subscription).",
+        "integration_path": "REST API with audio slice upload (10-15s WAV).",
+        "speed_pitch_invariance": "Good for minor pitch/tempo drift, fails on extreme nightcore/slowed."
+      },
+      {
+        "provider": "ACRCloud Audio Fingerprinting",
+        "features": "Broadcast-grade music recognition, supports custom fingerprint database for anime OSTs/unreleased tracks.",
+        "pricing": "$5.00 / 1,000 queries (developer tier), enterprise tiers available.",
+        "integration_path": "SDK (Python / C++) or REST API with HMAC auth.",
+        "speed_pitch_invariance": "Offers specialized robust fingerprinting mode for covers and pitch-shifted edits."
+      },
+      {
+        "provider": "Lolixco In-House CENS + Onset Engine (Current)",
+        "features": "Zero external dependency, 100% private, speed-sweep (0.80x-1.25x) and circular pitch-shift (+-3 semitones) invariant.",
+        "pricing": "$0.00 (Self-hosted on CPU).",
+        "scalability_limit": "Requires building an indexed catalog of target tracks."
+      }
+    ]
+  }
+}
