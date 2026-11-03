@@ -217,7 +217,7 @@ export default function App({
     return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", visible); };
   }, []);
   const initialLandscapeVideo = useMemo(
-    () => selectEditOfTheMoment(initialEdits, today), [initialEdits, today],
+    () => selectEditOfTheMoment(initialEdits.filter(isVideo), today), [initialEdits, today],
   );
 
   // Initialize navigation state from URL query parameters
@@ -538,7 +538,10 @@ export default function App({
 
   const handleShuffleFeatured = useCallback(() => {
     const nextFeatured = selectEditOfTheMoment(initialEdits, new Date(), ++shuffleOffset.current);
-    if (nextFeatured) setSelection({ catalog: initialEdits, id: nextFeatured.id });
+    if (nextFeatured) {
+      if (nextFeatured.format === "short") setActiveShort(nextFeatured);
+      else { setActiveShort(null); setSelection({ catalog: initialEdits, id: nextFeatured.id }); }
+    }
   }, [initialEdits]);
 
   function navigate(name: string) {

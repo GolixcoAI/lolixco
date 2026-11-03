@@ -1,4 +1,10 @@
 import type { Edit } from "./edits";
+import { discoveryCatalog } from "../utils/discoveryCatalog";
+
+export function normalizeSearch(value: string): string {
+  return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\bspiderman\b/g, "spider man").replace(/\bdr\b/g, "doctor").replace(/\bjjk\b/g, "jujutsu kaisen").replace(/[’']/g, "").replace(/[^a-z0-9#]+/g, " ").trim();
+}
+
 
 export interface ParsedTerm {
   raw: string;
@@ -15,7 +21,7 @@ export interface SearchResult {
 
 /**
  * Weights when query contains at least one hashtag (Sum = 100%).
- * Creator metadata is excluded from public search ranking.
+ * Public creator relevance is added for real records only.
  */
 export const HASHTAG_WEIGHTS = {
   hashtag: 0.40,
@@ -76,11 +82,11 @@ export function parseQuery(query: string): ParsedTerm[] {
       }
       return {
         raw: term,
-        clean: term.toLowerCase(),
+        clean: normalizeSearch(term),
         isHashtag: false,
         isMalformed: false,
       };
-    });
+    }).filter((term) => term.isHashtag || term.clean.length > 0);
 }
 
 /**
@@ -89,8 +95,8 @@ export function parseQuery(query: string): ParsedTerm[] {
  */
 export function matchQuality(source: string, token: string): number {
   if (!source || !token) return 0.0;
-  const s = source.toLowerCase().trim();
-  const t = token.toLowerCase().trim();
+  const s = normalizeSearch(source);
+  const t = normalizeSearch(token);
   if (s === t) return 1.0;
   const words = s.split(/\s+/);
   if (words.some((w) => w === t)) return 0.9;
@@ -131,7 +137,7 @@ export function matchesFandomFilter(edit: Edit, fandomId?: string): boolean {
 
 /**
  * Evaluate score and match status for a single query term against an edit.
- * Internal creator metadata is NOT matched, ensuring creator anonymity.
+ * Public creator attribution is matched for real published records; legacy demo creators stay private.
  */
 export function scoreTerm(
   edit: Edit,
@@ -160,6 +166,7 @@ export function scoreTerm(
     const qTitle = matchQuality(edit.title, term.clean);
     const qCat = matchQuality(edit.category, term.clean);
     const qDesc = matchQuality(edit.description, term.clean);
+    const qCreator = edit.sourceType === "youtube_embed" || edit.sourceType === "licensed_local_media" ? matchQuality(edit.creator, term.clean) : 0;
 
     if (qTitle > 0) reasons.push(`Title match (${term.clean})`);
     if (qCat > 0) reasons.push(`Category match (${term.clean})`);
@@ -178,6 +185,7 @@ export function scoreTerm(
     const qTitle = matchQuality(edit.title, term.clean);
     const qCat = matchQuality(edit.category, term.clean);
     const qDesc = matchQuality(edit.description, term.clean);
+    const qCreator = edit.sourceType === "youtube_embed" || edit.sourceType === "licensed_local_media" ? matchQuality(edit.creator, term.clean) : 0;
 
     // Evaluate tag matches as part of category/topic relevance
     let qTagMax = 0;
@@ -196,7 +204,7 @@ export function scoreTerm(
     }
     if (qDesc > 0) reasons.push(`Description match (${term.clean})`);
 
-    const bestQuality = Math.max(qTitle, qTopic, qDesc);
+    const bestQuality = Math.max(qTitle, qTopic, qDesc, qCreator);
     if (bestQuality === 0) {
       return { matched: false, score: 0, reasons: [] };
     }
@@ -204,7 +212,7 @@ export function scoreTerm(
     const score =
       weights.title * qTitle +
       weights.category * qTopic +
-      weights.description * qDesc;
+      weights.description * qDesc + 0.2 * qCreator;
 
     return { matched: true, score: Math.min(score, 1.0), reasons };
   }
@@ -228,6 +236,7 @@ export function searchEdits(
   category: string = "All",
   fandomId?: string
 ): SearchResult[] {
+  allEdits = discoveryCatalog(allEdits);
   const terms = parseQuery(query);
 
   // Fast path: Empty query returns category- and fandom-filtered edits
@@ -261,6 +270,11 @@ export function searchEdits(
 
     // 2. Check structured fandom filter
     if (!matchesFandomFilter(edit, fandomId)) {
+      continue;
+    }
+
+    if (normalizeSearch(edit.title) === normalizeSearch(query)) {
+      results.push({ edit, score: 1, matchReasons: ["Exact title"] });
       continue;
     }
 
