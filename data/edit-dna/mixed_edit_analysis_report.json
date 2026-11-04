@@ -5,7 +5,7 @@
     "resolution": "640x360",
     "fps": 24.0,
     "detected_shots_count": 4,
-    "analysis_latency_ms": 5841.3
+    "analysis_latency_ms": 5706.7
   },
   "holistic_summary": {
     "identified_visual_sources": [

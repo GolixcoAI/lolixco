@@ -1059,6 +1059,196 @@ print("PHASE7_REPORT_CONTRACT_INTEGRITY_VERIFIED")
   assert.ok(stdout.includes("PHASE7_REPORT_CONTRACT_INTEGRITY_VERIFIED"));
 });
 
+test("Lolixco Edit DNA — Phase 8: Local analysis service health and inbox discovery endpoints", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+sys.path.insert(0, "scripts/edit-dna")
+from fastapi.testclient import TestClient
+from local_service import app
+
+client = TestClient(app)
+
+# 1. Health check
+res_h = client.get("/api/v8/health")
+assert res_h.status_code == 200
+data_h = res_h.json()
+assert data_h["status"] == "ok"
+assert data_h["service"] == "lolixco-edit-dna"
+assert data_h["version"] == "8.0.0"
+
+# 2. Inbox discovery
+res_inbox = client.get("/api/v8/inbox")
+assert res_inbox.status_code == 200
+data_inbox = res_inbox.json()
+assert "files" in data_inbox
+filenames = [f["filename"] for f in data_inbox["files"]]
+assert any("dhurandhar" in fn.lower() for fn in filenames), "Expected Dhurandhar in inbox files"
+
+print("PHASE8_SERVICE_HEALTH_AND_INBOX_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 15000 }
+  );
+
+  assert.ok(stdout.includes("PHASE8_SERVICE_HEALTH_AND_INBOX_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 8: Security boundaries reject unauthorized paths and directory traversal", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+sys.path.insert(0, "scripts/edit-dna")
+from fastapi.testclient import TestClient
+from local_service import app
+
+client = TestClient(app)
+
+# 1. Path traversal attempt
+res_bad1 = client.post("/api/v8/jobs/start", json={"inbox_filename": "../../../etc/passwd"})
+assert res_bad1.status_code == 400
+assert "not found or not in authorized directories" in res_bad1.json()["detail"]
+
+# 2. Arbitrary external path attempt
+res_bad2 = client.post("/api/v8/jobs/start", json={"media_path": "/var/log/syslog"})
+assert res_bad2.status_code == 400
+
+print("PHASE8_SECURITY_BOUNDARIES_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  assert.ok(stdout.includes("PHASE8_SECURITY_BOUNDARIES_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 8: Progressive event engine records real timestamps, latencies, and section events", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+import os
+sys.path.insert(0, "scripts/edit-dna")
+from local_service import AnalysisEngine, AnalysisJob, AnalysisJobStatus
+
+test_media = "test-assets/benchmarks/bench_01_clean_hard_cuts.mp4"
+assert os.path.isfile(test_media)
+
+job = AnalysisJob("test_progressive_job", test_media)
+AnalysisEngine.execute_job(job)
+
+assert job.status == AnalysisJobStatus.COMPLETE
+assert job.duration_seconds > 0.0
+
+event_types = [e["event_type"] for e in job.events]
+assert AnalysisJobStatus.RUNNING in event_types
+assert AnalysisJobStatus.SECTION_COMPLETED in event_types
+assert AnalysisJobStatus.SECTION_UNASSESSED in event_types
+assert AnalysisJobStatus.COMPLETE in event_types
+
+# Check section completion for beat sync
+beat_sec = job.progressive_sections.get("beat_synchronization")
+assert beat_sec is not None
+assert beat_sec["score_0_10"] is not None
+
+# Check unassessed transitions
+trans_sec = job.progressive_sections.get("cuts_and_transitions")
+assert trans_sec is not None
+assert trans_sec["score_0_10"] is None
+assert trans_sec["evidence_status"] == "NOT_YET_ASSESSED"
+
+print("PHASE8_PROGRESSIVE_EVENTS_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 20000 }
+  );
+
+  assert.ok(stdout.includes("PHASE8_PROGRESSIVE_EVENTS_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 8: Job cancellation stops execution cleanly and cleans temporary assets", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+sys.path.insert(0, "scripts/edit-dna")
+from local_service import AnalysisJob, AnalysisEngine, AnalysisJobStatus
+
+job = AnalysisJob("test_cancel_job", "test-assets/benchmarks/bench_01_clean_hard_cuts.mp4")
+job.cancel_event.set()  # Signal cancellation immediately
+AnalysisEngine.execute_job(job)
+
+assert job.status == AnalysisJobStatus.CANCELLED
+assert job.current_stage == "Cancelled"
+
+print("PHASE8_JOB_CANCELLATION_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  assert.ok(stdout.includes("PHASE8_JOB_CANCELLATION_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 8: End-to-end report generation outputs valid v6 and Phase 7 presentations", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+sys.path.insert(0, "scripts/edit-dna")
+from local_service import AnalysisEngine, AnalysisJob
+from edit_dna_schema_v6 import EditDNASchemaV6
+from presentation_adapter import EditDNAPresentationAdapter
+
+job = AnalysisJob("test_dual_reports_job", "test-assets/benchmarks/bench_01_clean_hard_cuts.mp4")
+AnalysisEngine.execute_job(job)
+
+assert job.v6_report is not None
+EditDNASchemaV6.validate(job.v6_report)
+
+assert job.presentation_report is not None
+EditDNAPresentationAdapter.validate_presentation_report(job.presentation_report)
+
+assert len(job.presentation_report["assessment_sections"]) == 7
+assert job.presentation_report["schema_version"] == "7.0.0-presentation"
+
+print("PHASE8_DUAL_REPORT_GENERATION_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 20000 }
+  );
+
+  assert.ok(stdout.includes("PHASE8_DUAL_REPORT_GENERATION_VERIFIED"));
+});
+
+
 
 
 

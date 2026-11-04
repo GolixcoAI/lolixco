@@ -12,7 +12,8 @@
     "test:offline": "./scripts/run-isolated-tests.sh",
     "check:assets": "node scripts/check-assets.mjs",
     "check:content": "node scripts/validate-content.mjs",
-    "lab": "./scripts/edit-dna/lab"
+    "lab": "./scripts/edit-dna/lab",
+    "dna:serve": "./scripts/edit-dna/serve"
   },
   "dependencies": {
     "@fontsource/inter": "^5.1.0",
