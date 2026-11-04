@@ -1,7 +1,8 @@
+import {parsePresentation} from './presentationV7';
 import {adaptRatings,type Ratings} from "./ratingModel";
 export type EvidenceStatus = 'MEASURED'|'INFERRED'|'PERSONALIZED'|'NOT ASSESSED'|'UNKNOWN'|'CONFLICT';
 export type Evidence = { label: string; status: EvidenceStatus; value: string; provenance: string };
-export type StudioReport = { version: string; ratings: Ratings; evidence: Evidence[]; scenes: {time:number;label:string}[]; music: Evidence; sources: Evidence[] };
+export type StudioReport = { version: string; synthetic?:boolean; ratings: Ratings; evidence: Evidence[]; scenes: {time:number;label:string}[]; music: Evidence; sources: Evidence[] };
 const object = (v: unknown): Record<string, unknown> => v && typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
 const text=(v:unknown)=>typeof v==='string'?v:typeof v==='number'&&Number.isFinite(v)?String(v):'';
 export function evidenceStatus(v:unknown):EvidenceStatus { const s=text(v);return ({MEASURED_SIGNAL:'MEASURED',MEASURED:'MEASURED',EVALUATED_SEMANTIC:'INFERRED',INFERRED:'INFERRED',PERSONALIZED_ESTIMATE:'PERSONALIZED',PERSONALIZED:'PERSONALIZED',NOT_YET_ASSESSED:'NOT ASSESSED',UNKNOWN:'UNKNOWN',CONFLICT:'CONFLICT',VERIFIED_MATCH:'INFERRED',POSSIBLE_MATCH:'INFERRED'} as Record<string,EvidenceStatus>)[s]||'UNKNOWN'; }
@@ -15,7 +16,10 @@ function collect(value:unknown,label:string,inherited:EvidenceStatus,provenance:
  return Object.entries(field).filter(([k])=>!['status','provenance','owner_weights','evaluator'].includes(k)).flatMap(([k,v])=>collect(v,k.replace(/_/g,' '),status,origin,depth+1));
 }
 export function adaptStudioReport(input:unknown):StudioReport {
- const r=object(input);if(r.schema_version!=='6.0.0')throw Error('Import an Edit DNA v6.0.0 report.');
+ const r=object(input);if(r.schema_version==='7.0.0-presentation'){
+ const v=parsePresentation(r);const music=object(v.context.music_recognition);const source=object(v.context.visual_recognition);const track=object(music.matched_track);const musicState=evidenceStatus(music.status);
+ return{version:v.schema_version,synthetic:v.is_synthetic_fixture,ratings:v.ratings,evidence:v.assessment_sections.flatMap(section=>[{label:section.section_id,status:evidenceStatus(section.evidence_status),value:section.creator_explanation||'No explanation supplied',provenance:section.method_version},...collect(section.evidence_refs,'Supporting measurements','MEASURED',section.method_version)]),scenes:v.assessment_sections.find(s=>s.section_id==='cuts_and_transitions')!.timestamps.map((time,i)=>({time,label:`Cut reference ${i+1}`})),music:{label:'Recognition',status:musicState,value:musicState==='CONFLICT'?'Conflicting evidence — review needed':text(track.title)||text(music.matched_track)||'Music not yet identified.',provenance:[text(music.provenance),`Recognition status: ${text(music.status)||'UNKNOWN'}`].filter(Boolean).join(' · ')},sources:(Array.isArray(source.candidates)?source.candidates:source.matched_entity?[source.matched_entity]:[]).map(raw=>{const entity=object(raw);return{label:'Source candidate',status:evidenceStatus(source.status),value:text(entity.title||entity.name)||'Unknown source',provenance:[text(source.provenance),`Recognition status: ${text(source.status)||'UNKNOWN'}`].filter(Boolean).join(' · ')}})};
+ }if(r.schema_version!=='6.0.0')throw Error('Import an Edit DNA v6.0.0 report.');
  const evidence:Evidence[]=[];const sources:Evidence[]=[];
  for(const [key,label]of [['section_a_visual_recognition','Visual source'],['section_b_music_recognition','Music identification'],['section_c_physical_signals','Technical measurements'],['section_d_semantic_evaluation','Semantic interpretation'],['section_e_personalized_model','Owner-fit estimate']] ){
  const section=object(r[key]);const status=evidenceStatus(section.status||section.provenance?.toString().toUpperCase());
