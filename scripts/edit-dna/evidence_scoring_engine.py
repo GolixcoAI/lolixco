@@ -119,13 +119,18 @@ class EvidenceScoringEngine:
         self,
         internal_cuts: List[float],
         beat_timestamps: List[float],
-        primary_bpm: float
+        primary_bpm: float,
+        audio_onsets: Optional[List[float]] = None,
+        flash_timestamps: Optional[List[float]] = None
     ) -> Dict[str, Any]:
         """
         Evaluates cut timing against multiple rhythmic interpretations:
           1. Primary Grid (primary_bpm)
           2. Half-Time Grid (primary_bpm / 2, e.g. 56.1 BPM for slow heavy pulses)
           3. Double-Time Grid (primary_bpm * 2, e.g. 224.6 BPM for 16th-note syncopation)
+          4. 16th-note subdivision grid (4 subdivisions per beat)
+          5. Acoustic onset / transient alignment (snare hits, bass drops, trailer risers)
+          6. Intra-shot flash synchronization (visual rhythm without cuts)
         
         Classifies cut timing into:
           - tight_sync: |delta| <= 70ms
@@ -158,12 +163,38 @@ class EvidenceScoringEngine:
             double_time_beats.append(beats[-1])
         double_eval = self._evaluate_single_grid(internal_cuts, np.array(double_time_beats))
 
-        # Best overall rhythmic alignment across grids
-        best_tight_pct = max(
-            primary_eval["tight_sync_percent"],
-            half_time_eval["tight_sync_percent"],
-            double_eval["tight_sync_percent"]
-        )
+        # 4. 16th-Note Subdivision Grid (4 subdivisions per beat interval)
+        sub16_beats = []
+        for i in range(len(beats) - 1):
+            b0, b1 = beats[i], beats[i+1]
+            step = (b1 - b0) / 4.0
+            for k in range(4):
+                sub16_beats.append(b0 + k * step)
+        if len(beats) > 0:
+            sub16_beats.append(beats[-1])
+        sub16_eval = self._evaluate_single_grid(internal_cuts, np.array(sub16_beats))
+
+        # 5. Acoustic Onset Transient Alignment
+        onset_eval = None
+        if audio_onsets and len(audio_onsets) > 0:
+            onset_eval = self._evaluate_single_grid(internal_cuts, np.array(audio_onsets))
+
+        # 6. Compound Rhythmic Synchronization (cuts landing on beat, subdivision, OR audio onset)
+        anchor_candidates = list(sub16_beats)
+        if audio_onsets and len(audio_onsets) > 0:
+            anchor_candidates.extend(audio_onsets)
+        compound_eval = self._evaluate_single_grid(internal_cuts, np.array(sorted(anchor_candidates)))
+
+        # 7. Intra-Shot Flash Synchronization (flashes landing on beats or audio onsets)
+        flash_sync_pct = None
+        flash_hits_count = 0
+        if flash_timestamps and len(flash_timestamps) > 0:
+            flash_anchors = np.array(sorted(list(beat_timestamps) + (audio_onsets or [])))
+            for ft in flash_timestamps:
+                diffs = np.abs(ft - flash_anchors)
+                if len(diffs) > 0 and np.min(diffs) <= 0.070:
+                    flash_hits_count += 1
+            flash_sync_pct = round((flash_hits_count / len(flash_timestamps)) * 100.0, 1)
 
         return {
             "status": StatusTag.MEASURED_SIGNAL,
@@ -174,6 +205,11 @@ class EvidenceScoringEngine:
             "primary_grid": primary_eval,
             "half_time_grid": half_time_eval,
             "double_time_grid": double_eval,
+            "subdivision_16th_grid": sub16_eval,
+            "onset_alignment": onset_eval,
+            "compound_sync": compound_eval,
+            "intra_shot_flash_sync_percent": flash_sync_pct,
+            "intra_shot_flashes_on_beat_count": flash_hits_count if flash_sync_pct is not None else 0,
             "best_rhythmic_fit": (
                 "double_time_syncopated" if double_eval["tight_sync_percent"] > primary_eval["tight_sync_percent"] + 15
                 else ("half_time_pulse" if half_time_eval["tight_sync_percent"] > primary_eval["tight_sync_percent"] + 10
@@ -247,22 +283,48 @@ class EvidenceScoringEngine:
         semantic_evals = semantic_evaluations or {}
 
         # 1. Beat Synchronization (0-10) — grounded in measured delta distribution
-        tight_pct = rhythm_evaluation.get("primary_grid", {}).get("tight_sync_percent", 0.0)
-        loose_pct = rhythm_evaluation.get("primary_grid", {}).get("loose_sync_percent", 0.0)
-        # Give 100% weight to tight sync, 50% to loose/anticipatory sync
-        effective_sync = tight_pct + (loose_pct * 0.5)
-        beat_sync_score = round(min(10.0, max(1.0, (effective_sync / 100.0) * 10.0)), 2)
+        primary_tight = rhythm_evaluation.get("primary_grid", {}).get("tight_sync_percent", 0.0)
+        primary_loose = rhythm_evaluation.get("primary_grid", {}).get("loose_sync_percent", 0.0)
+        rigid_effective = primary_tight + (primary_loose * 0.5)
+        rigid_grid_score = round(min(10.0, max(1.0, (rigid_effective / 100.0) * 10.0)), 2)
+
+        compound_eval = rhythm_evaluation.get("compound_sync")
+        if compound_eval and compound_eval.get("tight_sync_percent") is not None:
+            c_tight = compound_eval.get("tight_sync_percent", primary_tight)
+            c_loose = compound_eval.get("loose_sync_percent", primary_loose)
+            c_effective = c_tight + (c_loose * 0.5)
+            compound_score = round(min(10.0, max(1.0, (c_effective / 100.0) * 10.0)), 2)
+        else:
+            c_tight = primary_tight
+            c_loose = primary_loose
+            compound_score = rigid_grid_score
+
+        # Selected score reports compound technical alignment when multi-anchor evidence exists
+        selected_beat_score = compound_score
 
         beat_sync_card = {
             "status": StatusTag.MEASURED_SIGNAL,
-            "score": beat_sync_score,
-            "provenance": "measured_beat_grid_deltas",
+            "score": selected_beat_score,
+            "provenance": "measured_beat_and_transient_deltas",
+            "artistic_quality": StatusTag.NOT_YET_ASSESSED,
             "metric_details": {
-                "tight_sync_percent": tight_pct,
-                "loose_sync_percent": loose_pct,
+                "rigid_grid_score": rigid_grid_score,
+                "compound_alignment_score": compound_score,
+                "primary_grid_tight_percent": primary_tight,
+                "primary_grid_loose_percent": primary_loose,
+                "double_time_tight_percent": rhythm_evaluation.get("double_time_grid", {}).get("tight_sync_percent"),
+                "subdivision_16th_tight_percent": rhythm_evaluation.get("subdivision_16th_grid", {}).get("tight_sync_percent"),
+                "onset_transient_tight_percent": rhythm_evaluation.get("onset_alignment", {}).get("tight_sync_percent") if rhythm_evaluation.get("onset_alignment") else None,
+                "compound_tight_sync_percent": c_tight,
+                "flash_onset_sync_percent": rhythm_evaluation.get("intra_shot_flash_sync_percent"),
                 "anticipatory_cuts": rhythm_evaluation.get("anticipatory_cuts_count", 0),
                 "best_rhythmic_fit": rhythm_evaluation.get("best_rhythmic_fit", "unknown")
-            }
+            },
+            "limitations": [
+                "Derived strictly from measured temporal proximity of cut timestamps to detected audio transients. "
+                "This is an objective timing alignment measurement, NOT a validated overall artistic judgment of musicality, groove, or emotional sync."
+            ],
+            "notes": "Measures physical timing alignment to beats, subdivisions, and transient hits. Does NOT validate artistic groove, emotional timing, or musical phrasing without verified human critique."
         }
 
         # 2. Transitions (0-10)
