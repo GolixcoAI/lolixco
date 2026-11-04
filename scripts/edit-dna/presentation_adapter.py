@@ -255,12 +255,15 @@ class EditDNAPresentationAdapter:
             "timestamps": sec_c.get("video_signals", {}).get("cut_timestamps", [])[:10],
             "method_version": "librosa_multi_tempo_grid_v6.0",
             "limitations": [
-                "Evaluates transient timing; does not judge emotional appropriateness of music track."
+                "Derived strictly from measured temporal proximity of cut timestamps to detected audio transients. "
+                "This is an objective timing alignment measurement, NOT a validated overall artistic judgment of musicality, groove, or emotional sync."
             ],
             "creator_explanation": (
-                f"Measures how tightly your cuts align to the primary and double-time beats. "
-                f"Tight sync was {rhythm_align.get('primary_grid_tight_percent', 0.0)}% on primary grid "
-                f"and {rhythm_align.get('double_time_tight_percent', 0.0)}% on double-time grid."
+                (f"Beat-alignment score is {beat_score:.2f}/10. "
+                 f"Measures physical cut alignment to primary ({rhythm_align.get('primary_grid_tight_percent', 0.0)}%) "
+                 f"and double-time ({rhythm_align.get('double_time_tight_percent', 0.0)}%) beat grids. "
+                 f"Evaluates transient proximity; this describes cut timing alignment, not validated artistic musicality or groove.")
+                if beat_score is not None else "Beat synchronization unassessed."
             )
         }
 

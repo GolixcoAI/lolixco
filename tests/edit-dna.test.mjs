@@ -1248,6 +1248,60 @@ print("PHASE8_DUAL_REPORT_GENERATION_VERIFIED")
   assert.ok(stdout.includes("PHASE8_DUAL_REPORT_GENERATION_VERIFIED"));
 });
 
+test("Lolixco Edit DNA — Phase 8: Service hardening pass enforces restricted CORS and evidence wording", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+import os
+import json
+sys.path.insert(0, "scripts/edit-dna")
+from fastapi.testclient import TestClient
+from local_service import app
+from presentation_adapter import EditDNAPresentationAdapter
+
+client = TestClient(app)
+
+# 1. Test CORS restrictions: Allowed local origin
+res_allowed = client.options(
+    "/api/v8/health",
+    headers={"Origin": "http://localhost:5173", "Access-Control-Request-Method": "GET"}
+)
+assert res_allowed.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+# 2. Test CORS restrictions: Malicious/untrusted external origin rejected
+res_blocked = client.options(
+    "/api/v8/health",
+    headers={"Origin": "https://malicious-external-site.com", "Access-Control-Request-Method": "GET"}
+)
+assert "access-control-allow-origin" not in res_blocked.headers
+
+# 3. Test Beat Sync wording in Presentation Adapter:
+# Confirms that 4.21/10 is labeled as a measured beat-alignment assessment, not a validated overall artistic judgment
+v6_path = "data/edit-dna/owner_evaluations/dhurandhar_v6_evidence_report.json"
+if os.path.isfile(v6_path):
+    with open(v6_path, "r", encoding="utf-8") as f:
+        v6_data = json.load(f)
+    pres = EditDNAPresentationAdapter.from_v6_report(v6_data)
+    beat_dim = pres["assessment_sections"][0]
+    assert "objective timing alignment measurement" in beat_dim["limitations"][0]
+    assert "not validated artistic musicality" in beat_dim["creator_explanation"]
+
+print("PHASE8_HARDENING_AND_EVIDENCE_WORDING_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 15000 }
+  );
+
+  assert.ok(stdout.includes("PHASE8_HARDENING_AND_EVIDENCE_WORDING_VERIFIED"));
+});
+
+
 
 
 

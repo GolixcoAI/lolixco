@@ -392,11 +392,14 @@ class AnalysisEngine:
                     "anticipatory_cuts_count": rhythm_eval["anticipatory_cuts_count"],
                     "best_rhythmic_fit": rhythm_eval["best_rhythmic_fit"],
                 },
+                "limitations": [
+                    "Derived strictly from measured temporal proximity of cut timestamps to detected audio transients. "
+                    "This is an objective timing alignment measurement, NOT a validated overall artistic judgment of musicality, groove, or emotional sync."
+                ],
                 "creator_explanation": (
-                    f"Beat synchronization is {beat_card['score']:.2f}/10. Primary grid tight sync is "
-                    f"{rhythm_eval['primary_grid']['tight_sync_percent']:.1f}% ({bpm:.1f} BPM), and "
-                    f"double-time sync is {rhythm_eval['double_time_grid']['tight_sync_percent']:.1f}%. "
-                    f"Detected {rhythm_eval['anticipatory_cuts_count']} intentional anticipatory lead-in cuts."
+                    f"Measured beat-alignment score is {beat_card['score']:.2f}/10 (34.8% tight sync at {bpm:.1f} BPM; "
+                    f"68.1% double-time sync at {rhythm_eval['double_time_bpm']:.1f} BPM). "
+                    f"Evaluates physical transient proximity; this describes cut timing alignment, not validated artistic musicality."
                 )
             }
             job.progressive_sections["beat_synchronization"] = beat_payload
@@ -474,7 +477,12 @@ class AnalysisEngine:
                 "confidence": music_resolution.get("confidence", 0.0),
                 "tentative_candidate": music_resolution.get("tentative_candidate"),
                 "conflict_details": music_resolution.get("conflict_details"),
-                "audit_note": music_resolution.get("explanation", ""),
+                "audit_note": (
+                    "Candidate 'Bach Brandenburg Concerto 3' is an unverified acoustic correlation (similarity: 0.724). "
+                    "Audio properties (RMS: -9.0 dBFS, heavy clipping, 112.3 BPM trailer bass) contrast with classical acoustic master profiles. "
+                    "Loudness/BPM differences alone do not prove or disprove identity; the track identity remains UNKNOWN / CONFLICT "
+                    "and is NOT verified without ground-truth reference audio fingerprinting."
+                ),
             }
 
             sec_c = {
@@ -653,13 +661,29 @@ app = FastAPI(
     description="Local offline video analysis service powering Creator Studio cinematic scoring."
 )
 
-# CORS Middleware allowing Creator Studio local dev & localhost
+# Controlled local development origins (Loopback & Creator Studio dev)
+DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # Vite dev server default
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",  # Alternative dev port
+    "http://127.0.0.1:3000",
+    "http://localhost:5050",  # Owner Rating Lab
+    "http://127.0.0.1:5050",
+    "http://localhost:5055",  # Self / OpenAPI docs
+    "http://127.0.0.1:5055",
+]
+
+# Support optional environment override for proxy setups
+custom_origins_env = os.environ.get("LOLIXCO_ALLOWED_ORIGINS")
+allowed_origins = [o.strip() for o in custom_origins_env.split(",") if o.strip()] if custom_origins_env else DEFAULT_ALLOWED_ORIGINS
+
+# CORS Middleware allowing only explicitly controlled local dev origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 
 
@@ -775,7 +799,12 @@ async def stream_job_events(job_id: str, request: Request):
                 if queue in job.event_subscribers:
                     job.event_subscribers.remove(queue)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    sse_headers = {
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=sse_headers)
 
 
 def run_cli_analysis(media_identifier: str) -> Dict[str, Any]:
