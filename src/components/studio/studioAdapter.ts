@@ -27,6 +27,6 @@ export function adaptStudioReport(input:unknown):StudioReport {
  if(key==='section_a_visual_recognition')for(const entity of (Array.isArray(section.candidates)?section.candidates:[section.matched_entity])){const e=object(entity);if(text(e.title||e.name))sources.push({label:text(e.type)||'Source candidate',status,value:text(e.title||e.name),provenance:text(section.provenance)});}
  }
  const m=object(r.section_b_music_recognition);const track=object(m.matched_track);const state=evidenceStatus(m.status);const music={label:'Detected music',status:state,value:state==='CONFLICT'?'Conflicting evidence — review needed':text(track.title)?[text(track.title),text(track.artist)].filter(Boolean).join(' · '):'Music not yet identified.',provenance:text(m.provenance)};
- const physical=object(r.section_c_physical_signals);const raw=Array.isArray(physical.cut_timestamps)?physical.cut_timestamps:[];const scenes=raw.filter((x):x is number=>typeof x==='number'&&Number.isFinite(x)&&x>=0).map((time,i)=>({time,label:`Cut ${i+1}`}));
+ const physical=object(r.section_c_physical_signals);const videoSignals=object(physical.video_signals);const raw=Array.isArray(physical.cut_timestamps)?physical.cut_timestamps:Array.isArray(videoSignals.cut_timestamps)?videoSignals.cut_timestamps:[];const scenes=raw.filter((x):x is number=>typeof x==='number'&&Number.isFinite(x)&&x>=0).map((time,i)=>({time,label:`Cut ${i+1}`}));
  return{version:'6.0.0',ratings:adaptRatings(r),evidence,scenes,music,sources};
 }
