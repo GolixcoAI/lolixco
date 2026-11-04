@@ -249,8 +249,14 @@ class EditDNAPresentationAdapter:
             "evidence_refs": {
                 "primary_grid_tight_percent": rhythm_align.get("primary_grid_tight_percent"),
                 "double_time_tight_percent": rhythm_align.get("double_time_tight_percent"),
+                "subdivision_16th_tight_percent": rhythm_align.get("subdivision_16th_tight_percent"),
+                "onset_transient_tight_percent": rhythm_align.get("onset_transient_tight_percent"),
+                "compound_tight_sync_percent": rhythm_align.get("compound_tight_sync_percent"),
+                "flash_onset_sync_percent": rhythm_align.get("flash_onset_sync_percent"),
                 "primary_bpm": sec_c.get("primary_bpm"),
                 "anticipatory_cuts_count": rhythm_align.get("anticipatory_cuts_count", 0),
+                "rigid_grid_score": beat_card.get("metric_details", {}).get("rigid_grid_score"),
+                "compound_alignment_score": beat_card.get("metric_details", {}).get("compound_alignment_score"),
             },
             "timestamps": sec_c.get("video_signals", {}).get("cut_timestamps", [])[:10],
             "method_version": "librosa_multi_tempo_grid_v6.0",
@@ -261,7 +267,8 @@ class EditDNAPresentationAdapter:
             "creator_explanation": (
                 (f"Beat-alignment score is {beat_score:.2f}/10. "
                  f"Measures physical cut alignment to primary ({rhythm_align.get('primary_grid_tight_percent', 0.0)}%) "
-                 f"and double-time ({rhythm_align.get('double_time_tight_percent', 0.0)}%) beat grids. "
+                 f"and double-time ({rhythm_align.get('double_time_tight_percent', 0.0)}%) beat grids, "
+                 f"with {rhythm_align.get('compound_tight_sync_percent', rhythm_align.get('primary_grid_tight_percent', 0.0))}% compound alignment across subdivisions and transients. "
                  f"Evaluates transient proximity; this describes cut timing alignment, not validated artistic musicality or groove.")
                 if beat_score is not None else "Beat synchronization unassessed."
             )

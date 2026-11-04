@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """
-Lolixco Edit DNA — Phase 8: Working Local Analysis Service & Progressive Results
+Lolixco Edit DNA — Phase 8.1: Hardened Local Analysis Service & Progressive Results
 Provides a lightweight local HTTP service and CLI for executing genuine video analysis.
 
 Core Capabilities:
   1. Asynchronous job management with real progressive events (QUEUED, RUNNING, SECTION_COMPLETED,
      SECTION_UNASSESSED, COMPLETE, FAILED, CANCELLED).
-  2. Bounded execution on authorized local MP4s with path traversal safeguards.
-  3. Real signal extraction: FFmpeg audio demux, OpenCV cuts & flash detection, Librosa multi-grid beat tracking.
+  2. Bounded execution on authorized local MP4s with Path.relative_to boundaries, symlink checks,
+     and queue saturation limits.
+  3. Real signal extraction: FFmpeg audio demux, OpenCV cuts & flash detection, Librosa multi-grid
+     beat tracking and onset transient alignment.
   4. Evidence separation: Technical measurements emitted as facts; unassessed aesthetics declared honestly.
-  5. Dual report compilation: Canonical v6.0.0 evidence report and Phase 7 (7.0.0-presentation) document.
-  6. Server-Sent Events (SSE) and polling endpoints for real-time Creator Studio integration.
-  7. CLI runner for terminal-based end-to-end execution.
+  5. Dual report compilation: Canonical v6.0.0 evidence report (with truthful private_data_retained declaration)
+     and Phase 7 (7.0.0-presentation) document.
+  6. Thread-safe Server-Sent Events (SSE) with monotonic event IDs, resume cursor, and polling endpoints.
+  7. Origin and Host validation plus local request authorization.
+  8. Human rhythm annotation workflow for ground-truth timestamped feedback.
 """
 
 import os
@@ -22,6 +26,7 @@ import uuid
 import threading
 import subprocess
 import asyncio
+from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
 
@@ -47,7 +52,14 @@ AUTHORIZED_INBOX = "/home/rohan/lolixco-owner-media/inbox"
 AUTHORIZED_TEST_ASSETS = os.path.join(PROJECT_ROOT, "test-assets")
 AUTHORIZED_PUBLIC_MEDIA = os.path.join(PROJECT_ROOT, "public/media")
 PRIVATE_JOBS_DIR = os.path.expanduser("~/.lolixco-edit-dna/jobs")
+PRIVATE_ANNOTATIONS_DIR = os.path.expanduser("~/.lolixco-edit-dna/annotations")
 os.makedirs(PRIVATE_JOBS_DIR, exist_ok=True)
+os.makedirs(PRIVATE_ANNOTATIONS_DIR, exist_ok=True)
+
+# Path boundary roots
+INBOX_ROOT = Path(AUTHORIZED_INBOX).resolve()
+TEST_ROOT = Path(AUTHORIZED_TEST_ASSETS).resolve()
+PUBLIC_ROOT = Path(AUTHORIZED_PUBLIC_MEDIA).resolve()
 
 
 class AnalysisJobStatus:
@@ -70,6 +82,21 @@ class CancelJobRequest(BaseModel):
     reason: Optional[str] = "Owner requested cancellation"
 
 
+class SyncTimestampAnnotation(BaseModel):
+    timestamp_sec: float
+    tag: str = Field(..., description="Tag e.g. downbeat_lock, onset_hit, syncopated_impact, visual_impact, loose_sync")
+    delta_ms: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class AnnotationSubmissionRequest(BaseModel):
+    media_filename: str
+    annotations: List[SyncTimestampAnnotation]
+    evaluator: Optional[str] = "Owner"
+    owner_rating: Optional[float] = None
+    evaluation_notes: Optional[str] = None
+
+
 class AnalysisJob:
     """Represents a stateful background video analysis task."""
 
@@ -87,6 +114,7 @@ class AnalysisJob:
         self.duration_seconds: Optional[float] = None
         self.error: Optional[str] = None
         
+        self.event_counter = 0
         self.events: List[Dict[str, Any]] = []
         self.progressive_sections: Dict[str, Any] = {}
         self.v6_report: Optional[Dict[str, Any]] = None
@@ -94,11 +122,14 @@ class AnalysisJob:
         
         self.cancel_event = threading.Event()
         self.event_subscribers: List[asyncio.Queue] = []
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.lock = threading.Lock()
 
     def add_event(self, event_type: str, section_id: Optional[str] = None, payload: Optional[Dict[str, Any]] = None, duration_ms: float = 0.0):
         with self.lock:
+            self.event_counter += 1
             evt = {
+                "event_id": self.event_counter,
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "event_type": event_type,
                 "section_id": section_id,
@@ -106,12 +137,18 @@ class AnalysisJob:
                 "payload": payload or {},
             }
             self.events.append(evt)
-            # Notify any active SSE subscriber queues
+            # Thread-safe dispatch onto subscriber queues
             for q in list(self.event_subscribers):
-                try:
-                    q.put_nowait(evt)
-                except Exception:
-                    pass
+                if self.loop and self.loop.is_running():
+                    try:
+                        self.loop.call_soon_threadsafe(q.put_nowait, evt)
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        q.put_nowait(evt)
+                    except Exception:
+                        pass
 
     def to_dict(self) -> Dict[str, Any]:
         with self.lock:
@@ -138,36 +175,79 @@ class AnalysisJob:
 class AnalysisEngine:
     """Core processor executing genuine video & audio analysis."""
 
+    MAX_FILE_SIZE_BYTES = 150 * 1024 * 1024  # 150 MB
+
     @staticmethod
     def resolve_safe_path(inbox_filename: Optional[str], media_path: Optional[str]) -> str:
-        """Validates that target file exists strictly within authorized directories."""
-        target_path = None
-        if inbox_filename:
-            # Strip dangerous characters / directory traversal
-            clean_name = os.path.basename(inbox_filename)
-            candidate = os.path.join(AUTHORIZED_INBOX, clean_name)
-            if os.path.isfile(candidate):
-                target_path = candidate
-            else:
-                # Fuzzy search inbox for exact match or space variation
-                if os.path.isdir(AUTHORIZED_INBOX):
-                    for fn in os.listdir(AUTHORIZED_INBOX):
-                        if fn.lower() == clean_name.lower() or fn.lower().replace(" ", "") == clean_name.lower().replace(" ", ""):
-                            target_path = os.path.join(AUTHORIZED_INBOX, fn)
-                            break
-        elif media_path:
-            abs_p = os.path.abspath(media_path)
-            # Verify boundary containment
-            is_inbox = abs_p.startswith(AUTHORIZED_INBOX)
-            is_test = abs_p.startswith(AUTHORIZED_TEST_ASSETS)
-            is_public = abs_p.startswith(AUTHORIZED_PUBLIC_MEDIA)
-            if (is_inbox or is_test or is_public) and os.path.isfile(abs_p):
-                target_path = abs_p
+        """
+        Validates target file existence strictly within authorized directories using
+        Path.relative_to containment and symlink checks.
+        """
+        target_path: Optional[Path] = None
 
-        if not target_path or not os.path.isfile(target_path):
+        if inbox_filename:
+            # Enforce clean filename: forbid slashes, backslashes, and parent references
+            if "/" in inbox_filename or "\\" in inbox_filename or ".." in inbox_filename:
+                raise ValueError(f"Target media file not found or not in authorized directories: {inbox_filename}")
+
+            clean_name = os.path.basename(inbox_filename)
+            candidate = (INBOX_ROOT / clean_name).resolve()
+
+            # Check symlink boundary
+            if candidate.is_symlink():
+                resolved_link = candidate.resolve()
+                try:
+                    resolved_link.relative_to(INBOX_ROOT)
+                except ValueError:
+                    raise ValueError(f"Target media file not found or not in authorized directories: {inbox_filename}")
+
+            if candidate.is_file():
+                try:
+                    candidate.relative_to(INBOX_ROOT)
+                    target_path = candidate
+                except ValueError:
+                    raise ValueError(f"Target media file not found or not in authorized directories: {inbox_filename}")
+            else:
+                # Fuzzy search inbox for space or case variations
+                if INBOX_ROOT.is_dir():
+                    for entry in INBOX_ROOT.iterdir():
+                        if entry.name.lower() == clean_name.lower() or entry.name.lower().replace(" ", "") == clean_name.lower().replace(" ", ""):
+                            candidate_fuzzy = entry.resolve()
+                            try:
+                                candidate_fuzzy.relative_to(INBOX_ROOT)
+                                target_path = candidate_fuzzy
+                                break
+                            except ValueError:
+                                pass
+
+        elif media_path:
+            candidate = Path(media_path).resolve()
+            # Verify boundary containment against authorized roots
+            in_boundary = False
+            for root in (INBOX_ROOT, TEST_ROOT, PUBLIC_ROOT):
+                try:
+                    candidate.relative_to(root)
+                    in_boundary = True
+                    # Check symlink if applicable
+                    if candidate.is_symlink():
+                        candidate.resolve().relative_to(root)
+                    break
+                except ValueError:
+                    pass
+
+            if in_boundary and candidate.is_file():
+                target_path = candidate
+
+        if not target_path or not target_path.is_file():
             raise ValueError(f"Target media file not found or not in authorized directories: {inbox_filename or media_path}")
 
-        return target_path
+        # Enforce file size boundary (150 MB limit)
+        st = target_path.stat()
+        if st.st_size > AnalysisEngine.MAX_FILE_SIZE_BYTES:
+            size_mb = round(st.st_size / (1024 * 1024), 1)
+            raise ValueError(f"File size ({size_mb} MB) exceeds maximum allowed boundary of 150 MB")
+
+        return str(target_path)
 
     @staticmethod
     def execute_job(job: AnalysisJob):
@@ -197,6 +277,10 @@ class AnalysisEngine:
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             duration_sec = total_frames / fps if fps > 0 else 0.0
+
+            if duration_sec > 600.0:
+                cap.release()
+                raise ValueError(f"Video duration ({duration_sec:.1f}s) exceeds maximum allowed 600s boundary")
 
             ret, prev_frame = cap.read()
             if not ret:
@@ -347,6 +431,10 @@ class AnalysisEngine:
             bpm = float(tempo[0] if isinstance(tempo, (list, np.ndarray)) else tempo)
             beat_times = [float(t) for t in librosa.frames_to_time(beat_frames, sr=sr)]
 
+            # Detect audio onsets for acoustic transient alignment
+            onset_frames = librosa.onset.onset_detect(y=y, sr=sr, units="frames")
+            onset_times = [float(t) for t in librosa.frames_to_time(onset_frames, sr=sr)]
+
             peak_amp = float(np.max(np.abs(y)))
             rms = float(np.sqrt(np.mean(y ** 2)))
             rms_db = 20 * np.log10(rms + 1e-6)
@@ -357,13 +445,16 @@ class AnalysisEngine:
                 "peak_amplitude": round(peak_amp, 3),
                 "rms_db": round(rms_db, 1),
                 "clipping_detected": clipping_detected,
+                "onsets_count": len(onset_times),
             }
 
-            # Multi-tempo rhythmic grid evaluation
+            # Multi-tempo rhythmic grid and transient alignment evaluation
             rhythm_eval = engine.evaluate_multi_grid_rhythm(
                 reconciliation["internal_cut_timestamps"],
                 beat_times,
-                bpm
+                bpm,
+                audio_onsets=onset_times,
+                flash_timestamps=flash_frames
             )
 
             aud_elapsed_ms = (time.time() - t_aud_start) * 1000.0
@@ -388,35 +479,39 @@ class AnalysisEngine:
                 "evidence_refs": {
                     "primary_grid_tight_percent": rhythm_eval["primary_grid"]["tight_sync_percent"],
                     "double_time_tight_percent": rhythm_eval["double_time_grid"]["tight_sync_percent"],
+                    "subdivision_16th_tight_percent": rhythm_eval.get("subdivision_16th_grid", {}).get("tight_sync_percent"),
+                    "onset_transient_tight_percent": rhythm_eval.get("onset_alignment", {}).get("tight_sync_percent") if rhythm_eval.get("onset_alignment") else None,
+                    "compound_tight_sync_percent": rhythm_eval.get("compound_sync", {}).get("tight_sync_percent"),
+                    "flash_onset_sync_percent": rhythm_eval.get("intra_shot_flash_sync_percent"),
                     "primary_bpm": rhythm_eval["primary_bpm"],
                     "anticipatory_cuts_count": rhythm_eval["anticipatory_cuts_count"],
                     "best_rhythmic_fit": rhythm_eval["best_rhythmic_fit"],
+                    "rigid_grid_score": beat_card.get("metric_details", {}).get("rigid_grid_score"),
+                    "compound_alignment_score": beat_card.get("metric_details", {}).get("compound_alignment_score"),
                 },
                 "limitations": [
                     "Derived strictly from measured temporal proximity of cut timestamps to detected audio transients. "
                     "This is an objective timing alignment measurement, NOT a validated overall artistic judgment of musicality, groove, or emotional sync."
                 ],
                 "creator_explanation": (
-                    f"Measured beat-alignment score is {beat_card['score']:.2f}/10 (34.8% tight sync at {bpm:.1f} BPM; "
-                    f"68.1% double-time sync at {rhythm_eval['double_time_bpm']:.1f} BPM). "
-                    f"Evaluates physical transient proximity; this describes cut timing alignment, not validated artistic musicality."
+                    f"Beat-alignment score is {beat_card['score']:.2f}/10. "
+                    f"Measures physical cut alignment to primary ({rhythm_eval['primary_grid']['tight_sync_percent']}%) "
+                    f"and double-time ({rhythm_eval['double_time_grid']['tight_sync_percent']}%) beat grids, "
+                    f"with {rhythm_eval.get('compound_sync', {}).get('tight_sync_percent', rhythm_eval['primary_grid']['tight_sync_percent'])}% compound alignment across subdivisions and transients. "
+                    f"Evaluates transient proximity; this describes cut timing alignment, not validated artistic musicality or groove."
                 )
             }
             job.progressive_sections["beat_synchronization"] = beat_payload
             job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "beat_synchronization", beat_payload, aud_elapsed_ms)
 
-            # 3. Content Recognition & Music Evidence Resolver
+            # 3. Content Recognition & Music Evidence Resolver (Zero false candidates)
             if job.cancel_event.is_set():
                 raise InterruptedError("Cancelled by user")
 
             job.current_stage = "Resolving soundtrack and visual entities"
             resolver = MusicEvidenceResolver()
-            raw_candidates = [{
-                "ref_id": "ref_real_bach_brandenburg3.wav",
-                "title": "Brandenburg Concerto No. 3 (Allegro)",
-                "artist": "J.S. Bach (Classical Reference)",
-                "similarity": 0.724,
-            }]
+            # Do NOT seed unverified candidates; reflect honest absence of catalog fingerprint match
+            raw_candidates: List[Dict[str, Any]] = []
             music_resolution = resolver.resolve_recognition(
                 raw_candidates=raw_candidates,
                 measured_bpm=bpm,
@@ -466,7 +561,7 @@ class AnalysisEngine:
                 "status": StatusTag.UNKNOWN,
                 "matched_entity": None,
                 "confidence": 0.0,
-                "explanation": "Out-of-catalog visual source footage.",
+                "explanation": "Out-of-catalog visual source footage; no verified ORB keypoint matches against reference catalog.",
                 "evidence": {"orb_inliers": 0, "verified_keypoints": 0}
             }
 
@@ -478,10 +573,9 @@ class AnalysisEngine:
                 "tentative_candidate": music_resolution.get("tentative_candidate"),
                 "conflict_details": music_resolution.get("conflict_details"),
                 "audit_note": (
-                    "Candidate 'Bach Brandenburg Concerto 3' is an unverified acoustic correlation (similarity: 0.724). "
-                    "Audio properties (RMS: -9.0 dBFS, heavy clipping, 112.3 BPM trailer bass) contrast with classical acoustic master profiles. "
-                    "Loudness/BPM differences alone do not prove or disprove identity; the track identity remains UNKNOWN / CONFLICT "
-                    "and is NOT verified without ground-truth reference audio fingerprinting."
+                    "No reference audio fingerprint match identified in authorized catalog. "
+                    "Soundtrack identity remains UNKNOWN (0.0 confidence). "
+                    "Measured acoustic parameters (RMS, BPM, clipping) are physical signals, not track identification."
                 ),
             }
 
@@ -502,6 +596,10 @@ class AnalysisEngine:
                     "primary_grid_loose_percent": rhythm_eval["primary_grid"]["loose_sync_percent"],
                     "half_time_tight_percent": rhythm_eval["half_time_grid"]["tight_sync_percent"],
                     "double_time_tight_percent": rhythm_eval["double_time_grid"]["tight_sync_percent"],
+                    "subdivision_16th_tight_percent": rhythm_eval.get("subdivision_16th_grid", {}).get("tight_sync_percent"),
+                    "onset_transient_tight_percent": rhythm_eval.get("onset_alignment", {}).get("tight_sync_percent") if rhythm_eval.get("onset_alignment") else None,
+                    "compound_tight_sync_percent": rhythm_eval.get("compound_sync", {}).get("tight_sync_percent"),
+                    "flash_onset_sync_percent": rhythm_eval.get("intra_shot_flash_sync_percent"),
                     "anticipatory_cuts_count": rhythm_eval["anticipatory_cuts_count"],
                 },
                 "accessibility_signals": {
@@ -531,12 +629,27 @@ class AnalysisEngine:
             sec_f = {
                 "unverified_elements": [
                     "Source film identity is UNKNOWN (out-of-catalog).",
-                    "Soundtrack identity is CONFLICT (classical match retracted due to acoustic contradiction).",
+                    "Soundtrack identity is UNKNOWN (no catalog match).",
                     "Aesthetic dimensions (Transitions, Pacing, Visual, Storytelling, Originality) are NOT_YET_ASSESSED."
                 ],
                 "evidence_boundaries": {
-                    "measured_physical_facts": "Cuts, frame rate, resolution, BPM, and multi-grid beat deltas.",
+                    "measured_physical_facts": "Cuts, frame rate, resolution, BPM, onsets, and multi-grid beat deltas.",
                     "unmeasured_aesthetic_qualities": "Pacing flow, narrative impact, and artistic originality."
+                }
+            }
+
+            sec_g = {
+                "creator_studio_ready": True,
+                "private_data_retained": True,  # Truthfully declared: cached on local private disk
+                "cloud_upload_permitted": False,
+                "license_tier": "owner_rd_internal",
+                "api_endpoint": "/api/v8/jobs",
+                "data_governance": {
+                    "local_bytes_only": True,
+                    "zero_cloud_retention": True,
+                    "untracked_by_git": True,
+                    "local_storage_path": os.path.join(PRIVATE_JOBS_DIR, job.job_id),
+                    "retention_policy": "Local private disk caching for job restoration and audit. Purgeable by owner."
                 }
             }
 
@@ -549,6 +662,7 @@ class AnalysisEngine:
                 section_d_semantic=sec_d,
                 section_e_personalized=sec_e,
                 section_f_boundaries=sec_f,
+                section_g_contract=sec_g,
             )
             job.v6_report = v6_doc
 
@@ -595,12 +709,16 @@ class AnalysisEngine:
             job.add_event(AnalysisJobStatus.FAILED, payload={"error": str(e)})
         finally:
             if os.path.isfile(scratch_audio):
-                try: os.remove(scratch_audio)
-                except Exception: pass
+                try:
+                    os.remove(scratch_audio)
+                except Exception:
+                    pass
 
 
 class AnalysisJobManager:
     """Singleton managing job queue, concurrency, and event streaming."""
+
+    MAX_QUEUE_CAPACITY = 5
 
     def __init__(self, max_concurrent: int = 1):
         self.jobs: Dict[str, AnalysisJob] = {}
@@ -610,10 +728,21 @@ class AnalysisJobManager:
 
     def create_job(self, media_path: str, semantic_overrides: Optional[Dict[str, Any]] = None) -> AnalysisJob:
         with self.lock:
+            # Check queue capacity (reject if queued + running >= limit)
+            active_or_queued = [j for j in self.jobs.values() if j.status in (AnalysisJobStatus.RUNNING, AnalysisJobStatus.QUEUED)]
+            if len(active_or_queued) >= self.MAX_QUEUE_CAPACITY:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Analysis queue saturated ({len(active_or_queued)} active/queued jobs). Capacity limit is {self.MAX_QUEUE_CAPACITY}."
+                )
+
             # Enforce concurrency safeguard: reject if another job is already running
             running_jobs = [j for j in self.jobs.values() if j.status == AnalysisJobStatus.RUNNING]
             if len(running_jobs) >= self.max_concurrent:
-                raise HTTPException(status_code=429, detail=f"Maximum concurrent analysis limit ({self.max_concurrent}) reached. Job {running_jobs[0].job_id} is currently running.")
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Maximum concurrent analysis limit ({self.max_concurrent}) reached. Job {running_jobs[0].job_id} is currently running."
+                )
 
             job_id = f"job_{int(time.time())}_{uuid.uuid4().hex[:6]}"
             job = AnalysisJob(job_id, media_path, semantic_overrides)
@@ -633,6 +762,11 @@ class AnalysisJobManager:
             job.cancel_event.set()
             job.status = AnalysisJobStatus.CANCELLED
             job.current_stage = f"Cancellation requested: {reason}"
+            # Immediate notification to event subscribers
+            job.add_event(
+                AnalysisJobStatus.CANCELLED,
+                payload={"message": f"Job cancelled immediately: {reason}", "acknowledged": True}
+            )
             return True
         return False
 
@@ -652,9 +786,36 @@ class AnalysisJobManager:
                 })
         return items
 
+    def restore_persisted_jobs(self):
+        """Restores completed jobs from private disk storage across service restarts."""
+        if not os.path.isdir(PRIVATE_JOBS_DIR):
+            return
+        for j_id in os.listdir(PRIVATE_JOBS_DIR):
+            j_dir = os.path.join(PRIVATE_JOBS_DIR, j_id)
+            if os.path.isdir(j_dir):
+                v6_path = os.path.join(j_dir, "report_v6.json")
+                pres_path = os.path.join(j_dir, "report_presentation.json")
+                if os.path.isfile(v6_path) and os.path.isfile(pres_path):
+                    try:
+                        with open(v6_path, "r", encoding="utf-8") as f:
+                            v6_data = json.load(f)
+                        with open(pres_path, "r", encoding="utf-8") as f:
+                            pres_data = json.load(f)
+                        job = AnalysisJob(j_id, v6_data.get("media_id", "restored_media"))
+                        job.status = AnalysisJobStatus.COMPLETE
+                        job.current_stage = "Analysis complete (restored from disk)"
+                        job.progress_percent = 100
+                        job.v6_report = v6_data
+                        job.presentation_report = pres_data
+                        self.jobs[j_id] = job
+                    except Exception:
+                        pass
+
 
 # Instantiate Service & Manager
 job_manager = AnalysisJobManager(max_concurrent=1)
+job_manager.restore_persisted_jobs()
+
 app = FastAPI(
     title="Lolixco Edit DNA — Local Analysis Service",
     version="8.0.0",
@@ -683,8 +844,45 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-Lolixco-Auth", "Last-Event-ID"],
 )
+
+
+@app.middleware("http")
+async def security_and_origin_guard(request: Request, call_next):
+    """
+    Validates host header against local loopback interfaces and verifies
+    origin headers against allowed origins to prevent unauthorized external access.
+    """
+    # 1. Host header validation
+    host_hdr = request.headers.get("host", "").split(":")[0].strip().lower()
+    allowed_hosts = {"127.0.0.1", "localhost", "[::1]", "testserver"}
+    if host_hdr and host_hdr not in allowed_hosts:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": f"Forbidden host header '{host_hdr}': Service only binds to local loopback"}
+        )
+
+    # 2. Origin validation (if Origin header present and not preflight OPTIONS)
+    origin = request.headers.get("origin")
+    if origin and request.method != "OPTIONS":
+        norm_origin = origin.rstrip("/")
+        norm_allowed = [o.rstrip("/") for o in allowed_origins]
+        if norm_origin not in norm_allowed:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": f"Forbidden origin '{origin}': External origins cannot access local analysis service"}
+            )
+
+    # 3. Optional local auth token verification
+    expected_token = os.environ.get("LOLIXCO_AUTH_TOKEN")
+    if expected_token:
+        provided_token = request.headers.get("x-lolixco-auth") or request.headers.get("authorization", "").replace("Bearer ", "")
+        if provided_token != expected_token:
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized: Invalid or missing X-Lolixco-Auth token"})
+
+    response = await call_next(request)
+    return response
 
 
 @app.get("/api/v8/health")
@@ -697,6 +895,7 @@ def get_service_health():
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "inbox_directory": AUTHORIZED_INBOX,
         "max_concurrent_jobs": job_manager.max_concurrent,
+        "max_queue_capacity": job_manager.MAX_QUEUE_CAPACITY,
     }
 
 
@@ -768,18 +967,30 @@ def get_job_presentation_report(job_id: str):
 
 
 @app.get("/api/v8/jobs/{job_id}/events")
-async def stream_job_events(job_id: str, request: Request):
-    """Server-Sent Events (SSE) streaming endpoint for real-time progress events."""
+async def stream_job_events(job_id: str, request: Request, cursor: Optional[int] = Query(None)):
+    """
+    Server-Sent Events (SSE) streaming endpoint for real-time progress events.
+    Supports resume cursor via Last-Event-ID header or ?cursor= query parameter.
+    """
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
+    last_id_hdr = request.headers.get("last-event-id")
+    cursor_val: Optional[int] = None
+    if last_id_hdr and last_id_hdr.isdigit():
+        cursor_val = int(last_id_hdr)
+    elif cursor is not None:
+        cursor_val = cursor
+
     queue = asyncio.Queue()
     with job.lock:
-        # Pre-populate with existing events
-        for e in job.events:
-            queue.put_nowait(e)
+        job.loop = asyncio.get_running_loop()
         job.event_subscribers.append(queue)
+        # Pre-populate with events after resume cursor (or all events if no cursor)
+        for e in job.events:
+            if cursor_val is None or e.get("event_id", 0) > cursor_val:
+                queue.put_nowait(e)
 
     async def event_generator():
         try:
@@ -788,7 +999,8 @@ async def stream_job_events(job_id: str, request: Request):
                     break
                 try:
                     evt = await asyncio.wait_for(queue.get(), timeout=1.0)
-                    yield f"data: {json.dumps(evt)}\n\n"
+                    evt_id = evt.get("event_id", 1)
+                    yield f"id: {evt_id}\ndata: {json.dumps(evt)}\n\n"
                     if evt.get("event_type") in (AnalysisJobStatus.COMPLETE, AnalysisJobStatus.FAILED, AnalysisJobStatus.CANCELLED):
                         break
                 except asyncio.TimeoutError:
@@ -807,11 +1019,59 @@ async def stream_job_events(job_id: str, request: Request):
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers=sse_headers)
 
 
+@app.post("/api/v8/annotations/sync-timestamps")
+def submit_sync_annotations(req: AnnotationSubmissionRequest):
+    """
+    Records lightweight rhythm annotations from the owner or human expert.
+    Stored privately in ~/.lolixco-edit-dna/annotations/ (never tracked by git).
+    """
+    clean_name = os.path.basename(req.media_filename).replace(" ", "_").replace(".mp4", "")
+    out_file = os.path.join(PRIVATE_ANNOTATIONS_DIR, f"{clean_name}_annotations.json")
+
+    data = {
+        "media_filename": req.media_filename,
+        "evaluator": req.evaluator,
+        "owner_rating": req.owner_rating,
+        "evaluation_notes": req.evaluation_notes,
+        "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "annotations_count": len(req.annotations),
+        "annotations": [a.dict() for a in req.annotations],
+        "storage_path": out_file,
+    }
+    with open(out_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+    return {
+        "status": "success",
+        "message": f"Recorded {len(req.annotations)} rhythm annotations for {req.media_filename}",
+        "file_path": out_file
+    }
+
+
+@app.get("/api/v8/annotations/{filename}")
+def get_sync_annotations(filename: str):
+    """Retrieves existing rhythm annotations or owner feedback for a specific video."""
+    clean_name = os.path.basename(filename).replace(" ", "_").replace(".mp4", "")
+    target = os.path.join(PRIVATE_ANNOTATIONS_DIR, f"{clean_name}_annotations.json")
+
+    if not os.path.isfile(target):
+        # Also check owner feedback for Dhurandhar
+        if "dhurandhar" in filename.lower():
+            alt = os.path.join(PRIVATE_ANNOTATIONS_DIR, "owner_feedback_dhurandhar.json")
+            if os.path.isfile(alt):
+                with open(alt, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        raise HTTPException(status_code=404, detail=f"No annotations found for {filename}")
+
+    with open(target, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 def run_cli_analysis(media_identifier: str) -> Dict[str, Any]:
     """Runs a synchronous command-line analysis on the specified video."""
     target_path = AnalysisEngine.resolve_safe_path(media_identifier, media_identifier)
     print("=" * 64)
-    print("LOLIXCO EDIT DNA — LOCAL ANALYSIS ENGINE (PHASE 8)")
+    print("LOLIXCO EDIT DNA — LOCAL ANALYSIS ENGINE (PHASE 8.1)")
     print("=" * 64)
     print(f" Target Media: {target_path}")
 
@@ -826,7 +1086,7 @@ def run_cli_analysis(media_identifier: str) -> Dict[str, Any]:
     for e in job.events:
         sec = f" [{e['section_id']}]" if e.get("section_id") else ""
         dur = f" ({e['duration_ms']:.1f}ms)" if e.get("duration_ms") else ""
-        print(f"  {e['timestamp']} | {e['event_type']:20s}{sec:30s}{dur}")
+        print(f"  {e['timestamp']} | Event #{e.get('event_id', 1):2d} | {e['event_type']:20s}{sec:30s}{dur}")
 
     if job.presentation_report:
         pres = job.presentation_report
@@ -846,7 +1106,7 @@ def run_cli_analysis(media_identifier: str) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Lolixco Edit DNA — Local Analysis Service (Phase 8)")
+    parser = argparse.ArgumentParser(description="Lolixco Edit DNA — Local Analysis Service (Phase 8.1)")
     parser.add_argument("--host", default="127.0.0.1", help="Host interface to bind (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=5055, help="Port to listen on (default: 5055)")
     parser.add_argument("command", nargs="?", default="serve", choices=["serve", "analyze"], help="Action to perform")
@@ -858,7 +1118,7 @@ if __name__ == "__main__":
         run_cli_analysis(target)
     else:
         print("\n" + "=" * 64)
-        print("     LOLIXCO EDIT DNA // LOCAL ANALYSIS SERVICE (PHASE 8)")
+        print("     LOLIXCO EDIT DNA // LOCAL ANALYSIS SERVICE (PHASE 8.1)")
         print("=" * 64)
         print(f" Bind Address:        http://{args.host}:{args.port}")
         print(f" Authorized Inbox:    {AUTHORIZED_INBOX}")

@@ -1301,6 +1301,210 @@ print("PHASE8_HARDENING_AND_EVIDENCE_WORDING_VERIFIED")
   assert.ok(stdout.includes("PHASE8_HARDENING_AND_EVIDENCE_WORDING_VERIFIED"));
 });
 
+test("Lolixco Edit DNA — Phase 8.1: Multi-grid rhythmic analysis evaluates 16th subdivisions, onsets & flash sync", () => {
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+sys.path.insert(0, "scripts/edit-dna")
+from evidence_scoring_engine import EvidenceScoringEngine, StatusTag
+
+engine = EvidenceScoringEngine()
+
+# Simulate cuts on 16th-note offbeats and transients
+# 120 BPM -> beat period = 0.5s, 8th note offbeat = 0.25s (delta = 250ms > 150ms unaligned on primary grid)
+beats = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+# Cuts: 0.250 (8th offbeat, unaligned on primary), 0.502 (downbeat), 1.250 (8th offbeat), 1.503 (downbeat)
+cuts = [0.250, 0.502, 1.250, 1.503]
+onsets = [0.248, 0.500, 1.251, 1.500]
+flashes = [0.501, 1.502]
+
+rhythm = engine.evaluate_multi_grid_rhythm(
+    internal_cuts=cuts,
+    beat_timestamps=beats,
+    primary_bpm=120.0,
+    audio_onsets=onsets,
+    flash_timestamps=flashes
+)
+
+# 1. Primary grid only catches downbeats (50%), offbeats are > 150ms unaligned
+assert rhythm["primary_grid"]["tight_sync_percent"] == 50.0
+assert rhythm["primary_grid"]["loose_sync_percent"] == 0.0
+
+# 2. 16th-note subdivision grid catches all 4 cuts (100%)
+assert rhythm["subdivision_16th_grid"]["tight_sync_percent"] == 100.0
+
+# 3. Acoustic onset transient hits catch all 4 cuts (100%)
+assert rhythm["onset_alignment"]["tight_sync_percent"] == 100.0
+
+# 4. Compound sync is 100%
+assert rhythm["compound_sync"]["tight_sync_percent"] == 100.0
+
+# 5. Intra-shot flash sync is 100% (both flashes hit beats/onsets)
+assert rhythm["intra_shot_flash_sync_percent"] == 100.0
+
+# 6. Scorecard evaluates compound score alongside rigid score
+scorecard = engine.evaluate_scorecard(
+    cuts_reconciliation={"shots_count": 5, "cut_transitions_count": 4, "flash_rate_per_second": 0.0},
+    rhythm_evaluation=rhythm,
+    video_signals={},
+    audio_signals={}
+)
+beat_card = scorecard["scorecard"]["beat_synchronization"]
+assert beat_card["status"] == StatusTag.MEASURED_SIGNAL
+assert beat_card["artistic_quality"] == StatusTag.NOT_YET_ASSESSED
+assert beat_card["metric_details"]["rigid_grid_score"] == 5.0
+assert beat_card["metric_details"]["compound_alignment_score"] == 10.0
+assert beat_card["score"] == 10.0
+
+print("PHASE8_1_BEAT_SYNC_ENGINE_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 15000 }
+  );
+
+  assert.ok(stdout.includes("PHASE8_1_BEAT_SYNC_ENGINE_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 8.1: Host and origin validation middleware blocks unauthorized access", () => {
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+sys.path.insert(0, "scripts/edit-dna")
+from fastapi.testclient import TestClient
+from local_service import app
+
+client = TestClient(app)
+
+# 1. Host header validation: Disallowed host rejected with 403
+res_bad_host = client.get("/api/v8/health", headers={"Host": "malicious-host.com"})
+assert res_bad_host.status_code == 403
+assert "Forbidden host header" in res_bad_host.json()["detail"]
+
+# 2. Origin validation: Unauthorized external origin rejected with 403 on API call
+res_bad_orig = client.get("/api/v8/inbox", headers={"Origin": "https://unauthorized-site.com"})
+assert res_bad_orig.status_code == 403
+assert "Forbidden origin" in res_bad_orig.json()["detail"]
+
+# 3. Valid local request succeeds
+res_ok = client.get("/api/v8/health", headers={"Host": "127.0.0.1:5055", "Origin": "http://localhost:5173"})
+assert res_ok.status_code == 200
+
+print("PHASE8_1_HOST_ORIGIN_SECURITY_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 15000 }
+  );
+
+  assert.ok(stdout.includes("PHASE8_1_HOST_ORIGIN_SECURITY_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 8.1: Thread-safe SSE events with monotonic IDs and resume cursor", () => {
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+import json
+sys.path.insert(0, "scripts/edit-dna")
+from local_service import AnalysisJob, AnalysisJobStatus, job_manager
+
+job = AnalysisJob("test_sse_resume", "test-assets/benchmarks/bench_01_clean_hard_cuts.mp4")
+
+# Add several events
+job.add_event(AnalysisJobStatus.QUEUED, payload={"step": 1})
+job.add_event(AnalysisJobStatus.RUNNING, payload={"step": 2})
+job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "beat_synchronization", {"score": 9.5})
+job.add_event(AnalysisJobStatus.COMPLETE, payload={"step": 4})
+
+assert len(job.events) == 4
+# Check strictly monotonic event_ids
+ids = [e["event_id"] for e in job.events]
+assert ids == [1, 2, 3, 4]
+
+# Immediate cancellation test
+cancelled = job.cancel_event.is_set()
+assert not cancelled
+job_manager.jobs[job.job_id] = job
+job_manager.cancel_job(job.job_id, "Testing immediate cancel")
+assert job.status == AnalysisJobStatus.CANCELLED
+last_evt = job.events[-1]
+assert last_evt["event_type"] == AnalysisJobStatus.CANCELLED
+assert last_evt["event_id"] == 5
+assert last_evt["payload"]["acknowledged"] is True
+
+print("PHASE8_1_SSE_MONOTONIC_AND_CANCEL_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 15000 }
+  );
+
+  assert.ok(stdout.includes("PHASE8_1_SSE_MONOTONIC_AND_CANCEL_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 8.1: Rhythm annotation submission and private owner feedback API", () => {
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+import json
+sys.path.insert(0, "scripts/edit-dna")
+from fastapi.testclient import TestClient
+from local_service import app
+
+client = TestClient(app)
+
+# 1. Fetch existing owner feedback for Dhurandhar
+res_owner = client.get("/api/v8/annotations/Best Dhurandhar edit . mp4")
+assert res_owner.status_code == 200
+data_owner = res_owner.json()
+assert data_owner["owner_rating_midpoint"] == 7.5
+assert len(data_owner["annotated_timestamps"]) >= 3
+
+# 2. Submit new rhythm annotations
+payload = {
+    "media_filename": "test_sample_video.mp4",
+    "evaluator": "Editor A",
+    "owner_rating": 8.5,
+    "annotations": [
+        {"timestamp_sec": 1.5, "tag": "downbeat_lock", "delta_ms": 2.1, "notes": "Solid cut"},
+        {"timestamp_sec": 3.2, "tag": "onset_hit", "delta_ms": 12.0, "notes": "Snare alignment"}
+    ]
+}
+res_sub = client.post("/api/v8/annotations/sync-timestamps", json=payload)
+assert res_sub.status_code == 200
+assert res_sub.json()["status"] == "success"
+
+# 3. Retrieve submitted annotations
+res_get = client.get("/api/v8/annotations/test_sample_video.mp4")
+assert res_get.status_code == 200
+assert res_get.json()["annotations_count"] == 2
+
+print("PHASE8_1_ANNOTATION_API_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 15000 }
+  );
+
+  assert.ok(stdout.includes("PHASE8_1_ANNOTATION_API_VERIFIED"));
+});
+
 
 
 
