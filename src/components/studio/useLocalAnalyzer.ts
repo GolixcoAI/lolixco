@@ -15,4 +15,4 @@ export function useLocalAnalyzer(){const enabled=import.meta.env.DEV&&location.h
  async function cancel(){if(!job)return;try{await api(`jobs/${job}/cancel`,{method:'POST',body:JSON.stringify({reason:'Owner requested cancellation from Creator Studio'})});setError('Cancellation requested; waiting for service confirmation.')}catch(e){setError(e instanceof Error?e.message:'Cancellation failed')}}
  function clear(){if(starting||!!job&&!terminal.current)return;generation.current++;terminal.current=true;startedHere.current=false;setJob('');setSelected('');setEvents([]);setSnapshot(null);setReports(null);setError('');const u=new URL(location.href);u.searchParams.delete('analysisJob');history.replaceState(history.state,'',u)}
  const busy=starting||!!job&&!terminal.current;
- return{clear,receivedResultId:startedHere.current&&reports?job:undefined,enabled,ready,files,selected,setSelected,events,snapshot,reports,error,busy,start,cancel,refresh};}
+ return{liveJobId:startedHere.current?job:undefined,clear,receivedResultId:startedHere.current&&reports?job:undefined,enabled,ready,files,selected,setSelected,events,snapshot,reports,error,busy,start,cancel,refresh};}

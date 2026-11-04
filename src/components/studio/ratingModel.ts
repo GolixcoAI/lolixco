@@ -1,6 +1,6 @@
 export const CATEGORY_KEYS = ['beat_synchronization','transitions','pacing','visual_quality','storytelling_emotion','originality_creativity','owner_fit'] as const;
 export const CATEGORY_LABELS = ['Beat synchronization','Cuts & transitions','Pacing','Visual measurements','Storytelling interpretation','Originality / creative execution','Personalized owner fit'];
-export type Rating = {score:number|null;status:string;provenance:string;explanation?:string;timestamps?:number[]};
+export type Rating = {score:number|null;status:string;provenance:string;explanation?:string;timestamps?:number[];measurements?:Record<string,unknown>};
 export type Ratings = {categories:Rating[];overall:Rating};
 const obj=(v:unknown):Record<string,unknown>=>v&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
 function rating(v:unknown,parent:Record<string,unknown>):Rating{const f=obj(v);const status=typeof f.status==='string'?f.status:'NOT_YET_ASSESSED';const provenance=typeof f.provenance==='string'?f.provenance:typeof parent.provenance==='string'?parent.provenance:'';const score=f.score??f.predicted_score;return {score:typeof score==='number'&&Number.isFinite(score)&&score>=0&&score<=10&&['EVALUATED_SEMANTIC','PERSONALIZED_ESTIMATE','MEASURED_SIGNAL'].includes(status)&&!!provenance?score:null,status,provenance};}
