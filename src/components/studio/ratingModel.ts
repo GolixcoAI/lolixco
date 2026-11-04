@@ -11,3 +11,7 @@ export const REVEAL_MS=2550;
 export const easeOut=(n:number)=>1-Math.pow(1-Math.max(0,Math.min(1,n)),3);
 export function categoryValue(score:number,elapsed:number,index:number){return score*easeOut((elapsed-index*300)/300)}
 export function needleValue(model:Ratings,elapsed:number){if(elapsed>=REVEAL_MS)return model.overall.score??0;if(elapsed>=2100){const from=7.5;return from+((model.overall.score??0)-from)*easeOut((elapsed-2100)/450)}const i=Math.min(6,Math.floor(elapsed/300));if(model.categories[i].score===null)return 0;const t=elapsed%300;const checkpoint=[1,2.5,3.5,4.5,5.5,6.5,7.5][i];const from=i?[1,2.5,3.5,4.5,5.5,6.5][i-1]:0;return t<110?from+(10-from)*easeOut(t/110):10+(checkpoint-10)*easeOut((t-110)/190)}
+export const RESULT_REVEAL_MS=3950;
+export const REACTION_POOL=['CLEAN!','SHEESH!','THAT HIT!','SMOOTH!','NICE!','HARD!',"LET'S GO!",'WILD!','HEAT!','TOO CLEAN!','SOLID!','BANG!','SHARP!','FIREEE!','YOO!','COLD!','OOF!','BRUH!','TOUGH!','IN FOCUS!','TAKE NOTE!','HOLD UP!','CHECK THIS!','STEADY!','RESET!'];
+const NEUTRAL_REACTIONS=REACTION_POOL.slice(16);
+export function selectReactions(model:Ratings,random:()=>number=Math.random):string[]{const used=new Set<string>();return model.categories.slice(0,6).map(item=>{if(item.score===null)return item.status==='UNKNOWN'?'UNKNOWN':'NOT ASSESSED';const available=(item.score>=6?REACTION_POOL:NEUTRAL_REACTIONS).filter(word=>!used.has(word));const word=available[Math.min(available.length-1,Math.floor(random()*available.length))];used.add(word);return word;});}
