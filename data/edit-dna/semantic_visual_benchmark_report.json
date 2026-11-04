@@ -18,14 +18,14 @@
         "status": "abstain",
         "matched_ref": null,
         "confidence": 0.84,
-        "latency_ms": 313.3,
+        "latency_ms": 411.0,
         "correct": false
       },
       "geometric": {
         "status": "identified",
         "matched_ref": "ref_motion_study",
         "confidence": 0.829,
-        "latency_ms": 1378.3,
+        "latency_ms": 1441.3,
         "correct": true
       }
     },
@@ -37,14 +37,14 @@
         "status": "identified",
         "matched_ref": "ref_motion_study",
         "confidence": 0.827,
-        "latency_ms": 205.6,
+        "latency_ms": 248.9,
         "correct": true
       },
       "geometric": {
         "status": "identified",
         "matched_ref": "ref_motion_study",
         "confidence": 0.981,
-        "latency_ms": 1592.5,
+        "latency_ms": 1464.0,
         "correct": true
       }
     },
@@ -56,14 +56,14 @@
         "status": "identified",
         "matched_ref": "ref_motion_study",
         "confidence": 0.994,
-        "latency_ms": 250.7,
+        "latency_ms": 246.3,
         "correct": true
       },
       "geometric": {
         "status": "identified",
         "matched_ref": "ref_motion_study",
         "confidence": 0.937,
-        "latency_ms": 1420.1,
+        "latency_ms": 1467.3,
         "correct": true
       }
     },
@@ -75,14 +75,14 @@
         "status": "identified",
         "matched_ref": "ref_motion_study",
         "confidence": 1.0,
-        "latency_ms": 245.2,
+        "latency_ms": 291.4,
         "correct": true
       },
       "geometric": {
         "status": "identified",
         "matched_ref": "ref_motion_study",
         "confidence": 0.979,
-        "latency_ms": 1909.8,
+        "latency_ms": 1333.8,
         "correct": true
       }
     },
@@ -94,14 +94,14 @@
         "status": "identified",
         "matched_ref": "ref_motion_study",
         "confidence": 0.993,
-        "latency_ms": 468.7,
+        "latency_ms": 222.4,
         "correct": true
       },
       "geometric": {
         "status": "identified",
         "matched_ref": "ref_motion_study",
         "confidence": 0.914,
-        "latency_ms": 1720.6,
+        "latency_ms": 1406.7,
         "correct": true
       }
     },
@@ -113,14 +113,14 @@
         "status": "abstain",
         "matched_ref": null,
         "confidence": 1.0,
-        "latency_ms": 539.1,
+        "latency_ms": 251.6,
         "correct": false
       },
       "geometric": {
         "status": "identified",
         "matched_ref": "ref_clean_cuts",
         "confidence": 0.922,
-        "latency_ms": 2097.7,
+        "latency_ms": 1364.3,
         "correct": false
       }
     },
@@ -132,14 +132,14 @@
         "status": "abstain",
         "matched_ref": null,
         "confidence": 1.0,
-        "latency_ms": 197.7,
+        "latency_ms": 104.5,
         "correct": true
       },
       "geometric": {
         "status": "abstain",
         "matched_ref": null,
         "confidence": 0.889,
-        "latency_ms": 770.9,
+        "latency_ms": 755.4,
         "correct": true
       }
     }

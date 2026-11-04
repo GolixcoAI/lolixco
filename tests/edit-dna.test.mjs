@@ -805,6 +805,261 @@ test("Lolixco Edit DNA — Phase 6: Production Schema v6.0 validator enforces pe
   assert.ok(stdout.includes("Schema v6.0.0 validation passed successfully."));
 });
 
+test("Lolixco Edit DNA — Phase 7: Seven rating dimensions strictly enforce ordering, identifiers, and bounds", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+sys.path.insert(0, "scripts/edit-dna")
+from presentation_adapter import EditDNAPresentationAdapter, ORDERED_DIMENSIONS, PRESENTATION_SCHEMA_VERSION
+
+expected = [
+    "beat_synchronization",
+    "cuts_and_transitions",
+    "pacing",
+    "visual_measurements",
+    "storytelling_interpretation",
+    "originality_creativity",
+    "personalized_owner_fit"
+]
+actual = [dim[0] for dim in ORDERED_DIMENSIONS]
+assert actual == expected, f"Ordering mismatch: {actual} vs {expected}"
+
+# Test bounds checking: score > 10.0 must raise AssertionError
+invalid_doc = {
+    "schema_version": PRESENTATION_SCHEMA_VERSION,
+    "media_id": "test.mp4",
+    "analysis_status": "COMPLETE",
+    "overall_score_0_10": 11.5,
+    "overall_score_status": "CALCULATED_PERSONALIZED",
+    "overall_score_method": "test",
+    "gauge_presentation": {"min": 0.0, "max": 10.0, "display_text": "11.5"},
+    "assessment_sections": [
+        {
+            "section_id": sid,
+            "dimension_id": sid,
+            "section_name": sname,
+            "display_name": sname,
+            "score_0_10": 5.0,
+            "evidence_status": "MEASURED_SIGNAL",
+            "evidence_refs": {},
+            "timestamps": [],
+            "method_version": "v7.0",
+            "limitations": [],
+            "creator_explanation": "Valid test explanation."
+        }
+        for sid, sname in ORDERED_DIMENSIONS
+    ]
+}
+
+failed = False
+try:
+    EditDNAPresentationAdapter.validate_presentation_report(invalid_doc)
+except AssertionError:
+    failed = True
+assert failed, "Expected AssertionError on out-of-bounds score 11.5"
+
+print("PHASE7_SEVEN_DIMENSIONS_ORDER_AND_BOUNDS_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  assert.ok(stdout.includes("PHASE7_SEVEN_DIMENSIONS_ORDER_AND_BOUNDS_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 7: Overall score eligibility withholding rule prevents fabricated grades", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+sys.path.insert(0, "scripts/edit-dna")
+from presentation_adapter import EditDNAPresentationAdapter, ORDERED_DIMENSIONS
+
+# 1. Unassessed semantic dimensions -> overall score MUST be None
+unassessed_sections = [
+    {
+        "section_id": sid,
+        "score_0_10": 8.0 if sid == "beat_synchronization" else None,
+        "evidence_status": "MEASURED_SIGNAL" if sid == "beat_synchronization" else "NOT_YET_ASSESSED"
+    }
+    for sid, _ in ORDERED_DIMENSIONS
+]
+score, status, explanation = EditDNAPresentationAdapter.evaluate_overall_score_eligibility(unassessed_sections)
+assert score is None, f"Expected None, got {score}"
+assert status == "NOT_YET_ASSESSED"
+assert "critical subjective dimensions" in explanation
+
+# 2. All dimensions assessed -> overall score computed
+scored_sections = [
+    {
+        "section_id": sid,
+        "score_0_10": 7.50,
+        "evidence_status": "EVALUATED_SEMANTIC"
+    }
+    for sid, _ in ORDERED_DIMENSIONS
+]
+score_full, status_full, _ = EditDNAPresentationAdapter.evaluate_overall_score_eligibility(scored_sections)
+assert score_full == 7.50
+assert status_full == "CALCULATED_PERSONALIZED"
+
+print("PHASE7_OVERALL_SCORE_ELIGIBILITY_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  assert.ok(stdout.includes("PHASE7_OVERALL_SCORE_ELIGIBILITY_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 7: Backward-compatible adapter converts v6.0.0 reports without data loss", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+import json
+sys.path.insert(0, "scripts/edit-dna")
+from presentation_adapter import EditDNAPresentationAdapter
+from edit_dna_schema_v6 import EditDNASchemaV6
+
+# Create canonical v6 report
+v6 = EditDNASchemaV6.create_report(
+    media_id="test_edit.mp4",
+    media_type="authorized_video_bytes",
+    section_a_visual={"status": "UNKNOWN", "provenance": "orb_matcher"},
+    section_b_music={"status": "CONFLICT", "provenance": "music_evidence_resolver"},
+    section_c_physical={
+        "provenance": "measured_signal",
+        "cuts_per_second": 1.5,
+        "cut_transitions_count": 20,
+        "rhythm_alignment": {"primary_grid_tight_percent": 75.0, "double_time_tight_percent": 90.0},
+        "video_signals": {"width": 1920, "height": 1080, "fps": 30.0, "mean_sharpness_laplacian": 450.0},
+        "audio_signals": {"rms_db": -10.0, "clipping_detected": False},
+        "accessibility_signals": {"intra_shot_flashes_count": 3, "flash_rate_per_sec": 0.15, "strobe_warning": False}
+    },
+    section_d_semantic={"status": "NOT_YET_ASSESSED", "provenance": "unassessed"},
+    section_e_personalized={"status": "NOT_YET_ASSESSED", "provenance": "personalized_estimate"},
+    section_f_boundaries={"unverified_elements": ["Semantic dimensions unassessed."]},
+)
+
+# Convert to presentation document
+pres = EditDNAPresentationAdapter.from_v6_report(v6)
+assert pres["schema_version"] == "7.0.0-presentation"
+assert len(pres["assessment_sections"]) == 7
+assert pres["assessment_sections"][0]["score_0_10"] is None  # Beat sync in unassessed scorecard
+assert pres["overall_score_0_10"] is None
+assert pres["overall_score_status"] == "NOT_YET_ASSESSED"
+assert pres["gauge_presentation"]["gauge_state"] == "unassessed_standby"
+assert "context_evidence" in pres
+assert pres["context_evidence"]["music_recognition"]["status"] == "CONFLICT"
+
+print("PHASE7_V6_ADAPTER_BACKWARD_COMPAT_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  assert.ok(stdout.includes("PHASE7_V6_ADAPTER_BACKWARD_COMPAT_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 7: All nine safe demo fixtures validate against presentation contract", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+import os
+import json
+sys.path.insert(0, "scripts/edit-dna")
+from presentation_adapter import EditDNAPresentationAdapter
+
+fixtures_dir = "data/edit-dna/fixtures"
+expected_files = [
+    "fixture_a_all_scored_strong.json",
+    "fixture_b_partially_scored_dhurandhar.json",
+    "fixture_c_all_unassessed.json",
+    "fixture_d_no_overall_score.json",
+    "fixture_e_music_conflict.json",
+    "fixture_f_unknown_source.json",
+    "fixture_g_owner_fit_unavailable.json",
+    "fixture_h1_low_scoring_weak.json",
+    "fixture_h2_high_scoring_exceptional.json",
+]
+
+for fname in expected_files:
+    fpath = os.path.join(fixtures_dir, fname)
+    assert os.path.isfile(fpath), f"Missing fixture file: {fpath}"
+    with open(fpath, "r", encoding="utf-8") as f:
+        doc = json.load(f)
+    assert doc.get("is_synthetic_fixture") is True, f"Fixture {fname} missing is_synthetic_fixture flag"
+    assert doc.get("for_frontend_testing_only") is True
+    EditDNAPresentationAdapter.validate_presentation_report(doc)
+
+print("PHASE7_ALL_9_DEMO_FIXTURES_VALIDATED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  assert.ok(stdout.includes("PHASE7_ALL_9_DEMO_FIXTURES_VALIDATED"));
+});
+
+test("Lolixco Edit DNA — Phase 7: Presentation report contract integrity and Web Lab API compatibility", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+import os
+import json
+sys.path.insert(0, "scripts/edit-dna")
+from presentation_adapter import EditDNAPresentationAdapter
+
+# Check Dhurandhar v6 report conversion
+v6_path = "data/edit-dna/owner_evaluations/dhurandhar_v6_evidence_report.json"
+if os.path.isfile(v6_path):
+    with open(v6_path, "r", encoding="utf-8") as f:
+        v6_data = json.load(f)
+    pres = EditDNAPresentationAdapter.from_v6_report(v6_data)
+    assert pres["assessment_sections"][0]["score_0_10"] is not None
+    assert pres["assessment_sections"][1]["score_0_10"] is None
+    assert pres["overall_score_0_10"] is None
+    assert pres["gauge_presentation"]["display_text"] == "N/A"
+    assert len(pres["reaction_bubbles"]) > 0
+
+print("PHASE7_REPORT_CONTRACT_INTEGRITY_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 10000 }
+  );
+
+  assert.ok(stdout.includes("PHASE7_REPORT_CONTRACT_INTEGRITY_VERIFIED"));
+});
+
+
 
 
 
