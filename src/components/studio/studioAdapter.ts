@@ -1,6 +1,7 @@
+import {adaptRatings,type Ratings} from "./ratingModel";
 export type EvidenceStatus = 'MEASURED'|'INFERRED'|'PERSONALIZED'|'NOT ASSESSED'|'UNKNOWN'|'CONFLICT';
 export type Evidence = { label: string; status: EvidenceStatus; value: string; provenance: string };
-export type StudioReport = { version: string; evidence: Evidence[]; scenes: {time:number;label:string}[]; music: Evidence; sources: Evidence[] };
+export type StudioReport = { version: string; ratings: Ratings; evidence: Evidence[]; scenes: {time:number;label:string}[]; music: Evidence; sources: Evidence[] };
 const object = (v: unknown): Record<string, unknown> => v && typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
 const text=(v:unknown)=>typeof v==='string'?v:typeof v==='number'&&Number.isFinite(v)?String(v):'';
 export function evidenceStatus(v:unknown):EvidenceStatus { const s=text(v);return ({MEASURED_SIGNAL:'MEASURED',MEASURED:'MEASURED',EVALUATED_SEMANTIC:'INFERRED',INFERRED:'INFERRED',PERSONALIZED_ESTIMATE:'PERSONALIZED',PERSONALIZED:'PERSONALIZED',NOT_YET_ASSESSED:'NOT ASSESSED',UNKNOWN:'UNKNOWN',CONFLICT:'CONFLICT',VERIFIED_MATCH:'INFERRED',POSSIBLE_MATCH:'INFERRED'} as Record<string,EvidenceStatus>)[s]||'UNKNOWN'; }
@@ -23,5 +24,5 @@ export function adaptStudioReport(input:unknown):StudioReport {
  }
  const m=object(r.section_b_music_recognition);const track=object(m.matched_track);const state=evidenceStatus(m.status);const music={label:'Detected music',status:state,value:state==='CONFLICT'?'Conflicting evidence — review needed':text(track.title)?[text(track.title),text(track.artist)].filter(Boolean).join(' · '):'Music not yet identified.',provenance:text(m.provenance)};
  const physical=object(r.section_c_physical_signals);const raw=Array.isArray(physical.cut_timestamps)?physical.cut_timestamps:[];const scenes=raw.filter((x):x is number=>typeof x==='number'&&Number.isFinite(x)&&x>=0).map((time,i)=>({time,label:`Cut ${i+1}`}));
- return{version:'6.0.0',evidence,scenes,music,sources};
+ return{version:'6.0.0',ratings:adaptRatings(r),evidence,scenes,music,sources};
 }
