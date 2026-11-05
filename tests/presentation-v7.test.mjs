@@ -7,3 +7,24 @@ test('actual progressive events reveal partial evidence without inventing comple
 test('28 unique reactions keep cooking positive and cooked weak',()=>{assert.equal(REACTION_POOL.length,28);assert.equal(new Set(REACTION_POOL).size,28);const strong={...DEMO_RATINGS,categories:DEMO_RATINGS.categories.map(x=>({...x,score:9}))};const weak={...strong,categories:strong.categories.map(x=>({...x,score:2}))};assert.ok(!selectReactions(strong,()=>.99).includes('COOKED!'));const words=selectReactions(weak,()=>.99);assert.equal(new Set(words).size,6);assert.ok(words.includes('COOKED!'));assert.ok(!words.includes('COOKING!')&&!words.includes("YOU'RE COOKING!"));});
 test('failure events remain explicit and a newly queued job clears old findings',()=>{const running=applyAnalysisEvent(INITIAL_ANALYSIS,{job_id:'test',type:'RUNNING'});const failed=applyAnalysisEvent(running,{job_id:'test',type:'FAILED',message:'Supplied service failure'});assert.equal(failed.status,'FAILED');assert.equal(progressPresentation(failed),null);const fresh=applyAnalysisEvent(failed,{job_id:'next',type:'QUEUED'});assert.equal(fresh.jobId,'next');assert.deepEqual(fresh.sections,{});assert.equal(fresh.report,null);});
 test('cancelled service jobs are terminal and retain already observed findings',()=>{const s=applyAnalysisEvent(INITIAL_ANALYSIS,{job_id:'cancel',type:'SECTION_COMPLETED',section:section(V7_IDS[0],4.21)});const end=applyAnalysisEvent(s,{job_id:'cancel',type:'CANCELLED',message:'Service acknowledged cancellation'});assert.equal(end.status,'CANCELLED');assert.equal(adaptStudioReport(progressPresentation(end)).ratings.overall.score,null);assert.throws(()=>applyAnalysisEvent(end,{job_id:'cancel',type:'RUNNING'}));});
+
+test('Phase 9 exposes experimental proxies while withholding artistic and composite grades', () => {
+ const raw = fixture();
+ raw.overall_score_status = 'CALCULATED_EXPERIMENTAL_V9';
+ raw.assessment_sections.forEach((s, index) => {
+  s.evidence_status = index < 4 ? 'MEASURED_SIGNAL' : 'EVALUATED_SEMANTIC_EXPERIMENTAL';
+  s.creator_explanation = 'Unsupported significance claim';
+ });
+ raw.assessment_sections[0].evidence_refs = {
+  primary_grid_tight_percent: 95, observed_multi_sync_percent: 56.5, z_score_significance: 1.5,
+ };
+ raw.assessment_sections[0].best_synchronized_moments = [{timestamp_sec: 3.267}];
+ const result = adaptStudioReport(raw);
+ assert.equal(result.experimental, true);
+ assert.deepEqual(result.ratings.categories.map(r => r.score), [5.17, 5.17, 5.17, 5.17, null, null, null]);
+ assert.equal(result.ratings.categories[0].status, 'EXPERIMENTAL_PROXY');
+ assert.deepEqual(result.ratings.categories[0].measurements, {observed_multi_sync_percent: 56.5});
+ assert.deepEqual(result.ratings.categories[0].timestamps, [3.267, 1.25]);
+ assert.doesNotMatch(result.ratings.categories[0].explanation, /Unsupported significance claim/);
+ assert.equal(result.ratings.overall.score, null);
+});
