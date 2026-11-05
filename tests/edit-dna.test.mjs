@@ -2071,4 +2071,276 @@ finally:
   assert.ok(stdout.includes("FULL_SERVICE_NO_AUDIO_TRACK_VERIFIED"));
 });
 
+test("Lolixco Edit DNA — Phase 10: Media Inspector stream detection and edge-case classification (A through L)", () => {
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import os
+import sys
+import subprocess
+sys.path.insert(0, "/home/rohan/Lolixco/scripts/edit-dna")
+from media_inspector import MediaInspector
+
+# Case A: Normal audiovisual edit (Dhurandhar MP4)
+dhurandhar_path = "/home/rohan/lolixco-owner-media/inbox/Best Dhurandhar edit.mp4"
+insp_a = MediaInspector.inspect(dhurandhar_path)
+assert insp_a["is_supported"] is True
+assert insp_a["classification_tag"] == "NORMAL_AUDIOVISUAL"
+assert insp_a["capabilities"]["has_video_stream"] is True
+assert insp_a["capabilities"]["has_audio_stream"] is True
+assert "cuts_and_transitions" in insp_a["supported_analyses"]
+assert "beat_synchronization" in insp_a["supported_analyses"]
+
+# Case B: Video without audio stream
+clip_b = "/tmp/test_case_b_no_audio.mp4"
+subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=blue:s=320x240:d=1.5:r=25", "-an", "-c:v", "libx264", clip_b], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+insp_b = MediaInspector.inspect(clip_b)
+assert insp_b["classification_tag"] == "NO_AUDIO_STREAM"
+assert insp_b["capabilities"]["has_audio_stream"] is False
+assert "beat_synchronization" in insp_b["unsupported_analyses"]
+
+# Case C: Video with silent audio stream
+clip_c = "/tmp/test_case_c_silent_audio.mp4"
+subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=1.5", "-f", "lavfi", "-i", "anullsrc=r=22050:cl=mono", "-t", "1.5", "-c:v", "libx264", "-c:a", "aac", clip_c], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+insp_c = MediaInspector.inspect(clip_c)
+assert insp_c["classification_tag"] == "AUDIO_PRESENT_BUT_SILENT"
+assert insp_c["capabilities"]["is_audio_silent"] is True
+
+# Case D: Video with black frames and audio
+clip_d = "/tmp/test_case_d_black_screen.mp4"
+subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x240:d=1.5:r=25", "-f", "lavfi", "-i", "sine=f=440:d=1.5", "-c:v", "libx264", "-c:a", "aac", clip_d], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+insp_d = MediaInspector.inspect(clip_d)
+assert insp_d["classification_tag"] == "VIDEO_STREAM_PRESENT_BUT_BLACK"
+assert insp_d["capabilities"]["is_video_black"] is True
+
+# Case E: Audio-only container (MP3)
+clip_e = "/tmp/test_case_e_audio_only.mp3"
+subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=f=440:d=1.5", "-c:a", "libmp3lame", clip_e], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+insp_e = MediaInspector.inspect(clip_e)
+assert insp_e["classification_tag"] == "NO_VIDEO_STREAM"
+assert insp_e["capabilities"]["has_video_stream"] is False
+assert "visual_measurements" in insp_e["unsupported_analyses"]
+
+# Case F: Video with static image slide
+clip_f = "/tmp/test_case_f_static_slide.mp4"
+subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=red:s=320x240:d=1.5:r=25", "-f", "lavfi", "-i", "sine=f=440:d=1.5", "-c:v", "libx264", "-c:a", "aac", clip_f], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+insp_f = MediaInspector.inspect(clip_f)
+assert insp_f["classification_tag"] == "VIDEO_PRESENT_BUT_STATIC"
+assert insp_f["capabilities"]["is_video_static"] is True
+
+# Case J: Corrupted / invalid bytes
+clip_j = "/tmp/test_case_j_corrupt.mp4"
+with open(clip_j, "wb") as f:
+    f.write(b"NOT_A_VALID_MP4_HEADER_GARBAGE_BYTES_1234567890" * 8)
+insp_j = MediaInspector.inspect(clip_j)
+assert insp_j["is_supported"] is False
+assert insp_j["classification_tag"] == "MEDIA_UNSUPPORTED"
+
+# Case K: Short clip (0.4s)
+clip_k = "/tmp/test_case_k_short_clip.mp4"
+subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=0.4", "-f", "lavfi", "-i", "sine=f=440:d=0.4", "-c:v", "libx264", "-c:a", "aac", clip_k], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+insp_k = MediaInspector.inspect(clip_k)
+assert insp_k["classification_tag"] == "SHORT_CLIP"
+assert insp_k["capabilities"]["is_short_clip"] is True
+
+# Case L: Vertical short (720x1280 9:16)
+clip_l = "/tmp/test_case_l_vertical.mp4"
+subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=size=720x1280:rate=25:duration=1.5", "-f", "lavfi", "-i", "sine=f=440:d=1.5", "-c:v", "libx264", "-c:a", "aac", clip_l], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+insp_l = MediaInspector.inspect(clip_l)
+assert insp_l["classification_tag"] == "VERTICAL_SHORT"
+assert insp_l["capabilities"]["orientation"] == "portrait"
+assert insp_l["capabilities"]["aspect_ratio"] == "9:16"
+
+# YouTube URLs
+assert MediaInspector.is_youtube_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ") is True
+assert MediaInspector.is_youtube_url("https://youtu.be/dQw4w9WgXcQ") is True
+assert MediaInspector.is_youtube_url("https://www.youtube.com/shorts/dQw4w9WgXcQ") is True
+assert MediaInspector.is_youtube_url("invalid_path.mp4") is False
+
+insp_yt = MediaInspector.inspect("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+assert insp_yt["media_type"] == "youtube_url"
+assert insp_yt["is_supported"] is True
+assert "multimodal_semantic_recognition" in insp_yt["supported_analyses"]
+
+# Cleanup temporary files
+for p in (clip_b, clip_c, clip_d, clip_e, clip_f, clip_j, clip_k, clip_l):
+    if os.path.isfile(p):
+        os.remove(p)
+
+print("MEDIA_INSPECTOR_EDGE_CASES_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 35000 }
+  );
+
+  assert.ok(stdout.includes("MEDIA_INSPECTOR_EDGE_CASES_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 10: Full service pipeline handles audio-only (Case E) and black video (Case D)", () => {
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import os
+import sys
+import subprocess
+sys.path.insert(0, "/home/rohan/Lolixco/scripts/edit-dna")
+from local_service import AnalysisJob, AnalysisEngine, AnalysisJobStatus
+from edit_dna_schema_v6 import EditDNASchemaV6
+from presentation_adapter import EditDNAPresentationAdapter
+
+# 1. Test Audio-only MP3
+audio_only = "/tmp/test_service_audio_only.mp3"
+subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=f=440:d=2.0", "-c:a", "libmp3lame", audio_only], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+try:
+    job_audio = AnalysisJob("job_audio_only_test", audio_only, quality_mode="phase9")
+    AnalysisEngine.execute_job(job_audio)
+    assert job_audio.status == AnalysisJobStatus.COMPLETE
+    pres_a = job_audio.presentation_report
+    assert pres_a is not None
+    sec_map_a = {s["dimension_id"]: s for s in pres_a["assessment_sections"]}
+    
+    # Audio-only: Video dimensions must be unassessed (None)
+    assert sec_map_a["cuts_and_transitions"]["score_0_10"] is None
+    assert sec_map_a["cuts_and_transitions"]["evidence_status"] == "NOT_YET_ASSESSED"
+    assert sec_map_a["pacing"]["score_0_10"] is None
+    assert sec_map_a["visual_measurements"]["score_0_10"] is None
+    assert sec_map_a["beat_synchronization"]["score_0_10"] is None
+    assert pres_a["overall_score_0_10"] is None
+    assert pres_a["overall_score_status"] == "NOT_YET_ASSESSED"
+    assert pres_a["gauge_presentation"]["gauge_state"] == "unassessed_standby"
+
+    # Validate schema
+    EditDNASchemaV6.validate(job_audio.v6_report)
+    EditDNAPresentationAdapter.validate_presentation_report(pres_a)
+finally:
+    if os.path.isfile(audio_only):
+        os.remove(audio_only)
+
+# 2. Test Black Video with Audio
+black_vid = "/tmp/test_service_black_vid.mp4"
+subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x240:d=2.0:r=25", "-f", "lavfi", "-i", "sine=f=440:d=2.0", "-c:v", "libx264", "-c:a", "aac", black_vid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+try:
+    job_black = AnalysisJob("job_black_vid_test", black_vid, quality_mode="phase9")
+    AnalysisEngine.execute_job(job_black)
+    assert job_black.status == AnalysisJobStatus.COMPLETE
+    pres_b = job_black.presentation_report
+    assert pres_b is not None
+    sec_map_b = {s["dimension_id"]: s for s in pres_b["assessment_sections"]}
+
+    # Black screen visual measurements score 0.0 with MEASURED_SIGNAL
+    assert sec_map_b["visual_measurements"]["score_0_10"] == 0.0
+    assert sec_map_b["visual_measurements"]["evidence_status"] == "MEASURED_SIGNAL"
+    assert "black" in sec_map_b["visual_measurements"]["creator_explanation"].lower()
+
+    # Zero cuts to synchronize
+    assert sec_map_b["cuts_and_transitions"]["score_0_10"] is None
+    assert sec_map_b["beat_synchronization"]["score_0_10"] is None
+
+    EditDNASchemaV6.validate(job_black.v6_report)
+    EditDNAPresentationAdapter.validate_presentation_report(pres_b)
+finally:
+    if os.path.isfile(black_vid):
+        os.remove(black_vid)
+
+print("SERVICE_AUDIO_ONLY_AND_BLACK_VID_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 35000 }
+  );
+
+  assert.ok(stdout.includes("SERVICE_AUDIO_ONLY_AND_BLACK_VID_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 10: Ingestion endpoint, YouTube URL execution & frame detail guard", () => {
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import os
+import sys
+import subprocess
+from fastapi.testclient import TestClient
+sys.path.insert(0, "/home/rohan/Lolixco/scripts/edit-dna")
+from local_service import app, AnalysisJob, AnalysisEngine, AnalysisJobStatus
+from anime_scene_resolver import AnimeSceneResolver
+from edit_dna_schema_v6 import EditDNASchemaV6
+from presentation_adapter import EditDNAPresentationAdapter
+
+client = TestClient(app)
+
+# 1. Ingestion endpoint test
+sample_upload = "/tmp/sample_to_ingest.mp4"
+subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=1.0", "-f", "lavfi", "-i", "sine=f=440:d=1.0", "-c:v", "libx264", "-c:a", "aac", sample_upload], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+try:
+    resp = client.post("/api/v8/jobs/ingest", json={"source_path": sample_upload, "quality_mode": "phase9"})
+    assert resp.status_code == 200, f"Ingest failed: {resp.text}"
+    data = resp.json()
+    assert "job_id" in data
+    assert data["classification_tag"] in ("NORMAL_AUDIOVISUAL", "SHORT_CLIP")
+    assert "poll_url" in data
+finally:
+    if os.path.isfile(sample_upload):
+        os.remove(sample_upload)
+
+# 2. YouTube URL execution test (remote observation contract)
+from gemini_provider import GeminiVideoProvider
+GeminiVideoProvider.analyze_structured_stream = classmethod(lambda cls, url: {
+    "visual_recognition": {"identified_work": "Simulated Entity", "confidence": 0.88, "visual_style_and_grading": "High contrast action styling."},
+    "soundtrack_recognition": {"identified_title": "Simulated Track", "confidence": 0.85, "artist_or_composer": "Artist"},
+    "macro_pacing_and_flow": {"transition_style": "kinetic cuts", "rhythm_summary": "Fast-paced montage."},
+    "storytelling_interpretation": {"narrative_structure": "Hero introduction followed by confrontation."},
+    "originality_and_creative_execution": {"creative_assessment": "Dynamic graphic match transitions."},
+    "model_used": "gemini-3.5-flash",
+})
+
+job_yt = AnalysisJob("job_yt_contract_test", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", quality_mode="phase9")
+AnalysisEngine.execute_job(job_yt)
+assert job_yt.status == AnalysisJobStatus.COMPLETE
+assert job_yt.v6_report["media_type"] == "public_youtube_url"
+assert job_yt.v6_report["section_g_privacy_and_contract"]["license_tier"] == "youtube_public_remote"
+
+pres_yt = job_yt.presentation_report
+assert pres_yt["overall_score_0_10"] is None
+assert pres_yt["overall_score_status"] == "NOT_YET_ASSESSED"
+assert pres_yt["gauge_presentation"]["gauge_state"] == "unassessed_standby"
+
+sec_map_yt = {s["dimension_id"]: s for s in pres_yt["assessment_sections"]}
+assert sec_map_yt["beat_synchronization"]["score_0_10"] is None
+assert "remote" in sec_map_yt["beat_synchronization"]["creator_explanation"].lower() or "unassessed" in sec_map_yt["beat_synchronization"]["creator_explanation"].lower()
+
+EditDNASchemaV6.validate(job_yt.v6_report)
+EditDNAPresentationAdapter.validate_presentation_report(pres_yt)
+
+# 3. AnimeSceneResolver Frame Quality Guard
+# Test that dark black frame is rejected before calling external API to prevent false positives
+dark_clip = "/tmp/test_dark_frame_guard.mp4"
+subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x240:d=1.0:r=25", "-c:v", "libx264", dark_clip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+try:
+    res = AnimeSceneResolver.resolve_from_video(dark_clip)
+    assert res["status"] == "UNKNOWN"
+    assert res["reason"] == "ambiguous_dark_or_blurry_keyframe"
+finally:
+    if os.path.isfile(dark_clip):
+        os.remove(dark_clip)
+
+print("INGEST_YOUTUBE_AND_FRAME_GUARD_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 45000 }
+  );
+
+  assert.ok(stdout.includes("INGEST_YOUTUBE_AND_FRAME_GUARD_VERIFIED"));
+});
+
 

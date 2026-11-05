@@ -1,10 +1,10 @@
 {
-  "experiment_timestamp": "2026-11-04T05:47:34Z",
+  "experiment_timestamp": "2026-11-05T21:47:16Z",
   "target_url": "https://youtu.be/_yrPlcZY2jw?si=YIb3fHK5Ftet75iy",
   "canonical_url": "https://www.youtube.com/watch?v=_yrPlcZY2jw",
   "evaluation_protocol": "metadata_blind_prompting",
-  "provider_status": "missing_credentials",
-  "has_live_credentials": false,
+  "provider_status": "success",
+  "has_live_credentials": true,
   "quota_and_terms": {
     "api_endpoint": "https://generativelanguage.googleapis.com/v1beta/interactions",
     "model": "gemini-3.8-flash",
@@ -13,38 +13,52 @@
     "terms_data_handling": "Free tier inputs/outputs may be reviewed to improve products. Paid tier has zero-day retention.",
     "google_ai_pro_distinction": "Google AI Pro subscription grants higher web Playground quotas, but API keys are governed separately by Gemini Developer API tiers."
   },
-  "missing_access_details": {
-    "reason": "GEMINI_API_KEY environment variable not populated.",
-    "setup_guide": {
-      "step1": "Visit Google AI Studio: https://aistudio.google.com/apikey",
-      "step2": "Create a free Gemini API key (no credit card or paid billing required).",
-      "step3": "Export the key locally in your shell: export GEMINI_API_KEY='your_key_here'",
-      "step4": "Re-run Lolixco Edit DNA to enable hybrid semantic analysis."
-    },
-    "ready_for_key": true
-  },
-  "evidence_gap_analysis": {
-    "metadata_claims": {
-      "title": "DHURANDHAR ft. Raga of revenge | Anirudh | Ranveer Singh .",
-      "author": "The Bad Speaker",
-      "claimed_movie": "Dhurandhar",
-      "claimed_actor": "Ranveer Singh",
-      "claimed_soundtrack": "Raga of revenge (Anirudh Ravichander)"
-    },
-    "unverified_signals_without_byte_stream": [
-      "Cannot confirm whether Anirudh's actual audio master is playing or a third-party cover/mashup.",
-      "Cannot measure precise beat-sync synchronization deltas in URL-only mode.",
-      "Cannot compute frame-accurate cut frequency or pacing without raw frame access."
-    ],
-    "what_gemini_adds_when_active": [
-      "Direct Google-side decoding of public YouTube video frames and audio track without scraping.",
-      "High-level scene recognition, actor face verification, and narrative sequence summary.",
-      "Identification of visible transitions, macro pacing, and soundtrack changes."
-    ],
-    "what_local_system_retains": [
-      "100% offline mathematical precision on authorized video bytes (FFmpeg/OpenCV).",
-      "Private owner rating preference model (11 reviews, 4 comparisons) completely shielded from third parties.",
-      "Zero third-party dependency for core technical measurement pipeline."
+  "observations": {
+    "raw_text": "[\n  {\n    \"visual_recognition\": {\n      \"entities_identified\": [\n        \"Ranveer Singh (Deepfake/Face-swap)\",\n        \"Akshaye Khanna\",\n        \"Bobby Deol\",\n        \"Manthan Morph (Creator)\"\n      ],\n      \"confidence\": 0.9,\n      \"visual_summary\": \"Fan-edited action trailer displaying a revenge storyline divided into text chapters ('ANATOMY OF A FALL', 'THE WOUNDED', 'THE EXECUTIONER', 'THE CONQUEROR', 'WRATH OF GOD'). Features deepfaked faces of Ranveer Singh seamlessly placed into intense action, combat, and court/family tragedy scenes.\"\n    },\n    \"music_recognition\": {\n      \"identified_title\": null,\n      \"artist\": null,\n      \"genre_style\": \"Dramatic Punjabi action background score with vocal chops, heavy bass, and aggressive beat drops\",\n      \"confidence\": 0.8,\n      \"notes\": \"Includes emotional dialogue in the intro shifting into heavy, beat-synced Punjabi action music with intense rhythm.\"\n    },\n    \"editing_assessment\": {\n      \"pacing_style\": \"Escalating tempo moving from dramatic slow burn to rapid action cuts synced with soundtrack beats.\",\n      \"cutting_style\": \"Chapter title card transitions, fast action jump cuts, and beat-matched combat sequences.\",\n      \"storytelling_observations\": \"Structures a dark anti-hero arc from trauma and tragedy to ruthless revenge and supreme dominance.\",\n      \"perceived_strengths\": [\n        \"Excellent beat-matching during fight sequences\",\n        \"Seamless digital face-morph integration\",\n        \"Strong thematic chapter organization\"\n      ],\n      \"perceived_weaknesses\": [\n        \"Minor motion blur artifacts on deepfaked faces during rapid camera moves\"\n      ]\n    },\n    \"hallucination_boundary\": {\n      \"what_is_directly_observed\": \"Ranveer Singh's face swapped onto action protagonists, Hindi audio dialogue, text chapter cards, and high-intensity combat scenes.\",\n      \"what_is_inferred_or_uncertain\": \"Body double footage inferred to be sourced from recent Indian action films like 'Kill' and 'Animal'.\"\n    }\n  }\n]",
+    "structured": [
+      {
+        "visual_recognition": {
+          "entities_identified": [
+            "Ranveer Singh (Deepfake/Face-swap)",
+            "Akshaye Khanna",
+            "Bobby Deol",
+            "Manthan Morph (Creator)"
+          ],
+          "confidence": 0.9,
+          "visual_summary": "Fan-edited action trailer displaying a revenge storyline divided into text chapters ('ANATOMY OF A FALL', 'THE WOUNDED', 'THE EXECUTIONER', 'THE CONQUEROR', 'WRATH OF GOD'). Features deepfaked faces of Ranveer Singh seamlessly placed into intense action, combat, and court/family tragedy scenes."
+        },
+        "music_recognition": {
+          "identified_title": null,
+          "artist": null,
+          "genre_style": "Dramatic Punjabi action background score with vocal chops, heavy bass, and aggressive beat drops",
+          "confidence": 0.8,
+          "notes": "Includes emotional dialogue in the intro shifting into heavy, beat-synced Punjabi action music with intense rhythm."
+        },
+        "editing_assessment": {
+          "pacing_style": "Escalating tempo moving from dramatic slow burn to rapid action cuts synced with soundtrack beats.",
+          "cutting_style": "Chapter title card transitions, fast action jump cuts, and beat-matched combat sequences.",
+          "storytelling_observations": "Structures a dark anti-hero arc from trauma and tragedy to ruthless revenge and supreme dominance.",
+          "perceived_strengths": [
+            "Excellent beat-matching during fight sequences",
+            "Seamless digital face-morph integration",
+            "Strong thematic chapter organization"
+          ],
+          "perceived_weaknesses": [
+            "Minor motion blur artifacts on deepfaked faces during rapid camera moves"
+          ]
+        },
+        "hallucination_boundary": {
+          "what_is_directly_observed": "Ranveer Singh's face swapped onto action protagonists, Hindi audio dialogue, text chapter cards, and high-intensity combat scenes.",
+          "what_is_inferred_or_uncertain": "Body double footage inferred to be sourced from recent Indian action films like 'Kill' and 'Animal'."
+        }
+      }
     ]
+  },
+  "usage_and_costs": {
+    "input_tokens": 12753,
+    "output_tokens": 494,
+    "total_tokens": 13247,
+    "free_tier_cost_usd": 0.0,
+    "estimated_paid_tier_cost_usd": 0.011417
   }
 }

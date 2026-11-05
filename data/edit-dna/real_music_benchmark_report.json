@@ -1,5 +1,5 @@
 {
-  "benchmark_timestamp": "2026-11-04T05:47:55Z",
+  "benchmark_timestamp": "2026-11-05T21:47:32Z",
   "catalog_size": 3,
   "total_queries": 5,
   "accuracy_percent": 60.0,
@@ -12,7 +12,7 @@
       "matched_title": "Symphony No. 5 in C minor, Op. 67 (1. Allegro con brio)",
       "status": "identified",
       "confidence": 0.851,
-      "latency_ms": 433.8,
+      "latency_ms": 368.7,
       "diagnostics": {},
       "correct": true
     },
@@ -24,7 +24,7 @@
       "matched_title": "UNKNOWN / ABSTAIN",
       "status": "abstain",
       "confidence": 0.63,
-      "latency_ms": 501.3,
+      "latency_ms": 373.2,
       "diagnostics": {},
       "correct": false
     },
@@ -36,7 +36,7 @@
       "matched_title": "Brandenburg Concerto No. 3 in G major, BWV 1048 (1. Allegro)",
       "status": "identified",
       "confidence": 0.652,
-      "latency_ms": 509.0,
+      "latency_ms": 353.0,
       "diagnostics": {},
       "correct": true
     },
@@ -48,7 +48,7 @@
       "matched_title": "UNKNOWN / ABSTAIN",
       "status": "abstain",
       "confidence": 0.543,
-      "latency_ms": 438.9,
+      "latency_ms": 333.1,
       "diagnostics": {},
       "correct": false
     },
@@ -60,7 +60,7 @@
       "matched_title": "UNKNOWN / ABSTAIN",
       "status": "abstain",
       "confidence": 0.546,
-      "latency_ms": 417.5,
+      "latency_ms": 333.6,
       "diagnostics": {},
       "correct": true
     }
