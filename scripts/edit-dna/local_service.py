@@ -38,6 +38,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uvicorn
+import shutil
 
 # Import Phase 6 and 7 modules
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -46,6 +47,9 @@ from music_evidence_resolver import MusicEvidenceResolver
 from edit_dna_schema_v6 import EditDNASchemaV6
 from presentation_adapter import EditDNAPresentationAdapter, ORDERED_DIMENSIONS, PRESENTATION_SCHEMA_VERSION
 from phase9_quality_engine import Phase9QualityEngine
+from media_inspector import MediaInspector
+from gemini_provider import GeminiVideoProvider
+from anime_scene_resolver import AnimeSceneResolver
 
 # Directory paths
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -53,14 +57,18 @@ AUTHORIZED_INBOX = "/home/rohan/lolixco-owner-media/inbox"
 AUTHORIZED_TEST_ASSETS = os.path.join(PROJECT_ROOT, "test-assets")
 AUTHORIZED_PUBLIC_MEDIA = os.path.join(PROJECT_ROOT, "public/media")
 PRIVATE_JOBS_DIR = os.path.expanduser("~/.lolixco-edit-dna/jobs")
+PRIVATE_INGEST_DIR = os.path.expanduser("~/.lolixco-edit-dna/ingest")
 PRIVATE_ANNOTATIONS_DIR = os.path.expanduser("~/.lolixco-edit-dna/annotations")
 os.makedirs(PRIVATE_JOBS_DIR, exist_ok=True)
+os.makedirs(PRIVATE_INGEST_DIR, exist_ok=True)
 os.makedirs(PRIVATE_ANNOTATIONS_DIR, exist_ok=True)
 
 # Path boundary roots
 INBOX_ROOT = Path(AUTHORIZED_INBOX).resolve()
 TEST_ROOT = Path(AUTHORIZED_TEST_ASSETS).resolve()
 PUBLIC_ROOT = Path(AUTHORIZED_PUBLIC_MEDIA).resolve()
+INGEST_ROOT = Path(PRIVATE_INGEST_DIR).resolve()
+TMP_ROOT = Path("/tmp").resolve()
 
 
 class AnalysisJobStatus:
@@ -76,8 +84,16 @@ class AnalysisJobStatus:
 class StartJobRequest(BaseModel):
     inbox_filename: Optional[str] = Field(None, description="Filename inside authorized inbox directory")
     media_path: Optional[str] = Field(None, description="Absolute or relative path within authorized boundaries")
+    youtube_url: Optional[str] = Field(None, description="Public YouTube watch, shorts, or youtu.be URL")
     semantic_overrides: Optional[Dict[str, Any]] = Field(None, description="Optional verified human critique overrides")
     quality_mode: Optional[str] = Field("phase9", description="Analysis mode: 'phase9' for autonomous quality engine, 'phase8' for legacy unassessed")
+    enable_gemini: Optional[bool] = Field(True, description="Enable optional Gemini multimodal analysis if key is available")
+
+
+class IngestMediaRequest(BaseModel):
+    source_path: str = Field(..., description="Local path to media file to ingest")
+    quality_mode: Optional[str] = Field("phase9", description="Analysis mode")
+    enable_gemini: Optional[bool] = Field(True, description="Enable optional Gemini analysis")
 
 
 class CancelJobRequest(BaseModel):
@@ -190,14 +206,20 @@ class AnalysisJob:
 class AnalysisEngine:
     """Core processor executing genuine video & audio analysis."""
 
-    MAX_FILE_SIZE_BYTES = 150 * 1024 * 1024  # 150 MB
+    MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024  # 500 MB
 
     @staticmethod
-    def resolve_safe_path(inbox_filename: Optional[str], media_path: Optional[str]) -> str:
+    def resolve_safe_path(
+        inbox_filename: Optional[str] = None,
+        media_path: Optional[str] = None,
+        youtube_url: Optional[str] = None,
+    ) -> str:
         """
-        Validates target file existence strictly within authorized directories using
-        Path.relative_to containment and symlink checks.
+        Validates target media path or public YouTube URL.
         """
+        if youtube_url and MediaInspector.is_youtube_url(youtube_url):
+            return youtube_url.strip()
+
         target_path: Optional[Path] = None
 
         if inbox_filename:
@@ -239,7 +261,7 @@ class AnalysisEngine:
             candidate = Path(media_path).resolve()
             # Verify boundary containment against authorized roots
             in_boundary = False
-            for root in (INBOX_ROOT, TEST_ROOT, PUBLIC_ROOT):
+            for root in (INBOX_ROOT, TEST_ROOT, PUBLIC_ROOT, INGEST_ROOT, TMP_ROOT):
                 try:
                     candidate.relative_to(root)
                     in_boundary = True
@@ -256,300 +278,585 @@ class AnalysisEngine:
         if not target_path or not target_path.is_file():
             raise ValueError(f"Target media file not found or not in authorized directories: {inbox_filename or media_path}")
 
-        # Enforce file size boundary (150 MB limit)
+        # Enforce file size boundary (500 MB limit)
         st = target_path.stat()
         if st.st_size > AnalysisEngine.MAX_FILE_SIZE_BYTES:
             size_mb = round(st.st_size / (1024 * 1024), 1)
-            raise ValueError(f"File size ({size_mb} MB) exceeds maximum allowed boundary of 150 MB")
+            raise ValueError(f"File size ({size_mb} MB) exceeds maximum allowed boundary of 500 MB")
 
         return str(target_path)
 
-    @staticmethod
-    def execute_job(job: AnalysisJob):
-        """Executes full progressive video analysis."""
+    @classmethod
+    def execute_job(cls, job: AnalysisJob):
+        """Executes full progressive analysis guided by upfront MediaInspector capabilities."""
         t_start = time.time()
         job.started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         job.status = AnalysisJobStatus.RUNNING
-        job.current_stage = "Probing video stream"
+        job.current_stage = "Probing media capabilities"
         job.progress_percent = 5
         job.add_event(AnalysisJobStatus.RUNNING, payload={"message": f"Analyzing {job.media_filename}"})
 
+        try:
+            insp = MediaInspector.inspect(job.media_path)
+            if not insp.get("is_supported", False):
+                err = insp.get("error", "Unsupported media container or unreadable stream")
+                job.status = AnalysisJobStatus.FAILED
+                job.error = err
+                job.current_stage = f"Failed: {err}"
+                job.add_event(AnalysisJobStatus.FAILED, payload={"error": err})
+                return
+
+            if insp.get("media_type") == "youtube_url":
+                cls._execute_youtube_job(job, insp, t_start)
+            else:
+                cls._execute_local_job(job, insp, t_start)
+
+        except InterruptedError:
+            job.status = AnalysisJobStatus.CANCELLED
+            job.current_stage = "Cancelled"
+            job.add_event(AnalysisJobStatus.CANCELLED, payload={"message": "Job cancelled by owner"})
+        except Exception as e:
+            job.status = AnalysisJobStatus.FAILED
+            job.error = str(e)
+            job.current_stage = f"Failed: {e}"
+            job.add_event(AnalysisJobStatus.FAILED, payload={"error": str(e)})
+
+    @classmethod
+    def _execute_youtube_job(cls, job: AnalysisJob, insp: Dict[str, Any], t_start: float):
+        job.current_stage = "Evaluating YouTube stream via Gemini Multimodal API"
+        job.progress_percent = 25
+
+        canonical_url = insp.get("canonical_target", job.media_path)
+        gemini_result = GeminiVideoProvider.analyze_structured_stream(canonical_url)
+
+        job.progress_percent = 70
+        job.current_stage = "Compiling YouTube assessment reports"
+
+        # Emit the 7 progressive dimensions in exact Creator Studio order
+        # 1. Beat Synchronization (unmeasured without raw waveform)
+        beat_payload = {
+            "section_id": "beat_synchronization",
+            "score_0_10": None,
+            "evidence_status": StatusTag.NOT_YET_ASSESSED,
+            "evidence_refs": {"mode": "youtube_url_remote_stream"},
+            "limitations": [
+                "Raw audio waveform inaccessible in URL-only mode; librosa beat tracking unmeasured."
+            ],
+            "creator_explanation": (
+                "Public YouTube URL mode evaluates remote multimodal streams. "
+                "Physical audio waveform cannot be decoded without downloading local bytes; beat synchronization is unassessed."
+            ),
+        }
+        job.progressive_sections["beat_synchronization"] = beat_payload
+        job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "beat_synchronization", beat_payload)
+
+        # 2. Cuts & Transitions
+        trans_style = gemini_result.get("macro_pacing_and_flow", {}).get("transition_style", "unspecified")
+        cuts_payload = {
+            "section_id": "cuts_and_transitions",
+            "score_0_10": None,
+            "evidence_status": StatusTag.NOT_YET_ASSESSED,
+            "evidence_refs": {
+                "observed_transition_style": trans_style,
+            },
+            "creator_explanation": (
+                f"Gemini observed transition style: {trans_style}. "
+                "Exact frame-accurate cut differencing requires local byte stream."
+            ),
+        }
+        job.progressive_sections["cuts_and_transitions"] = cuts_payload
+        job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "cuts_and_transitions", cuts_payload)
+
+        # 3. Pacing
+        pacing_summary = gemini_result.get("macro_pacing_and_flow", {}).get("rhythm_summary", "Macro pacing evaluated via multimodal stream.")
+        pacing_payload = {
+            "section_id": "pacing",
+            "score_0_10": None,
+            "evidence_status": StatusTag.NOT_YET_ASSESSED,
+            "evidence_refs": {
+                "macro_pacing": gemini_result.get("macro_pacing_and_flow", {}),
+            },
+            "creator_explanation": f"Multimodal pacing observation: {pacing_summary}",
+        }
+        job.progressive_sections["pacing"] = pacing_payload
+        job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "pacing", pacing_payload)
+
+        # 4. Visual Measurements
+        vis_obs = gemini_result.get("visual_recognition", {}).get("visual_style_and_grading", "Remote visual stream observation.")
+        vis_payload = {
+            "section_id": "visual_measurements",
+            "score_0_10": None,
+            "evidence_status": StatusTag.NOT_YET_ASSESSED,
+            "evidence_refs": {
+                "visual_style": vis_obs,
+            },
+            "creator_explanation": f"Visual observation: {vis_obs}. Exact pixel Laplacian sharpness requires decoded frame buffer.",
+        }
+        job.progressive_sections["visual_measurements"] = vis_payload
+        job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "visual_measurements", vis_payload)
+
+        # 5. Storytelling Interpretation (withheld from autonomous score)
+        story_obs = gemini_result.get("storytelling_interpretation", {}).get("narrative_structure", "")
+        story_payload = {
+            "section_id": "storytelling_interpretation",
+            "score_0_10": None,
+            "evidence_status": "EVALUATED_SEMANTIC_EXPERIMENTAL" if story_obs else StatusTag.NOT_YET_ASSESSED,
+            "evidence_refs": gemini_result.get("storytelling_interpretation", {}),
+            "creator_explanation": story_obs or "Storytelling arc requires semantic narrative analysis.",
+        }
+        job.progressive_sections["storytelling_interpretation"] = story_payload
+        job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "storytelling_interpretation", story_payload)
+
+        # 6. Originality & Creative Execution (withheld from autonomous score)
+        orig_obs = gemini_result.get("originality_and_creative_execution", {}).get("creative_assessment", "")
+        orig_payload = {
+            "section_id": "originality_creativity",
+            "score_0_10": None,
+            "evidence_status": "EVALUATED_SEMANTIC_EXPERIMENTAL" if orig_obs else StatusTag.NOT_YET_ASSESSED,
+            "evidence_refs": gemini_result.get("originality_and_creative_execution", {}),
+            "creator_explanation": orig_obs or "Originality requires comparative catalog assessment.",
+        }
+        job.progressive_sections["originality_creativity"] = orig_payload
+        job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "originality_creativity", orig_payload)
+
+        # 7. Personalized Owner Fit (withheld)
+        fit_payload = {
+            "section_id": "personalized_owner_fit",
+            "score_0_10": None,
+            "evidence_status": StatusTag.NOT_YET_ASSESSED,
+            "evidence_refs": {},
+            "creator_explanation": "Personalized owner fit withheld in URL remote observation mode.",
+        }
+        job.progressive_sections["personalized_owner_fit"] = fit_payload
+        job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "personalized_owner_fit", fit_payload)
+
+        vis_rec = gemini_result.get("visual_recognition", {})
+        sound_rec = gemini_result.get("soundtrack_recognition", {})
+
+        sec_a = {
+            "provenance": "gemini_multimodal_recognition",
+            "status": "POSSIBLE_MATCH" if vis_rec.get("identified_work") else StatusTag.UNKNOWN,
+            "matched_entity": vis_rec.get("identified_work"),
+            "confidence": vis_rec.get("confidence", 0.0),
+            "explanation": vis_rec.get("visual_style_and_grading") or "Visual observation via Gemini API.",
+            "evidence": {
+                "key_characters": vis_rec.get("key_characters_or_subjects", []),
+                "model": gemini_result.get("model_used"),
+            }
+        }
+
+        sec_b = {
+            "provenance": "gemini_multimodal_audio",
+            "status": "POSSIBLE_MATCH" if sound_rec.get("identified_title") else StatusTag.UNKNOWN,
+            "matched_track": sound_rec.get("identified_title"),
+            "confidence": sound_rec.get("confidence", 0.0),
+            "tentative_candidate": sound_rec.get("artist_or_composer"),
+            "audit_note": (
+                "Gemini multimodal candidate generator. Acoustic fingerprint unverified without reference audio hash."
+            ),
+        }
+
+        sec_c = {
+            "provenance": "measured_signal",
+            "duration_seconds": 0.0,
+            "shots_count": 0,
+            "cut_transitions_count": 0,
+            "cuts_per_second": 0.0,
+            "shot_duration_mean_sec": 0.0,
+            "shot_duration_std_dev_sec": 0.0,
+            "primary_bpm": 0.0,
+            "media_capabilities": insp,
+            "video_signals": {"mode": "youtube_url"},
+            "audio_signals": {"mode": "youtube_url"},
+        }
+
+        sec_d = {
+            "provenance": "gemini_multimodal_evaluation",
+            "status": "EVALUATED_SEMANTIC_EXPERIMENTAL",
+            "scorecard": {
+                "beat_synchronization": {"score": None, "status": StatusTag.NOT_YET_ASSESSED, "notes": beat_payload["creator_explanation"]},
+                "transitions": {"score": None, "status": StatusTag.NOT_YET_ASSESSED, "notes": cuts_payload["creator_explanation"]},
+                "pacing": {"score": None, "status": StatusTag.NOT_YET_ASSESSED, "notes": pacing_payload["creator_explanation"]},
+                "visual_quality": {"score": None, "status": StatusTag.NOT_YET_ASSESSED, "notes": vis_payload["creator_explanation"]},
+                "storytelling_emotion": {"score": None, "status": story_payload["evidence_status"], "notes": story_payload["creator_explanation"]},
+                "originality_creativity": {"score": None, "status": orig_payload["evidence_status"], "notes": orig_payload["creator_explanation"]},
+                "personalized_owner_fit": {"score": None, "status": StatusTag.NOT_YET_ASSESSED, "notes": fit_payload["creator_explanation"]},
+            },
+            "explanation": "Multimodal remote analysis via Google Gemini API."
+        }
+
+        sec_e = {
+            "provenance": "personalized_estimate",
+            "status": StatusTag.NOT_YET_ASSESSED,
+            "predicted_score": None,
+            "owner_preference_weights": {},
+        }
+
+        sec_f = {
+            "unverified_elements": [
+                "Raw audio waveform not decoded locally.",
+                "Frame pixel buffer not decoded locally.",
+                "Soundtrack and visual recognition are multimodal LLM observations, not cryptographic hashes."
+            ],
+            "evidence_boundaries": {
+                "measured_physical_facts": "None (URL remote stream mode).",
+                "unmeasured_aesthetic_qualities": "Full physical waveform and local frame histograms unmeasured."
+            }
+        }
+
+        sec_g = {
+            "creator_studio_ready": True,
+            "private_data_retained": False,
+            "cloud_upload_permitted": True,
+            "license_tier": "youtube_public_remote",
+            "api_endpoint": "/api/v8/jobs",
+            "data_governance": {
+                "local_bytes_only": False,
+                "zero_cloud_retention": True,
+                "untracked_by_git": True,
+                "local_storage_path": os.path.join(PRIVATE_JOBS_DIR, job.job_id),
+                "retention_policy": "Local private disk caching for job restoration and audit. Purgeable by owner."
+            }
+        }
+
+        v6_doc = EditDNASchemaV6.create_report(
+            media_id=job.media_filename,
+            media_type="public_youtube_url",
+            section_a_visual=sec_a,
+            section_b_music=sec_b,
+            section_c_physical=sec_c,
+            section_d_semantic=sec_d,
+            section_e_personalized=sec_e,
+            section_f_boundaries=sec_f,
+            section_g_contract=sec_g,
+        )
+        v6_doc["quality_mode"] = job.quality_mode
+        v6_doc["analysis_mode"] = "youtube_multimodal"
+        job.v6_report = v6_doc
+
+        pres_doc = EditDNAPresentationAdapter.from_v6_report(v6_doc, semantic_overrides=job.semantic_overrides)
+        job.presentation_report = pres_doc
+
+        job_out_dir = os.path.join(PRIVATE_JOBS_DIR, job.job_id)
+        os.makedirs(job_out_dir, exist_ok=True)
+        with open(os.path.join(job_out_dir, "report_v6.json"), "w", encoding="utf-8") as f:
+            json.dump(v6_doc, f, indent=2)
+        with open(os.path.join(job_out_dir, "report_presentation.json"), "w", encoding="utf-8") as f:
+            json.dump(pres_doc, f, indent=2)
+
+        t_total = time.time() - t_start
+        job.completed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        job.duration_seconds = round(t_total, 2)
+        job.progress_percent = 100
+        job.status = AnalysisJobStatus.COMPLETE
+        job.current_stage = "Analysis complete"
+        job.add_event(
+            AnalysisJobStatus.COMPLETE,
+            payload={
+                "total_duration_sec": job.duration_seconds,
+                "overall_score": pres_doc.get("overall_score_0_10"),
+                "overall_status": pres_doc.get("overall_score_status"),
+                "v6_path": os.path.join(job_out_dir, "report_v6.json"),
+                "presentation_path": os.path.join(job_out_dir, "report_presentation.json"),
+            },
+            duration_ms=t_total * 1000.0
+        )
+
+    @classmethod
+    def _execute_local_job(cls, job: AnalysisJob, insp: Dict[str, Any], t_start: float):
         scratch_audio = f"/tmp/edit_dna_job_{job.job_id}.wav"
+        t_vid_start = time.time()
+
+        caps = insp.get("capabilities", {})
+        has_video = caps.get("has_video_stream", False)
+        has_audio = caps.get("has_audio_stream", False)
+        is_black = caps.get("is_video_black", False)
+        is_static = caps.get("is_video_static", False)
+        is_silent = caps.get("is_audio_silent", False)
+        duration_sec = float(caps.get("duration_sec", 0.0) or 0.0)
+        width = int(caps.get("width", 0))
+        height = int(caps.get("height", 0))
+        fps = float(caps.get("fps", 30.0))
+
+        if duration_sec > 600.0:
+            raise ValueError(f"Video duration ({duration_sec:.1f}s) exceeds maximum allowed 600s boundary")
+
+        cuts: List[float] = [0.0]
+        flash_frames: List[float] = []
+        sharpness_scores: List[float] = []
+        luminance_samples: List[float] = []
+        contrast_samples: List[float] = []
+        cut_continuity_correlations: List[float] = []
+
+        engine = EvidenceScoringEngine()
 
         try:
-            # 1. Video frame decoding and signal measurements
-            if job.cancel_event.is_set():
-                raise InterruptedError("Cancelled by user")
+            if not has_video:
+                job.current_stage = "Audio-only container; skipping video frame decoding"
+                job.progress_percent = 30
+                reconciliation = {
+                    "shots_count": 0,
+                    "cut_transitions_count": 0,
+                    "cuts_per_second": 0.0,
+                    "shot_duration_mean": 0.0,
+                    "shot_duration_std_dev": 0.0,
+                    "intra_shot_flashes_count": 0,
+                    "flash_rate_per_second": 0.0,
+                    "internal_cut_timestamps": [],
+                }
+                video_signals = {
+                    "width": 0,
+                    "height": 0,
+                    "fps": 0.0,
+                    "total_frames": 0,
+                    "duration_sec": round(duration_sec, 2),
+                    "mean_sharpness_laplacian": 0.0,
+                    "mean_luminance": 0.0,
+                    "mean_contrast": 0.0,
+                    "flash_frame_timestamps": [],
+                    "cut_timestamps": [],
+                }
+                vid_elapsed_ms = 1.0
 
-            job.current_stage = "Decoding video frames & detecting cut boundaries"
-            t_vid_start = time.time()
-            cap = cv2.VideoCapture(job.media_path)
-            if not cap.isOpened():
-                raise RuntimeError(f"Failed to open video stream: {job.media_path}")
+            elif is_black:
+                job.current_stage = "Video frames are black; registering single black shot"
+                job.progress_percent = 30
+                if duration_sec > 0.25:
+                    cuts.append(round(duration_sec, 3))
+                reconciliation = {
+                    "shots_count": 1 if duration_sec > 0 else 0,
+                    "cut_transitions_count": 0,
+                    "cuts_per_second": 0.0,
+                    "shot_duration_mean": round(duration_sec, 2),
+                    "shot_duration_std_dev": 0.0,
+                    "intra_shot_flashes_count": 0,
+                    "flash_rate_per_second": 0.0,
+                    "internal_cut_timestamps": [],
+                }
+                video_signals = {
+                    "width": width,
+                    "height": height,
+                    "fps": round(fps, 2),
+                    "total_frames": int(duration_sec * fps),
+                    "duration_sec": round(duration_sec, 2),
+                    "mean_sharpness_laplacian": 0.0,
+                    "mean_luminance": 0.0,
+                    "mean_contrast": 0.0,
+                    "flash_frame_timestamps": [],
+                    "cut_timestamps": cuts[:25],
+                }
+                vid_elapsed_ms = 1.0
 
-            fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            duration_sec = total_frames / fps if fps > 0 else 0.0
+            elif is_static:
+                job.current_stage = "Video is static slide; measuring single frame"
+                job.progress_percent = 30
+                lap_var, mean_lum, std_con = 0.0, 0.0, 0.0
+                cap_stat = cv2.VideoCapture(job.media_path)
+                if cap_stat.isOpened():
+                    ret_stat, f0 = cap_stat.read()
+                    if ret_stat and f0 is not None:
+                        g0 = cv2.cvtColor(f0, cv2.COLOR_BGR2GRAY)
+                        lap_var = float(cv2.Laplacian(g0, cv2.CV_64F).var())
+                        mean_lum = float(np.mean(g0))
+                        std_con = float(np.std(g0))
+                    cap_stat.release()
 
-            if duration_sec > 600.0:
-                cap.release()
-                raise ValueError(f"Video duration ({duration_sec:.1f}s) exceeds maximum allowed 600s boundary")
+                if duration_sec > 0.25:
+                    cuts.append(round(duration_sec, 3))
+                reconciliation = {
+                    "shots_count": 1 if duration_sec > 0 else 0,
+                    "cut_transitions_count": 0,
+                    "cuts_per_second": 0.0,
+                    "shot_duration_mean": round(duration_sec, 2),
+                    "shot_duration_std_dev": 0.0,
+                    "intra_shot_flashes_count": 0,
+                    "flash_rate_per_second": 0.0,
+                    "internal_cut_timestamps": [],
+                }
+                video_signals = {
+                    "width": width,
+                    "height": height,
+                    "fps": round(fps, 2),
+                    "total_frames": int(duration_sec * fps),
+                    "duration_sec": round(duration_sec, 2),
+                    "mean_sharpness_laplacian": round(lap_var, 1),
+                    "mean_luminance": round(mean_lum, 1),
+                    "mean_contrast": round(std_con, 1),
+                    "flash_frame_timestamps": [],
+                    "cut_timestamps": cuts[:25],
+                }
+                vid_elapsed_ms = 1.0
 
-            ret, prev_frame = cap.read()
-            if not ret:
-                cap.release()
-                raise RuntimeError("Empty video stream")
+            else:
+                # Active video frame decoding loop
+                job.current_stage = "Decoding video frames & detecting cut boundaries"
+                cap = cv2.VideoCapture(job.media_path)
+                if not cap.isOpened():
+                    raise RuntimeError(f"Failed to open video stream: {job.media_path}")
 
-            prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
-            prev_hsv = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2HSV)
-            prev_hist = cv2.calcHist([prev_hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
-            cv2.normalize(prev_hist, prev_hist, 0, 1, cv2.NORM_MINMAX)
+                fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                duration_sec = total_frames / fps if fps > 0 else 0.0
 
-            frame_idx = 1
-            cuts = [0.0]
-            flash_frames = []
-            sharpness_scores = []
-            luminance_samples = []
-            contrast_samples = []
-            cut_continuity_correlations = []
-
-            while True:
-                if job.cancel_event.is_set():
+                ret, prev_frame = cap.read()
+                if not ret or prev_frame is None:
                     cap.release()
-                    raise InterruptedError("Cancelled by user")
+                    raise RuntimeError("Empty video stream")
 
-                ret, frame = cap.read()
-                if not ret:
-                    break
+                prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+                prev_hsv = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2HSV)
+                prev_hist = cv2.calcHist([prev_hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
+                cv2.normalize(prev_hist, prev_hist, 0, 1, cv2.NORM_MINMAX)
 
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                diff = float(np.mean(cv2.absdiff(prev_gray, gray)))
-                mean_lum = float(np.mean(gray))
-                std_contrast = float(np.std(gray))
+                frame_idx = 1
+                while True:
+                    if job.cancel_event.is_set():
+                        cap.release()
+                        raise InterruptedError("Cancelled by user")
 
-                # Flash frames
-                if mean_lum > 210 or diff > 48.0:
-                    flash_frames.append(round(frame_idx / fps, 3))
+                    ret, frame = cap.read()
+                    if not ret or frame is None:
+                        break
 
-                # Validate sampling interval for short clips (<= 1.0s or <= 30 frames)
-                sample_interval = max(1, min(15, total_frames // 4)) if total_frames > 0 else 15
-                if frame_idx % sample_interval == 0:
-                    lap_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    diff = float(np.mean(cv2.absdiff(prev_gray, gray)))
+                    mean_lum = float(np.mean(gray))
+                    std_contrast = float(np.std(gray))
+
+                    if mean_lum > 210 or diff > 48.0:
+                        flash_frames.append(round(frame_idx / fps, 3))
+
+                    sample_interval = max(1, min(15, total_frames // 4)) if total_frames > 0 else 15
+                    if frame_idx % sample_interval == 0:
+                        lap_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+                        sharpness_scores.append(lap_var)
+                        luminance_samples.append(mean_lum)
+                        contrast_samples.append(std_contrast)
+
+                    if diff > 24.0:
+                        t_cut = frame_idx / fps
+                        if t_cut - cuts[-1] >= 0.25:
+                            cuts.append(round(t_cut, 3))
+                            if prev_hist is not None:
+                                hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                                hist = cv2.calcHist([hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
+                                cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
+                                corr = float(cv2.compareHist(prev_hist, hist, cv2.HISTCMP_CORREL))
+                                cut_continuity_correlations.append(round(corr, 3))
+
+                    if frame_idx % 5 == 0:
+                        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                        hist = cv2.calcHist([hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
+                        cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
+                        prev_hist = hist
+
+                    prev_gray = gray
+                    frame_idx += 1
+
+                cap.release()
+
+                if not sharpness_scores and prev_gray is not None:
+                    lap_var = float(cv2.Laplacian(prev_gray, cv2.CV_64F).var())
                     sharpness_scores.append(lap_var)
-                    luminance_samples.append(mean_lum)
-                    contrast_samples.append(std_contrast)
+                    luminance_samples.append(float(np.mean(prev_gray)))
+                    contrast_samples.append(float(np.std(prev_gray)))
 
-                # Scene cuts
-                if diff > 24.0:
-                    t_cut = frame_idx / fps
-                    if t_cut - cuts[-1] >= 0.25:
-                        cuts.append(round(t_cut, 3))
-                        if prev_hist is not None:
-                            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-                            hist = cv2.calcHist([hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
-                            cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
-                            corr = float(cv2.compareHist(prev_hist, hist, cv2.HISTCMP_CORREL))
-                            cut_continuity_correlations.append(round(corr, 3))
+                if cuts[-1] < duration_sec - 0.25:
+                    cuts.append(round(duration_sec, 3))
 
-                # Update running histogram every 5 frames (~0.16s)
-                if frame_idx % 5 == 0:
-                    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-                    hist = cv2.calcHist([hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
-                    cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
-                    prev_hist = hist
+                vid_elapsed_ms = (time.time() - t_vid_start) * 1000.0
+                reconciliation = engine.reconcile_cuts_and_shots(cuts, duration_sec, flash_frames)
+                video_signals = {
+                    "width": width,
+                    "height": height,
+                    "fps": round(fps, 2),
+                    "total_frames": total_frames,
+                    "duration_sec": round(duration_sec, 2),
+                    "mean_sharpness_laplacian": round(float(np.mean(sharpness_scores)), 1) if sharpness_scores else 0.0,
+                    "mean_luminance": round(float(np.mean(luminance_samples)), 1) if luminance_samples else 0.0,
+                    "mean_contrast": round(float(np.mean(contrast_samples)), 1) if contrast_samples else 0.0,
+                    "flash_frame_timestamps": flash_frames[:20],
+                    "cut_timestamps": cuts[:25],
+                }
 
-                prev_gray = gray
-                frame_idx += 1
-
-            cap.release()
-
-            # Ensure at least one visual sample exists for very short clips
-            if not sharpness_scores and prev_gray is not None:
-                lap_var = float(cv2.Laplacian(prev_gray, cv2.CV_64F).var())
-                sharpness_scores.append(lap_var)
-                luminance_samples.append(float(np.mean(prev_gray)))
-                contrast_samples.append(float(np.std(prev_gray)))
-
-            # End of video cut handling
-            if cuts[-1] < duration_sec - 0.25:
-                cuts.append(round(duration_sec, 3))
-
-            vid_elapsed_ms = (time.time() - t_vid_start) * 1000.0
-
-            # Reconcile cuts and shots using Phase 6 Engine
-            engine = EvidenceScoringEngine()
-            reconciliation = engine.reconcile_cuts_and_shots(cuts, duration_sec, flash_frames)
-            video_signals = {
-                "width": width,
-                "height": height,
-                "fps": round(fps, 2),
-                "total_frames": total_frames,
-                "duration_sec": round(duration_sec, 2),
-                "mean_sharpness_laplacian": round(float(np.mean(sharpness_scores)), 1) if sharpness_scores else 0.0,
-                "mean_luminance": round(float(np.mean(luminance_samples)), 1) if luminance_samples else 0.0,
-                "mean_contrast": round(float(np.mean(contrast_samples)), 1) if contrast_samples else 0.0,
-                "flash_frame_timestamps": flash_frames[:20],
-                "cut_timestamps": cuts[:25],
-            }
-
-            job.progress_percent = 40
+            job.progress_percent = 45
             job.current_stage = "Extracting and analyzing audio stream"
 
-            if job.quality_mode == "phase8":
-                # Emit Dimension 2 (Cuts & Transitions) physical result (unassessed aesthetic grade)
-                cuts_payload = {
-                    "section_id": "cuts_and_transitions",
-                    "score_0_10": None,
-                    "evidence_status": StatusTag.NOT_YET_ASSESSED,
-                    "evidence_refs": {
-                        "shots_count": reconciliation["shots_count"],
-                        "cut_transitions_count": reconciliation["cut_transitions_count"],
-                        "intra_shot_flashes_count": reconciliation["intra_shot_flashes_count"],
-                        "flash_rate_per_sec": reconciliation["flash_rate_per_second"],
-                        "strobe_warning": reconciliation["flash_rate_per_second"] > 1.0,
-                    },
-                    "creator_explanation": (
-                        f"Measured {reconciliation['cut_transitions_count']} cut transitions across "
-                        f"{reconciliation['shots_count']} shots with {reconciliation['intra_shot_flashes_count']} "
-                        f"intra-shot flashes ({reconciliation['flash_rate_per_second']:.2f}/s). "
-                        f"Transition aesthetic flow requires semantic evaluation."
-                    )
-                }
-                job.progressive_sections["cuts_and_transitions"] = cuts_payload
-                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "cuts_and_transitions", cuts_payload, vid_elapsed_ms)
-
-                # Emit Dimension 3 (Pacing) physical cadence
-                pacing_payload = {
-                    "section_id": "pacing",
-                    "score_0_10": None,
-                    "evidence_status": StatusTag.NOT_YET_ASSESSED,
-                    "evidence_refs": {
-                        "cuts_per_second": reconciliation["cuts_per_second"],
-                        "shot_duration_mean_sec": reconciliation["shot_duration_mean"],
-                        "shot_duration_std_dev_sec": reconciliation["shot_duration_std_dev"],
-                    },
-                    "creator_explanation": (
-                        f"Physical editing cadence is {reconciliation['cuts_per_second']:.2f} cuts/second "
-                        f"(average shot duration {reconciliation['shot_duration_mean']:.2f}s). "
-                        f"Whether this pacing supports or exhausts the narrative requires semantic assessment."
-                    )
-                }
-                job.progressive_sections["pacing"] = pacing_payload
-                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "pacing", pacing_payload, vid_elapsed_ms)
-
-                # Emit Dimension 4 (Visual Measurements)
-                visual_payload = {
-                    "section_id": "visual_measurements",
-                    "score_0_10": None,
-                    "evidence_status": StatusTag.NOT_YET_ASSESSED,
-                    "evidence_refs": {
-                        "width": width,
-                        "height": height,
-                        "fps": round(fps, 2),
-                        "mean_sharpness_laplacian": video_signals["mean_sharpness_laplacian"],
-                        "mean_contrast": video_signals["mean_contrast"],
-                    },
-                    "creator_explanation": (
-                        f"Decoded {width}x{height} @ {fps:.1f}fps. Sharpness Laplacian is "
-                        f"{video_signals['mean_sharpness_laplacian']:.1f}. Visual color harmony and grading "
-                        f"remain unassessed without semantic review."
-                    )
-                }
-                job.progressive_sections["visual_measurements"] = visual_payload
-                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "visual_measurements", visual_payload, vid_elapsed_ms)
-
-            # 2. Extract scratch audio
+            # 2. Scratch audio extraction
             if job.cancel_event.is_set():
                 raise InterruptedError("Cancelled by user")
 
             t_aud_start = time.time()
-            has_audio = False
-            try:
-                probe_cmd = [
-                    "ffprobe", "-v", "error", "-select_streams", "a",
-                    "-show_entries", "stream=codec_type", "-of", "csv=p=0",
-                    job.media_path
-                ]
-                probe_res = subprocess.run(probe_cmd, capture_output=True, text=True, check=False)
-                has_audio = "audio" in probe_res.stdout
-            except Exception:
-                has_audio = False
+            y = np.array([], dtype=np.float32)
+            sr = 22050
+            bpm = 0.0
+            beat_times: List[float] = []
+            onset_times: List[float] = []
+            peak_amp = 0.0
+            rms_db = -120.0
+            clipping_detected = False
 
-            if has_audio:
+            if has_audio and not is_silent:
                 cmd = ["ffmpeg", "-y", "-i", job.media_path, "-vn", "-ar", "22050", "-ac", "1", scratch_audio]
                 ext_res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                if ext_res.returncode != 0 or not os.path.isfile(scratch_audio):
-                    has_audio = False
+                if ext_res.returncode == 0 and os.path.isfile(scratch_audio):
+                    try:
+                        y, sr = librosa.load(scratch_audio, sr=22050, mono=True)
+                        if len(y) > 0:
+                            peak_amp = float(np.max(np.abs(y)))
+                            rms = float(np.sqrt(np.mean(y ** 2)))
+                            rms_db = 20 * np.log10(rms + 1e-6)
+                            clipping_detected = peak_amp >= 0.99
 
-            if has_audio and os.path.isfile(scratch_audio):
-                y, sr = librosa.load(scratch_audio, sr=22050, mono=True)
-                tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr, units="frames")
-                bpm = float(tempo[0] if isinstance(tempo, (list, np.ndarray)) else tempo)
-                beat_times = [float(t) for t in librosa.frames_to_time(beat_frames, sr=sr)]
+                            if peak_amp >= 1e-4 and duration_sec > 1.0:
+                                tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr, units="frames")
+                                bpm = float(tempo[0] if isinstance(tempo, (list, np.ndarray)) else tempo)
+                                beat_times = [float(t) for t in librosa.frames_to_time(beat_frames, sr=sr)]
 
-                # Detect audio onsets for acoustic transient alignment
-                onset_frames = librosa.onset.onset_detect(y=y, sr=sr, units="frames")
-                onset_times = [float(t) for t in librosa.frames_to_time(onset_frames, sr=sr)]
+                                onset_frames = librosa.onset.onset_detect(y=y, sr=sr, units="frames")
+                                onset_times = [float(t) for t in librosa.frames_to_time(onset_frames, sr=sr)]
+                    except Exception:
+                        pass
 
-                peak_amp = float(np.max(np.abs(y)))
-                rms = float(np.sqrt(np.mean(y ** 2)))
-                rms_db = 20 * np.log10(rms + 1e-6)
-                clipping_detected = peak_amp >= 0.99
-
-                # Handle silence and short clips: require usable timing evidence before grading
-                if peak_amp < 1e-4 or duration_sec <= 1.0:
-                    beat_times = []
-                    bpm = 0.0
-                    onset_times = []
-
-                audio_signals = {
-                    "bpm": round(bpm, 1),
-                    "peak_amplitude": round(peak_amp, 3),
-                    "rms_db": round(rms_db, 1),
-                    "clipping_detected": clipping_detected,
-                    "onsets_count": len(onset_times),
-                    "has_audio_stream": True,
-                }
-            else:
-                y = np.array([], dtype=np.float32)
-                sr = 22050
-                bpm = 0.0
-                beat_times = []
-                onset_times = []
-                peak_amp = 0.0
-                rms_db = -120.0
-                clipping_detected = False
-                audio_signals = {
-                    "bpm": 0.0,
-                    "peak_amplitude": 0.0,
-                    "rms_db": -120.0,
-                    "clipping_detected": False,
-                    "onsets_count": 0,
-                    "has_audio_stream": False,
-                }
-
-            # Multi-tempo rhythmic grid and transient alignment evaluation
-            rhythm_eval = engine.evaluate_multi_grid_rhythm(
-                reconciliation["internal_cut_timestamps"],
-                beat_times,
-                bpm,
-                audio_onsets=onset_times,
-                flash_timestamps=flash_frames
-            )
-
+            audio_signals = {
+                "bpm": round(bpm, 1),
+                "peak_amplitude": round(peak_amp, 3),
+                "rms_db": round(rms_db, 1),
+                "clipping_detected": clipping_detected,
+                "onsets_count": len(onset_times),
+                "has_audio_stream": has_audio,
+                "is_silent": is_silent,
+            }
             aud_elapsed_ms = (time.time() - t_aud_start) * 1000.0
+
+            # Rhythmic evaluation
+            internal_cuts = reconciliation["internal_cut_timestamps"]
+            if has_video and has_audio and not is_black and not is_static and not is_silent and duration_sec > 1.0 and beat_times:
+                rhythm_eval = engine.evaluate_multi_grid_rhythm(
+                    internal_cuts,
+                    beat_times,
+                    bpm,
+                    audio_onsets=onset_times,
+                    flash_timestamps=flash_frames
+                )
+            else:
+                rhythm_eval = {
+                    "primary_bpm": bpm,
+                    "primary_grid": {"tight_sync_percent": 0.0, "loose_sync_percent": 0.0},
+                    "half_time_grid": {"tight_sync_percent": 0.0},
+                    "double_time_grid": {"tight_sync_percent": 0.0},
+                    "compound_sync": {"tight_sync_percent": 0.0},
+                    "intra_shot_flash_sync_percent": 0.0,
+                    "anticipatory_cuts_count": 0,
+                    "best_rhythmic_fit": "UNKNOWN",
+                }
+
             job.progress_percent = 70
-            job.current_stage = "Evaluating musical sync & audio evidence"
-
-            # 3. Content Recognition & Music Evidence Resolver (Zero false candidates)
-            if job.cancel_event.is_set():
-                raise InterruptedError("Cancelled by user")
-
             job.current_stage = "Resolving soundtrack and visual entities"
+
             resolver = MusicEvidenceResolver()
-            # Do NOT seed unverified candidates; reflect honest absence of catalog fingerprint match
             raw_candidates: List[Dict[str, Any]] = []
             music_resolution = resolver.resolve_recognition(
                 raw_candidates=raw_candidates,
@@ -559,10 +866,17 @@ class AnalysisEngine:
                 audio_duration_sec=duration_sec
             )
 
+            # Anime / Visual recognition
+            anime_res = {"status": "UNKNOWN", "matched_title": None, "confidence": 0.0}
+            if has_video and not is_black:
+                try:
+                    anime_res = AnimeSceneResolver.resolve_from_video(job.media_path, timeout_seconds=5)
+                except Exception:
+                    pass
+
             if job.quality_mode == "phase9":
                 q_engine = Phase9QualityEngine()
-                internal_cuts = reconciliation["internal_cut_timestamps"]
-                shot_durations = [round(cuts[i] - cuts[i-1], 3) for i in range(1, len(cuts))]
+                shot_durations = [round(cuts[i] - cuts[i-1], 3) for i in range(1, len(cuts))] if len(cuts) > 1 else []
                 q_res = q_engine.evaluate_full_edit_quality(
                     internal_cuts=internal_cuts,
                     shot_durations=shot_durations,
@@ -580,10 +894,80 @@ class AnalysisEngine:
                 )
                 q_dims = q_res["dimensions"]
 
+                # Edge case capability overrides for Phase 9 dimensions:
+                if not has_video:
+                    q_dims["cuts_and_transitions"] = {
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "metrics": {"shots_count": 0, "cuts_count": 0},
+                        "editorial_explanation": "Audio-only file contains no video stream; cuts & transitions unassessed."
+                    }
+                    q_dims["pacing"] = {
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "metrics": {"cuts_per_second": 0.0},
+                        "editorial_explanation": "Audio-only file contains no scene cuts; pacing unassessed."
+                    }
+                    q_dims["visual_measurements"] = {
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "metrics": {"width": 0, "height": 0},
+                        "editorial_explanation": "Audio-only container contains no video frames; visual measurements unassessed."
+                    }
+                    q_dims["beat_synchronization"] = {
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "metrics": {"measured_cuts": 0},
+                        "editorial_explanation": "No video cuts exist to align with audio rhythm; beat synchronization unassessed."
+                    }
+                elif is_black:
+                    q_dims["cuts_and_transitions"] = {
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "metrics": {"shots_count": 1, "cuts_count": 0},
+                        "editorial_explanation": "Video stream is 100% black; scene transitions unassessed."
+                    }
+                    q_dims["visual_measurements"] = {
+                        "score_0_10": 0.0,
+                        "evidence_status": StatusTag.MEASURED_SIGNAL,
+                        "metrics": {"mean_sharpness_laplacian": 0.0, "mean_contrast": 0.0, "is_black": True},
+                        "editorial_explanation": "Video stream is completely black (zero luminance and contrast)."
+                    }
+                    q_dims["beat_synchronization"] = {
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "metrics": {"cuts_count": 0},
+                        "editorial_explanation": "Black screen has zero cuts to align with audio rhythm; beat synchronization unassessed."
+                    }
+                elif is_static:
+                    q_dims["cuts_and_transitions"] = {
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "metrics": {"shots_count": 1, "cuts_count": 0},
+                        "editorial_explanation": "Video is a static image slide (no scene cuts); cuts & transitions unassessed."
+                    }
+                    q_dims["beat_synchronization"] = {
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "metrics": {"cuts_count": 0},
+                        "editorial_explanation": "Static video has zero cuts to align with audio rhythm; beat synchronization unassessed."
+                    }
+
+                if not has_audio or is_silent:
+                    q_dims["beat_synchronization"] = {
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "metrics": {"bpm": 0.0, "has_audio": has_audio, "is_silent": is_silent},
+                        "editorial_explanation": (
+                            "Video file contains no audio track; beat synchronization unassessed."
+                            if not has_audio
+                            else "Audio stream is silent (energy <= -60 dB); beat synchronization unassessed."
+                        )
+                    }
+
                 def _sec_notes(d: Dict[str, Any], fallback: str = "") -> str:
                     return d.get("editorial_explanation") or d.get("reason") or fallback
 
-                # Emit the 7 assessment dimensions in exact Creator Studio order:
                 # 1. Beat Synchronization
                 beat_data = q_dims["beat_synchronization"]
                 beat_payload = {
@@ -638,7 +1022,7 @@ class AnalysisEngine:
                 vis_ev_type = AnalysisJobStatus.SECTION_COMPLETED if vis_data["score_0_10"] is not None else AnalysisJobStatus.SECTION_UNASSESSED
                 job.add_event(vis_ev_type, "visual_measurements", vis_payload, vid_elapsed_ms)
 
-                # 5. Storytelling Interpretation (withheld from autonomous score)
+                # 5. Storytelling Interpretation (withheld)
                 story_data = q_dims["storytelling_interpretation"]
                 story_payload = {
                     "section_id": "storytelling_interpretation",
@@ -652,7 +1036,7 @@ class AnalysisEngine:
                 story_ev_type = AnalysisJobStatus.SECTION_COMPLETED if story_data["score_0_10"] is not None else AnalysisJobStatus.SECTION_UNASSESSED
                 job.add_event(story_ev_type, "storytelling_interpretation", story_payload)
 
-                # 6. Originality & Creative Execution (withheld from autonomous score)
+                # 6. Originality & Creative Execution (withheld)
                 orig_data = q_dims["originality_creativity"]
                 orig_payload = {
                     "section_id": "originality_creativity",
@@ -666,7 +1050,7 @@ class AnalysisEngine:
                 orig_ev_type = AnalysisJobStatus.SECTION_COMPLETED if orig_data["score_0_10"] is not None else AnalysisJobStatus.SECTION_UNASSESSED
                 job.add_event(orig_ev_type, "originality_creativity", orig_payload)
 
-                # 7. Personalized Owner Fit (withheld from autonomous score)
+                # 7. Personalized Owner Fit (withheld)
                 fit_data = q_dims["personalized_owner_fit"]
                 fit_payload = {
                     "section_id": "personalized_owner_fit",
@@ -727,9 +1111,9 @@ class AnalysisEngine:
                         },
                     }
                 }
+
             else:
                 # Phase 8 legacy path:
-                # Calculate Beat Synchronization Score (0-10)
                 scorecard_res = engine.evaluate_scorecard(
                     reconciliation,
                     rhythm_eval,
@@ -738,6 +1122,97 @@ class AnalysisEngine:
                     semantic_evaluations=job.semantic_overrides
                 )
                 beat_card = scorecard_res["scorecard"]["beat_synchronization"]
+
+                if not has_video:
+                    cuts_payload = {
+                        "section_id": "cuts_and_transitions",
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "evidence_refs": {"shots_count": 0, "cut_transitions_count": 0},
+                        "creator_explanation": "Audio-only file contains no video stream; cuts & transitions unassessed."
+                    }
+                    job.progressive_sections["cuts_and_transitions"] = cuts_payload
+                    job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "cuts_and_transitions", cuts_payload, vid_elapsed_ms)
+
+                    pacing_payload = {
+                        "section_id": "pacing",
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "evidence_refs": {"cuts_per_second": 0.0},
+                        "creator_explanation": "Audio-only file contains no video scene cuts; physical editing pacing unassessed."
+                    }
+                    job.progressive_sections["pacing"] = pacing_payload
+                    job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "pacing", pacing_payload, vid_elapsed_ms)
+
+                    visual_payload = {
+                        "section_id": "visual_measurements",
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "evidence_refs": {"width": 0, "height": 0},
+                        "creator_explanation": "Audio-only container contains no visual frames; visual measurements unassessed."
+                    }
+                    job.progressive_sections["visual_measurements"] = visual_payload
+                    job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "visual_measurements", visual_payload, vid_elapsed_ms)
+
+                else:
+                    cuts_payload = {
+                        "section_id": "cuts_and_transitions",
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "evidence_refs": {
+                            "shots_count": reconciliation["shots_count"],
+                            "cut_transitions_count": reconciliation["cut_transitions_count"],
+                            "intra_shot_flashes_count": reconciliation["intra_shot_flashes_count"],
+                            "flash_rate_per_sec": reconciliation["flash_rate_per_second"],
+                            "strobe_warning": reconciliation["flash_rate_per_second"] > 1.0,
+                        },
+                        "creator_explanation": (
+                            f"Measured {reconciliation['cut_transitions_count']} cut transitions across "
+                            f"{reconciliation['shots_count']} shots with {reconciliation['intra_shot_flashes_count']} "
+                            f"intra-shot flashes ({reconciliation['flash_rate_per_second']:.2f}/s). "
+                            f"Transition aesthetic flow requires semantic evaluation."
+                        )
+                    }
+                    job.progressive_sections["cuts_and_transitions"] = cuts_payload
+                    job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "cuts_and_transitions", cuts_payload, vid_elapsed_ms)
+
+                    pacing_payload = {
+                        "section_id": "pacing",
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "evidence_refs": {
+                            "cuts_per_second": reconciliation["cuts_per_second"],
+                            "shot_duration_mean_sec": reconciliation["shot_duration_mean"],
+                            "shot_duration_std_dev_sec": reconciliation["shot_duration_std_dev"],
+                        },
+                        "creator_explanation": (
+                            f"Physical editing cadence is {reconciliation['cuts_per_second']:.2f} cuts/second "
+                            f"(average shot duration {reconciliation['shot_duration_mean']:.2f}s). "
+                            f"Whether this pacing supports or exhausts the narrative requires semantic assessment."
+                        )
+                    }
+                    job.progressive_sections["pacing"] = pacing_payload
+                    job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "pacing", pacing_payload, vid_elapsed_ms)
+
+                    visual_payload = {
+                        "section_id": "visual_measurements",
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "evidence_refs": {
+                            "width": width,
+                            "height": height,
+                            "fps": round(fps, 2),
+                            "mean_sharpness_laplacian": video_signals["mean_sharpness_laplacian"],
+                            "mean_contrast": video_signals["mean_contrast"],
+                        },
+                        "creator_explanation": (
+                            f"Decoded {width}x{height} @ {fps:.1f}fps. Sharpness Laplacian is "
+                            f"{video_signals['mean_sharpness_laplacian']:.1f}. Visual color harmony and grading "
+                            f"remain unassessed without semantic review."
+                        )
+                    }
+                    job.progressive_sections["visual_measurements"] = visual_payload
+                    job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "visual_measurements", visual_payload, vid_elapsed_ms)
 
                 if beat_card.get("score") is None:
                     beat_payload = {
@@ -760,7 +1235,6 @@ class AnalysisEngine:
                     job.progressive_sections["beat_synchronization"] = beat_payload
                     job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "beat_synchronization", beat_payload, aud_elapsed_ms)
                 else:
-                    # Emit Dimension 1 (Beat Synchronization) — Genuinely COMPLETED
                     beat_payload = {
                         "section_id": "beat_synchronization",
                         "score_0_10": beat_card["score"],
@@ -793,7 +1267,7 @@ class AnalysisEngine:
                     job.progressive_sections["beat_synchronization"] = beat_payload
                     job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "beat_synchronization", beat_payload, aud_elapsed_ms)
 
-                # Emit Dimension 5 & 6 as UNASSESSED
+                # Storytelling and originality unassessed in legacy mode
                 story_payload = {
                     "section_id": "storytelling_interpretation",
                     "score_0_10": None,
@@ -814,7 +1288,6 @@ class AnalysisEngine:
                 job.progressive_sections["originality_creativity"] = orig_payload
                 job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "originality_creativity", orig_payload)
 
-                # Emit Dimension 7 (Personalized Owner Fit)
                 fit_payload = {
                     "section_id": "personalized_owner_fit",
                     "score_0_10": None,
@@ -829,16 +1302,44 @@ class AnalysisEngine:
             job.current_stage = "Assembling canonical v6 evidence report"
             job.progress_percent = 90
 
-            sec_a = {
-                "provenance": "orb_and_semantic_embedding_matcher",
-                "status": StatusTag.UNKNOWN,
-                "matched_entity": None,
-                "confidence": 0.0,
-                "explanation": "Out-of-catalog visual source footage; no verified ORB keypoint matches against reference catalog.",
-                "evidence": {"orb_inliers": 0, "verified_keypoints": 0}
-            }
+            if anime_res.get("status") == "VERIFIED_MATCH":
+                sec_a = {
+                    "provenance": "trace_moe_api",
+                    "status": "KNOWN_MATCH",
+                    "matched_entity": anime_res.get("matched_title"),
+                    "confidence": anime_res.get("confidence", 0.0),
+                    "explanation": f"Matched anime series: {anime_res.get('matched_title')} (similarity {anime_res.get('confidence')})",
+                    "evidence": anime_res,
+                }
+            elif not has_video:
+                sec_a = {
+                    "provenance": "media_inspector",
+                    "status": StatusTag.UNKNOWN,
+                    "matched_entity": None,
+                    "confidence": 0.0,
+                    "explanation": "Audio-only media; no video stream to inspect.",
+                    "evidence": {"orb_inliers": 0, "verified_keypoints": 0},
+                }
+            elif is_black:
+                sec_a = {
+                    "provenance": "media_inspector",
+                    "status": StatusTag.UNKNOWN,
+                    "matched_entity": None,
+                    "confidence": 0.0,
+                    "explanation": "Video frames are completely black; visual entity recognition skipped.",
+                    "evidence": {"orb_inliers": 0, "verified_keypoints": 0},
+                }
+            else:
+                sec_a = {
+                    "provenance": "orb_and_semantic_embedding_matcher",
+                    "status": StatusTag.UNKNOWN,
+                    "matched_entity": None,
+                    "confidence": 0.0,
+                    "explanation": "Out-of-catalog visual source footage; no verified ORB keypoint matches against reference catalog.",
+                    "evidence": {"orb_inliers": 0, "verified_keypoints": 0},
+                }
 
-            if not audio_signals.get("has_audio_stream", True):
+            if not has_audio:
                 sec_b = {
                     "provenance": "music_evidence_resolver",
                     "status": StatusTag.UNKNOWN,
@@ -847,6 +1348,16 @@ class AnalysisEngine:
                     "tentative_candidate": None,
                     "conflict_details": None,
                     "audit_note": "Video file does not contain an audio track. Soundtrack identity unassessed.",
+                }
+            elif is_silent:
+                sec_b = {
+                    "provenance": "music_evidence_resolver",
+                    "status": StatusTag.UNKNOWN,
+                    "matched_track": None,
+                    "confidence": 0.0,
+                    "tentative_candidate": None,
+                    "conflict_details": None,
+                    "audit_note": "Audio stream is silent (mean volume <= -60 dB). Soundtrack identity unassessed.",
                 }
             else:
                 sec_b = {
@@ -893,6 +1404,7 @@ class AnalysisEngine:
                 },
                 "video_signals": video_signals,
                 "audio_signals": audio_signals,
+                "media_capabilities": insp,
             }
 
             if job.quality_mode == "phase9":
@@ -948,7 +1460,7 @@ class AnalysisEngine:
 
             sec_g = {
                 "creator_studio_ready": True,
-                "private_data_retained": True,  # Truthfully declared: cached on local private disk
+                "private_data_retained": True,
                 "cloud_upload_permitted": False,
                 "license_tier": "owner_rd_internal",
                 "api_endpoint": "/api/v8/jobs",
@@ -977,7 +1489,7 @@ class AnalysisEngine:
                 v6_doc["analysis_mode"] = "phase9"
             job.v6_report = v6_doc
 
-            # 5. Phase 7 Presentation Report Assembly
+            # 5. Presentation report
             job.current_stage = "Generating Phase 7 presentation report"
             pres_doc = EditDNAPresentationAdapter.from_v6_report(v6_doc, semantic_overrides=job.semantic_overrides)
             job.presentation_report = pres_doc
@@ -990,7 +1502,6 @@ class AnalysisEngine:
             with open(os.path.join(job_out_dir, "report_presentation.json"), "w", encoding="utf-8") as f:
                 json.dump(pres_doc, f, indent=2)
 
-            # Finalize Job
             t_total = time.time() - t_start
             job.completed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             job.duration_seconds = round(t_total, 2)
@@ -1009,15 +1520,6 @@ class AnalysisEngine:
                 duration_ms=t_total * 1000.0
             )
 
-        except InterruptedError:
-            job.status = AnalysisJobStatus.CANCELLED
-            job.current_stage = "Cancelled"
-            job.add_event(AnalysisJobStatus.CANCELLED, payload={"message": "Job cancelled by owner"})
-        except Exception as e:
-            job.status = AnalysisJobStatus.FAILED
-            job.error = str(e)
-            job.current_stage = f"Failed: {e}"
-            job.add_event(AnalysisJobStatus.FAILED, payload={"error": str(e)})
         finally:
             if os.path.isfile(scratch_audio):
                 try:
@@ -1224,9 +1726,9 @@ def list_authorized_inbox_files():
 
 @app.post("/api/v8/jobs/start")
 def start_analysis_job(req: StartJobRequest):
-    """Starts an asynchronous offline analysis job for an authorized MP4."""
+    """Starts an asynchronous offline or hybrid analysis job for an authorized MP4 or public YouTube URL."""
     try:
-        target_path = AnalysisEngine.resolve_safe_path(req.inbox_filename, req.media_path)
+        target_path = AnalysisEngine.resolve_safe_path(req.inbox_filename, req.media_path, req.youtube_url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -1236,6 +1738,46 @@ def start_analysis_job(req: StartJobRequest):
         "status": job.status,
         "media_filename": job.media_filename,
         "quality_mode": job.quality_mode,
+        "created_at": job.created_at,
+        "poll_url": f"/api/v8/jobs/{job.job_id}",
+        "events_url": f"/api/v8/jobs/{job.job_id}/events",
+    }
+
+
+@app.post("/api/v8/jobs/ingest")
+def ingest_and_start_job(req: IngestMediaRequest):
+    """
+    Ingests an arbitrary unseen local media file into private cache and launches analysis.
+    Preserves original, validates file size (<= 500 MB), copies to private cache, and starts job.
+    """
+    src = Path(req.source_path).resolve()
+    if not src.is_file():
+        raise HTTPException(status_code=400, detail=f"Source file not found: {req.source_path}")
+
+    st = src.stat()
+    if st.st_size > 500 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File exceeds maximum ingestion limit of 500 MB")
+
+    ext = src.suffix.lower()
+    allowed_exts = {".mp4", ".mov", ".webm", ".mkv", ".mp3", ".wav", ".m4a", ".aac"}
+    if ext not in allowed_exts:
+        raise HTTPException(status_code=400, detail=f"Unsupported container extension '{ext}'. Supported: {sorted(allowed_exts)}")
+
+    dest_fn = f"ingest_{int(time.time())}_{src.name}"
+    dest_path = os.path.join(PRIVATE_INGEST_DIR, dest_fn)
+    try:
+        shutil.copy2(str(src), dest_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to ingest file into private cache: {str(e)}")
+
+    insp = MediaInspector.inspect(dest_path)
+    job = job_manager.create_job(dest_path, None, quality_mode=req.quality_mode)
+    return {
+        "job_id": job.job_id,
+        "status": job.status,
+        "media_filename": job.media_filename,
+        "classification_tag": insp.get("classification_tag"),
+        "capabilities": insp.get("capabilities"),
         "created_at": job.created_at,
         "poll_url": f"/api/v8/jobs/{job.job_id}",
         "events_url": f"/api/v8/jobs/{job.job_id}/events",

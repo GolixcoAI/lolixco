@@ -359,7 +359,7 @@ class EditDNAPresentationAdapter:
                 "strobe_warning": sec_c.get("accessibility_signals", {}).get("strobe_warning", False),
             }
             flash_str = f" ({flash_rate:.2f}/s)" if flash_rate is not None else ""
-            t_expl = trans_card.get("notes") or (
+            t_expl = trans_card.get("notes") or trans_card.get("editorial_explanation") or (
                 f"Identified {sec_c.get('cut_transitions_count', 0)} cut transitions and "
                 f"{intra_flashes} intra-shot flashes{flash_str}. "
                 f"Subjective smoothness and seam invisibility require human or semantic evaluation."
@@ -419,7 +419,7 @@ class EditDNAPresentationAdapter:
             }
             cps_str = f"{cps:.2f} cuts/second" if cps is not None else "unmeasured cadence"
             shot_str = f" (average shot {shot_mean:.2f}s)" if shot_mean is not None else ""
-            p_expl = pacing_card.get("notes") or (
+            p_expl = pacing_card.get("notes") or pacing_card.get("editorial_explanation") or (
                 f"Physical cadence is {cps_str}{shot_str}. "
                 f"Whether this pacing supports or overwhelms the narrative requires semantic assessment."
             )
@@ -483,7 +483,7 @@ class EditDNAPresentationAdapter:
             }
             sharp_val = v_sig.get("mean_sharpness_laplacian")
             sharp_str = f"Sharpness variance is {sharp_val:.1f}." if sharp_val is not None else "Sharpness variance unmeasured."
-            v_expl = vis_card.get("notes") or (
+            v_expl = vis_card.get("notes") or vis_card.get("editorial_explanation") or (
                 f"Decoded {v_sig.get('width', 0)}x{v_sig.get('height', 0)} @ {v_sig.get('fps', 0)}fps. "
                 f"{sharp_str} "
                 f"Visual aesthetic grading is not yet assessed."
@@ -525,13 +525,13 @@ class EditDNAPresentationAdapter:
             s_refs = dict(story_card.get("metric_details", {}))
         else:
             s_score = None
-            s_status = "NOT_YET_ASSESSED"
+            s_status = story_card.get("status", "NOT_YET_ASSESSED")
             s_method = "phase9_storytelling_engine_v9.0" if is_phase9 else "narrative_arc_critique_v6.0"
             s_refs = dict(story_card.get("metric_details", {})) if is_phase9 else {
                 "audio_clipping": sec_c.get("audio_signals", {}).get("clipping_detected", False),
                 "rms_db": sec_c.get("audio_signals", {}).get("rms_db"),
             }
-            s_expl = story_card.get("notes") or "Narrative arc, emotional resonance, and character presence require human or multimodal critique."
+            s_expl = story_card.get("notes") or story_card.get("editorial_explanation") or "Narrative arc, emotional resonance, and character presence require human or multimodal critique."
 
         dim5 = {
             "section_id": "storytelling_interpretation",
