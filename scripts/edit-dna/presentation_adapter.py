@@ -241,20 +241,47 @@ class EditDNAPresentationAdapter:
         scorecard = sec_d.get("scorecard", {})
 
         overrides = semantic_overrides or {}
-
-        # 1. Beat Synchronization
         beat_card = scorecard.get("beat_synchronization", {})
         rhythm_align = sec_c.get("rhythm_alignment", {})
+
+        # Detect Phase 9 quality engine mode or presence of Phase 9 evidence
+        is_phase9 = (
+            sec_d.get("provenance") == "phase9_autonomous_quality_engine" or
+            sec_d.get("status") == "CALCULATED_EXPERIMENTAL_V9" or
+            v6_report.get("quality_mode") == "phase9" or
+            v6_report.get("analysis_mode") == "phase9" or
+            "circular_shift_control" in beat_card.get("metric_details", {})
+        )
+
+        # 1. Beat Synchronization
         beat_score = beat_card.get("score")
         beat_status = beat_card.get("status", "MEASURED_SIGNAL" if beat_score is not None else "NOT_YET_ASSESSED")
-        dim1 = {
-            "section_id": "beat_synchronization",
-            "dimension_id": "beat_synchronization",
-            "section_name": "Beat Synchronization",
-            "display_name": "Beat Synchronization",
-            "score_0_10": round(float(beat_score), 2) if beat_score is not None else None,
-            "evidence_status": beat_status,
-            "evidence_refs": {
+
+        if is_phase9:
+            b_method = "phase9_timing_engine_v9.0"
+            b_expl = beat_card.get("notes") or beat_card.get("editorial_explanation") or (
+                f"Beat-alignment score is {beat_score:.2f}/10." if beat_score is not None else "Beat synchronization unassessed."
+            )
+            b_refs = dict(beat_card.get("metric_details", {}))
+            b_limits = [
+                "Experimental cut-to-grid and mixed-audio onset proxy. "
+                "The independent uniform timing control does not preserve shot spacing. "
+                "Transients can come from edit effects, dialogue, or music; mixed audio cannot establish musical intent."
+            ]
+            timestamps = [m.get("timestamp_sec") for m in beat_card.get("best_synchronized_moments", []) if isinstance(m, dict) and "timestamp_sec" in m]
+            if not timestamps:
+                timestamps = sec_c.get("video_signals", {}).get("cut_timestamps", [])[:10]
+        else:
+            b_method = "librosa_multi_tempo_grid_v6.0"
+            b_expl = (
+                (f"Beat-alignment score is {beat_score:.2f}/10. "
+                 f"Measures physical cut alignment to primary ({rhythm_align.get('primary_grid_tight_percent', 0.0)}%) "
+                 f"and double-time ({rhythm_align.get('double_time_tight_percent', 0.0)}%) beat grids, "
+                 f"with {rhythm_align.get('compound_tight_sync_percent', rhythm_align.get('primary_grid_tight_percent', 0.0))}% compound alignment across subdivisions and transients. "
+                 f"Evaluates transient proximity; this describes cut timing alignment, not validated artistic musicality or groove.")
+                if beat_score is not None else "Beat synchronization unassessed."
+            )
+            b_refs = {
                 **{
                     "primary_grid_tight_percent": rhythm_align.get("primary_grid_tight_percent"),
                     "double_time_tight_percent": rhythm_align.get("double_time_tight_percent"),
@@ -268,22 +295,31 @@ class EditDNAPresentationAdapter:
                     "compound_alignment_score": beat_card.get("metric_details", {}).get("compound_alignment_score"),
                 },
                 **beat_card.get("metric_details", {})
-            },
-            "timestamps": sec_c.get("video_signals", {}).get("cut_timestamps", [])[:10],
-            "method_version": "librosa_multi_tempo_grid_v6.0",
-            "limitations": [
+            }
+            b_limits = [
                 "Derived strictly from measured temporal proximity of cut timestamps to detected audio transients. "
                 "This is an objective timing alignment measurement, NOT a validated overall artistic judgment of musicality, groove, or emotional sync."
-            ],
-            "creator_explanation": (
-                (f"Beat-alignment score is {beat_score:.2f}/10. "
-                 f"Measures physical cut alignment to primary ({rhythm_align.get('primary_grid_tight_percent', 0.0)}%) "
-                 f"and double-time ({rhythm_align.get('double_time_tight_percent', 0.0)}%) beat grids, "
-                 f"with {rhythm_align.get('compound_tight_sync_percent', rhythm_align.get('primary_grid_tight_percent', 0.0))}% compound alignment across subdivisions and transients. "
-                 f"Evaluates transient proximity; this describes cut timing alignment, not validated artistic musicality or groove.")
-                if beat_score is not None else "Beat synchronization unassessed."
-            )
+            ]
+            timestamps = sec_c.get("video_signals", {}).get("cut_timestamps", [])[:10]
+
+        dim1 = {
+            "section_id": "beat_synchronization",
+            "dimension_id": "beat_synchronization",
+            "section_name": "Beat Synchronization",
+            "display_name": "Beat Synchronization",
+            "score_0_10": round(float(beat_score), 2) if beat_score is not None else None,
+            "evidence_status": beat_status,
+            "evidence_refs": b_refs,
+            "timestamps": timestamps,
+            "method_version": b_method,
+            "limitations": b_limits,
+            "creator_explanation": b_expl,
         }
+        if is_phase9:
+            if "best_synchronized_moments" in beat_card:
+                dim1["best_synchronized_moments"] = beat_card["best_synchronized_moments"]
+            if "rhythmic_drift_moments" in beat_card:
+                dim1["rhythmic_drift_moments"] = beat_card["rhythmic_drift_moments"]
 
         # 2. Cuts & Transitions
         trans_override = overrides.get("cuts_and_transitions") or overrides.get("transitions")
@@ -294,15 +330,36 @@ class EditDNAPresentationAdapter:
             t_score = float(trans_override.get("score", 7.0))
             t_status = "EVALUATED_SEMANTIC"
             t_expl = trans_override.get("notes", "Evaluated by verified human critique.")
+            t_method = "manual_critique_v1"
+            t_refs = {
+                "cut_transitions_count": sec_c.get("cut_transitions_count"),
+                "intra_shot_flashes_count": intra_flashes,
+                "flash_rate_per_sec": flash_rate,
+            }
         elif trans_card.get("score") is not None:
             t_score = float(trans_card["score"])
             t_status = trans_card.get("status", "MEASURED_SIGNAL")
             t_expl = trans_card.get("notes", "Evaluated transitions score.")
+            t_method = "phase9_continuity_engine_v9.0" if is_phase9 else "opencv_absdiff_debounced_v6.0"
+            t_refs = dict(trans_card.get("metric_details", {})) if is_phase9 else {
+                "cut_transitions_count": sec_c.get("cut_transitions_count"),
+                "intra_shot_flashes_count": intra_flashes,
+                "flash_rate_per_sec": flash_rate,
+                "strobe_warning": sec_c.get("accessibility_signals", {}).get("strobe_warning", False),
+                **trans_card.get("metric_details", {})
+            }
         else:
             t_score = None
             t_status = "NOT_YET_ASSESSED"
+            t_method = "phase9_continuity_engine_v9.0" if is_phase9 else "opencv_absdiff_debounced_v6.0"
+            t_refs = dict(trans_card.get("metric_details", {})) if is_phase9 else {
+                "cut_transitions_count": sec_c.get("cut_transitions_count"),
+                "intra_shot_flashes_count": intra_flashes,
+                "flash_rate_per_sec": flash_rate,
+                "strobe_warning": sec_c.get("accessibility_signals", {}).get("strobe_warning", False),
+            }
             flash_str = f" ({flash_rate:.2f}/s)" if flash_rate is not None else ""
-            t_expl = (
+            t_expl = trans_card.get("notes") or (
                 f"Identified {sec_c.get('cut_transitions_count', 0)} cut transitions and "
                 f"{intra_flashes} intra-shot flashes{flash_str}. "
                 f"Subjective smoothness and seam invisibility require human or semantic evaluation."
@@ -315,14 +372,9 @@ class EditDNAPresentationAdapter:
             "display_name": "Cuts & Transitions",
             "score_0_10": round(t_score, 2) if t_score is not None else None,
             "evidence_status": t_status,
-            "evidence_refs": {
-                "cut_transitions_count": sec_c.get("cut_transitions_count"),
-                "intra_shot_flashes_count": intra_flashes,
-                "flash_rate_per_sec": flash_rate,
-                "strobe_warning": sec_c.get("accessibility_signals", {}).get("strobe_warning", False),
-            },
+            "evidence_refs": t_refs,
             "timestamps": sec_c.get("video_signals", {}).get("flash_frame_timestamps", [])[:10],
-            "method_version": "opencv_absdiff_debounced_v6.0",
+            "method_version": t_method,
             "limitations": [
                 "Separates cut boundaries from strobe flashes; cannot assess stylistic match of wipes or zooms without semantic review."
             ],
@@ -339,16 +391,35 @@ class EditDNAPresentationAdapter:
             p_score = float(pacing_override.get("score", 7.0))
             p_status = "EVALUATED_SEMANTIC"
             p_expl = pacing_override.get("notes", "Evaluated pacing flow.")
+            p_method = "manual_critique_v1"
+            p_refs = {
+                "cuts_per_second": cps,
+                "shot_duration_mean_sec": shot_mean,
+                "shot_duration_std_dev_sec": shot_std,
+            }
         elif pacing_card.get("score") is not None:
             p_score = float(pacing_card["score"])
             p_status = pacing_card.get("status", "MEASURED_SIGNAL")
             p_expl = pacing_card.get("notes", "Evaluated pacing flow.")
+            p_method = "phase9_pacing_engine_v9.0" if is_phase9 else "shot_duration_distribution_v6.0"
+            p_refs = dict(pacing_card.get("metric_details", {})) if is_phase9 else {
+                "cuts_per_second": cps,
+                "shot_duration_mean_sec": shot_mean,
+                "shot_duration_std_dev_sec": shot_std,
+                **pacing_card.get("metric_details", {})
+            }
         else:
             p_score = None
             p_status = "NOT_YET_ASSESSED"
+            p_method = "phase9_pacing_engine_v9.0" if is_phase9 else "shot_duration_distribution_v6.0"
+            p_refs = dict(pacing_card.get("metric_details", {})) if is_phase9 else {
+                "cuts_per_second": cps,
+                "shot_duration_mean_sec": shot_mean,
+                "shot_duration_std_dev_sec": shot_std,
+            }
             cps_str = f"{cps:.2f} cuts/second" if cps is not None else "unmeasured cadence"
             shot_str = f" (average shot {shot_mean:.2f}s)" if shot_mean is not None else ""
-            p_expl = (
+            p_expl = pacing_card.get("notes") or (
                 f"Physical cadence is {cps_str}{shot_str}. "
                 f"Whether this pacing supports or overwhelms the narrative requires semantic assessment."
             )
@@ -360,13 +431,9 @@ class EditDNAPresentationAdapter:
             "display_name": "Pacing",
             "score_0_10": round(p_score, 2) if p_score is not None else None,
             "evidence_status": p_status,
-            "evidence_refs": {
-                "cuts_per_second": cps,
-                "shot_duration_mean_sec": shot_mean,
-                "shot_duration_std_dev_sec": shot_std,
-            },
+            "evidence_refs": p_refs,
             "timestamps": [],
-            "method_version": "shot_duration_distribution_v6.0",
+            "method_version": p_method,
             "limitations": [
                 "Reports cuts-per-second accurately; does not fabricate quality grades based on raw tempo."
             ],
@@ -381,17 +448,42 @@ class EditDNAPresentationAdapter:
             v_score = float(vis_override.get("score", 7.0))
             v_status = "EVALUATED_SEMANTIC"
             v_expl = vis_override.get("notes", "Evaluated visual quality.")
+            v_method = "manual_critique_v1"
+            v_refs = {
+                "width": v_sig.get("width"),
+                "height": v_sig.get("height"),
+                "fps": v_sig.get("fps"),
+                "mean_sharpness_laplacian": v_sig.get("mean_sharpness_laplacian"),
+                "mean_contrast": v_sig.get("mean_contrast"),
+            }
         elif vis_card.get("score") is not None:
             v_score = float(vis_card["score"])
             v_status = vis_card.get("status", "MEASURED_SIGNAL")
             v_expl = vis_card.get("notes", "Evaluated visual quality.")
+            v_method = "phase9_visual_engine_v9.0" if is_phase9 else "laplacian_variance_and_signal_v6.0"
+            v_refs = dict(vis_card.get("metric_details", {})) if is_phase9 else {
+                "width": v_sig.get("width"),
+                "height": v_sig.get("height"),
+                "fps": v_sig.get("fps"),
+                "mean_sharpness_laplacian": v_sig.get("mean_sharpness_laplacian"),
+                "mean_contrast": v_sig.get("mean_contrast"),
+                **vis_card.get("metric_details", {})
+            }
         else:
             # Visual measurements are physical facts; if no semantic grade, score is None
             v_score = None
             v_status = "NOT_YET_ASSESSED"
+            v_method = "phase9_visual_engine_v9.0" if is_phase9 else "laplacian_variance_and_signal_v6.0"
+            v_refs = dict(vis_card.get("metric_details", {})) if is_phase9 else {
+                "width": v_sig.get("width"),
+                "height": v_sig.get("height"),
+                "fps": v_sig.get("fps"),
+                "mean_sharpness_laplacian": v_sig.get("mean_sharpness_laplacian"),
+                "mean_contrast": v_sig.get("mean_contrast"),
+            }
             sharp_val = v_sig.get("mean_sharpness_laplacian")
             sharp_str = f"Sharpness variance is {sharp_val:.1f}." if sharp_val is not None else "Sharpness variance unmeasured."
-            v_expl = (
+            v_expl = vis_card.get("notes") or (
                 f"Decoded {v_sig.get('width', 0)}x{v_sig.get('height', 0)} @ {v_sig.get('fps', 0)}fps. "
                 f"{sharp_str} "
                 f"Visual aesthetic grading is not yet assessed."
@@ -404,15 +496,9 @@ class EditDNAPresentationAdapter:
             "display_name": "Visual Measurements",
             "score_0_10": round(v_score, 2) if v_score is not None else None,
             "evidence_status": v_status,
-            "evidence_refs": {
-                "width": v_sig.get("width"),
-                "height": v_sig.get("height"),
-                "fps": v_sig.get("fps"),
-                "mean_sharpness_laplacian": v_sig.get("mean_sharpness_laplacian"),
-                "mean_contrast": v_sig.get("mean_contrast"),
-            },
+            "evidence_refs": v_refs,
             "timestamps": [],
-            "method_version": "laplacian_variance_and_signal_v6.0",
+            "method_version": v_method,
             "limitations": [
                 "Resolution and edge sharpness do not measure color balance, compression artifacts, or grading coherence."
             ],
@@ -426,14 +512,26 @@ class EditDNAPresentationAdapter:
             s_score = float(story_override.get("score", 7.0))
             s_status = "EVALUATED_SEMANTIC"
             s_expl = story_override.get("notes", "Evaluated narrative structure.")
+            s_method = "manual_critique_v1"
+            s_refs = {
+                "audio_clipping": sec_c.get("audio_signals", {}).get("clipping_detected", False),
+                "rms_db": sec_c.get("audio_signals", {}).get("rms_db"),
+            }
         elif story_card.get("score") is not None:
             s_score = float(story_card["score"])
             s_status = story_card.get("status", "EVALUATED_SEMANTIC_EXPERIMENTAL")
             s_expl = story_card.get("notes", "Evaluated narrative structure.")
+            s_method = "phase9_storytelling_engine_v9.0" if is_phase9 else "narrative_arc_critique_v6.0"
+            s_refs = dict(story_card.get("metric_details", {}))
         else:
             s_score = None
             s_status = "NOT_YET_ASSESSED"
-            s_expl = "Narrative arc, emotional resonance, and character presence require human or multimodal critique."
+            s_method = "phase9_storytelling_engine_v9.0" if is_phase9 else "narrative_arc_critique_v6.0"
+            s_refs = dict(story_card.get("metric_details", {})) if is_phase9 else {
+                "audio_clipping": sec_c.get("audio_signals", {}).get("clipping_detected", False),
+                "rms_db": sec_c.get("audio_signals", {}).get("rms_db"),
+            }
+            s_expl = story_card.get("notes") or "Narrative arc, emotional resonance, and character presence require human or multimodal critique."
 
         dim5 = {
             "section_id": "storytelling_interpretation",
@@ -442,12 +540,9 @@ class EditDNAPresentationAdapter:
             "display_name": "Storytelling Interpretation",
             "score_0_10": round(s_score, 2) if s_score is not None else None,
             "evidence_status": s_status,
-            "evidence_refs": {
-                "audio_clipping": sec_c.get("audio_signals", {}).get("clipping_detected", False),
-                "rms_db": sec_c.get("audio_signals", {}).get("rms_db"),
-            },
+            "evidence_refs": s_refs,
             "timestamps": [],
-            "method_version": "narrative_arc_critique_v6.0",
+            "method_version": s_method,
             "limitations": [
                 "Audio energy range is recorded but not substituted as a fake narrative grade."
             ],
@@ -461,14 +556,23 @@ class EditDNAPresentationAdapter:
             o_score = float(orig_override.get("score", 7.0))
             o_status = "EVALUATED_SEMANTIC"
             o_expl = orig_override.get("notes", "Evaluated creative originality.")
+            o_method = "manual_critique_v1"
+            o_refs = {"shot_duration_variance": shot_std}
         elif orig_card.get("score") is not None:
             o_score = float(orig_card["score"])
             o_status = orig_card.get("status", "EVALUATED_SEMANTIC_EXPERIMENTAL")
             o_expl = orig_card.get("notes", "Evaluated creative originality.")
+            o_method = "phase9_originality_engine_v9.0" if is_phase9 else "creative_execution_critique_v6.0"
+            o_refs = dict(orig_card.get("metric_details", {}))
         else:
             o_score = None
             o_status = "NOT_YET_ASSESSED"
-            o_expl = "Novelty of concept, unique audio-visual pairings, and editorial voice require subjective critique."
+            o_method = "phase9_originality_engine_v9.0" if is_phase9 else "creative_execution_critique_v6.0"
+            o_refs = dict(orig_card.get("metric_details", {})) if is_phase9 else {
+                **{"shot_duration_variance": shot_std},
+                **orig_card.get("metric_details", {})
+            }
+            o_expl = orig_card.get("notes") or "Novelty of concept, unique audio-visual pairings, and editorial voice require subjective critique."
 
         dim6 = {
             "section_id": "originality_creativity",
@@ -477,12 +581,9 @@ class EditDNAPresentationAdapter:
             "display_name": "Originality & Creative Execution",
             "score_0_10": round(o_score, 2) if o_score is not None else None,
             "evidence_status": o_status,
-            "evidence_refs": {
-                **{"shot_duration_variance": shot_std},
-                **orig_card.get("metric_details", {})
-            },
+            "evidence_refs": o_refs,
             "timestamps": [],
-            "method_version": "creative_execution_critique_v6.0",
+            "method_version": o_method,
             "limitations": [
                 "Shot length variance does not establish artistic novelty or unique editorial style."
             ],
@@ -497,18 +598,32 @@ class EditDNAPresentationAdapter:
             fit_score = float(fit_override.get("score", 7.0))
             fit_status = "PERSONALIZED_ESTIMATE"
             fit_expl = fit_override.get("notes", "Personalized fit computed against owner preference rubric.")
+            fit_method = "manual_owner_rubric_v1"
+            fit_refs = {"owner_weights": owner_weights}
         elif fit_card.get("score") is not None:
             fit_score = float(fit_card["score"])
             fit_status = fit_card.get("status", "CALCULATED_PERSONALIZED")
             fit_expl = fit_card.get("notes", "Evaluated fit matching owner preference weights.")
-        elif sec_e.get("predicted_score") is not None:
+            fit_method = "phase9_owner_fit_engine_v9.0" if is_phase9 else "loocv_constrained_regression_v6.1"
+            fit_refs = dict(fit_card.get("metric_details", {}))
+        elif not is_phase9 and sec_e.get("predicted_score") is not None:
             fit_score = float(sec_e["predicted_score"])
             fit_status = "PERSONALIZED_ESTIMATE"
             fit_expl = f"Evaluated fit ({fit_score:.2f}/10) matching owner's verified preference weights."
+            fit_method = "loocv_constrained_regression_v6.1"
+            fit_refs = {
+                "owner_weights": owner_weights,
+                "loocv_mae": sec_e.get("empirical_evaluation", {}).get("loocv_mae", 0.58),
+            }
         else:
             fit_score = None
             fit_status = "NOT_YET_ASSESSED"
-            fit_expl = "Personalized owner fit cannot be calculated until semantic dimensions are assessed."
+            fit_method = "phase9_owner_fit_engine_v9.0" if is_phase9 else "loocv_constrained_regression_v6.1"
+            fit_refs = dict(fit_card.get("metric_details", {})) if is_phase9 else {
+                "owner_weights": owner_weights,
+                "loocv_mae": sec_e.get("empirical_evaluation", {}).get("loocv_mae", 0.58),
+            }
+            fit_expl = fit_card.get("notes") or "Personalized owner fit cannot be calculated until semantic dimensions are assessed."
 
         dim7 = {
             "section_id": "personalized_owner_fit",
@@ -517,12 +632,9 @@ class EditDNAPresentationAdapter:
             "display_name": "Personalized Owner Fit",
             "score_0_10": round(fit_score, 2) if fit_score is not None else None,
             "evidence_status": fit_status,
-            "evidence_refs": {
-                "owner_weights": owner_weights,
-                "loocv_mae": sec_e.get("empirical_evaluation", {}).get("loocv_mae", 0.58),
-            },
+            "evidence_refs": fit_refs,
             "timestamps": [],
-            "method_version": "loocv_constrained_regression_v6.1",
+            "method_version": fit_method,
             "limitations": [
                 "Represents personalized taste alignment; does not represent universal or objective quality."
             ],
@@ -568,6 +680,16 @@ class EditDNAPresentationAdapter:
             "assessment_sections": sections,
             "context_evidence": context_evidence,
         }
+        if is_phase9:
+            doc["experimental_phase9"] = True
+            doc["mode"] = "phase9"
+            doc["analysis_mode"] = "phase9"
+            doc["engine_version"] = "phase9_quality_engine_v9.0"
+        else:
+            doc["experimental_phase9"] = False
+            doc["mode"] = "phase8"
+            doc["analysis_mode"] = "phase8"
+            doc["engine_version"] = "evidence_scoring_engine_v8.1"
 
         EditDNAPresentationAdapter.validate_presentation_report(doc)
         return doc
