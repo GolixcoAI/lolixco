@@ -111,3 +111,10 @@
  .creator-studio .studio-inspector > .studio-compact-toggle { margin: 0; }
  .studio-inspector .studio-compact-body .studio-panel { padding-bottom: 0; }
 }
+
+.studio-reference-entry { margin-bottom: 14px; }
+.studio-reference-entry .studio-url { padding: 0; }
+.studio-reference-status { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.studio-reference-status p, .studio-media-notes { color: #b4bfcc; font-size: 12px; line-height: 1.6; }
+.studio-media-notes { margin: 0 0 14px; padding: 10px 14px 10px 32px; border: 1px solid var(--studio-line); border-radius: 12px; }
+.studio-monitor audio { width: calc(100% - 28px); }

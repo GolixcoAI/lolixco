@@ -67,8 +67,9 @@ export function phase9Section(input: unknown) {
   ...raw,
   score_0_10: value,
   evidence_status: value === null ? 'NOT_YET_ASSESSED' : 'EXPERIMENTAL_PROXY',
-  method_version: 'phase9_experimental_proxy',
-  creator_explanation: [phase9Limits[id], timingNotes].filter(Boolean).join(' '),
+  method_version: string(raw.method_version).startsWith('phase9_')
+   ? string(raw.method_version) : 'phase9_experimental_proxy',
+  creator_explanation: [phase9Limits[id], value === null ? string(refs.assessment_reason) : '', timingNotes].filter(Boolean).join(' '),
   evidence_refs: refs,
   timestamps: [...new Set([...hits, ...misses, ...(Array.isArray(raw.timestamps) ? raw.timestamps : [])])],
  };

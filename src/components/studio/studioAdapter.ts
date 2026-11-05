@@ -3,7 +3,7 @@ import {parsePresentation, phase9Presentation, V7_IDS} from './presentationV7';
 import {adaptRatings,type Ratings} from "./ratingModel";
 export type EvidenceStatus = 'MEASURED'|'EXPERIMENTAL'|'INFERRED'|'PERSONALIZED'|'NOT ASSESSED'|'UNKNOWN'|'CONFLICT';
 export type Evidence = { label: string; status: EvidenceStatus; value: string; provenance: string };
-export type StudioReport = { version: string; markers:TimelineMarker[]; synthetic?:boolean; experimental?:boolean; ratings: Ratings; evidence: Evidence[]; scenes: {time:number;label:string}[]; music: Evidence; sources: Evidence[] };
+export type StudioReport = { version: string; mediaNotes?: string[]; referenceTitle?: string; markers:TimelineMarker[]; synthetic?:boolean; experimental?:boolean; ratings: Ratings; evidence: Evidence[]; scenes: {time:number;label:string}[]; music: Evidence; sources: Evidence[] };
 const object = (v: unknown): Record<string, unknown> => v && typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
 const text=(v:unknown)=>typeof v==='string'?v:typeof v==='number'&&Number.isFinite(v)?String(v):'';
 export function evidenceStatus(v:unknown):EvidenceStatus { const s=text(v);return ({MEASURED_SIGNAL:'MEASURED',EXPERIMENTAL_PROXY:'EXPERIMENTAL',MEASURED:'MEASURED',EVALUATED_SEMANTIC:'INFERRED',INFERRED:'INFERRED',PERSONALIZED_ESTIMATE:'PERSONALIZED',PERSONALIZED:'PERSONALIZED',NOT_YET_ASSESSED:'NOT ASSESSED',UNKNOWN:'UNKNOWN',CONFLICT:'CONFLICT',VERIFIED_MATCH:'INFERRED',POSSIBLE_MATCH:'INFERRED'} as Record<string,EvidenceStatus>)[s]||'UNKNOWN'; }
@@ -19,12 +19,17 @@ function collect(value:unknown,label:string,inherited:EvidenceStatus,provenance:
 export function adaptStudioReport(input:unknown):StudioReport {
  const r=object(input);if(r.schema_version==='7.0.0-presentation'){
  const v=parsePresentation(r);const music=object(v.context.music_recognition);const source=object(v.context.visual_recognition);const track=object(music.matched_track);const musicState=evidenceStatus(music.status);
- return{version:v.schema_version,markers:timelineMarkers(r),synthetic:v.is_synthetic_fixture,experimental:v.experimental,ratings:v.ratings,evidence:v.assessment_sections.flatMap(section=>[{label:section.section_id,status:evidenceStatus(section.evidence_status),value:section.creator_explanation||'No explanation supplied',provenance:section.method_version},...collect(section.evidence_refs,'Supporting measurements','MEASURED',section.method_version)]),scenes:v.assessment_sections.find(s=>s.section_id==='cuts_and_transitions')!.timestamps.map((time,i)=>({time,label:`Transition reference ${i+1}`})),music:{label:'Recognition',status:musicState,value:musicState==='CONFLICT'?'Conflicting evidence — review needed':text(track.title)||text(music.matched_track)||'Music not yet identified.',provenance:[text(music.provenance),`Recognition status: ${text(music.status)||'UNKNOWN'}`].filter(Boolean).join(' · ')},sources:(Array.isArray(source.candidates)?source.candidates:source.matched_entity?[source.matched_entity]:[]).map(raw=>{const entity=object(raw);return{label:'Source candidate',status:evidenceStatus(source.status),value:text(entity.title||entity.name)||'Unknown source',provenance:[text(source.provenance),`Recognition status: ${text(source.status)||'UNKNOWN'}`].filter(Boolean).join(' · ')}})};
+ const reference=object(v.context.youtube_reference);
+ const observations=object(v.context.media_observations);
+ const mediaNotes=Array.isArray(v.context.media_notes)?v.context.media_notes.filter((note):note is string=>typeof note==='string'):[];
+ if(text(reference.author_name))mediaNotes.unshift('Publisher: '+text(reference.author_name));
+ return{version:v.schema_version,mediaNotes,referenceTitle:text(reference.title),markers:timelineMarkers(r),synthetic:v.is_synthetic_fixture,experimental:v.experimental,ratings:v.ratings,evidence:[...collect(observations,'Stream measurements','MEASURED','local_stream_observation'),...v.assessment_sections.flatMap(section=>[{label:section.section_id,status:evidenceStatus(section.evidence_status),value:section.creator_explanation||'No explanation supplied',provenance:section.method_version},...collect(section.evidence_refs,'Supporting measurements','MEASURED',section.method_version)])],scenes:v.assessment_sections.find(s=>s.section_id==='cuts_and_transitions')!.timestamps.map((time,i)=>({time,label:`Transition reference ${i+1}`})),music:{label:'Recognition',status:musicState,value:musicState==='CONFLICT'?'Conflicting evidence — review needed':[text(track.title),text(track.artist)].filter(Boolean).join(' · ')||text(music.matched_track)||'Music not yet identified.',provenance:[text(music.provenance),`Recognition status: ${text(music.status)||'UNKNOWN'}`].filter(Boolean).join(' · ')},sources:(Array.isArray(source.candidates)?source.candidates:source.matched_entity?[source.matched_entity]:[]).map(raw=>{const entity=object(raw);return{label:'Source candidate',status:evidenceStatus(source.status),value:text(entity.title||entity.name)||'Unknown source',provenance:[text(source.provenance),`Recognition status: ${text(source.status)||'UNKNOWN'}`].filter(Boolean).join(' · ')}})};
  }if(r.schema_version!=='6.0.0')throw Error('Import an Edit DNA v6.0.0 report.');
  const semantic = object(r.section_d_semantic_evaluation);
  if (semantic.status === 'CALCULATED_EXPERIMENTAL_V9') {
   const aliases: Record<string,string> = {cuts_and_transitions:'transitions',visual_measurements:'visual_quality',storytelling_interpretation:'storytelling_emotion'};
   const cards = object(semantic.scorecard);
+  const physical = object(r.section_c_physical_signals);
   const presentation = phase9Presentation({
    schema_version:'7.0.0-presentation',
    assessment_sections:V7_IDS.map(section_id => ({
@@ -32,7 +37,7 @@ export function adaptStudioReport(input:unknown):StudioReport {
     score_0_10:object(cards[aliases[section_id] || section_id]).score ?? null,
     evidence_status:object(cards[aliases[section_id] || section_id]).status,
    })),
-   context_evidence:{music_recognition:r.section_b_music_recognition,visual_recognition:r.section_a_visual_recognition},
+   context_evidence:{music_recognition:r.section_b_music_recognition,visual_recognition:r.section_a_visual_recognition,media_notes:physical.media_notes,media_observations:physical.media_observations},
   },r);
   const adapted = adaptStudioReport(presentation);
   return {...adapted, version:'6.0.0', markers:timelineMarkers(r)};
@@ -45,5 +50,5 @@ export function adaptStudioReport(input:unknown):StudioReport {
  }
  const m=object(r.section_b_music_recognition);const track=object(m.matched_track);const state=evidenceStatus(m.status);const music={label:'Detected music',status:state,value:state==='CONFLICT'?'Conflicting evidence — review needed':text(track.title)?[text(track.title),text(track.artist)].filter(Boolean).join(' · '):'Music not yet identified.',provenance:text(m.provenance)};
  const physical=object(r.section_c_physical_signals);const videoSignals=object(physical.video_signals);const raw=Array.isArray(physical.cut_timestamps)?physical.cut_timestamps:Array.isArray(videoSignals.cut_timestamps)?videoSignals.cut_timestamps:[];const scenes=raw.filter((x):x is number=>typeof x==='number'&&Number.isFinite(x)&&x>=0).map((time,i)=>({time,label:`Cut ${i+1}`}));
- return{version:'6.0.0',markers:timelineMarkers(r),ratings:adaptRatings(r),evidence,scenes,music,sources};
+ return{version:'6.0.0',mediaNotes:Array.isArray(physical.media_notes)?physical.media_notes.filter((note):note is string=>typeof note==='string'):[],markers:timelineMarkers(r),ratings:adaptRatings(r),evidence,scenes,music,sources};
 }
