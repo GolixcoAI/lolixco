@@ -99,7 +99,13 @@ class EditDNASchemaV6:
         # Validate Section D
         sec_d = report.get("section_d_semantic_evaluation", {})
         assert "provenance" in sec_d, "Section D missing provenance"
-        assert sec_d.get("status") in ("EVALUATED_SEMANTIC", "NOT_YET_ASSESSED", "PARTIAL"), f"Section D invalid status: {sec_d.get('status')}"
+        assert sec_d.get("status") in (
+            "EVALUATED_SEMANTIC",
+            "EVALUATED_SEMANTIC_EXPERIMENTAL",
+            "CALCULATED_EXPERIMENTAL_V9",
+            "NOT_YET_ASSESSED",
+            "PARTIAL"
+        ), f"Section D invalid status: {sec_d.get('status')}"
 
         # Validate Section E
         sec_e = report.get("section_e_personalized_model", {})

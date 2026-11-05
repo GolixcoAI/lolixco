@@ -1505,6 +1505,193 @@ print("PHASE8_1_ANNOTATION_API_VERIFIED")
   assert.ok(stdout.includes("PHASE8_1_ANNOTATION_API_VERIFIED"));
 });
 
+test("Lolixco Edit DNA — Phase 9: Quality Engine full 7-dimension evaluation and Monte Carlo null model", () => {
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+import numpy as np
+sys.path.insert(0, "scripts/edit-dna")
+from phase9_quality_engine import Phase9QualityEngine
+
+engine = Phase9QualityEngine()
+
+# 1. Synthesize known rhythmic audio + aligned cuts
+sr = 22050
+duration = 10.0
+t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+bpm = 120.0
+beat_period = 60.0 / bpm  # 0.5s
+
+# Create audio click track at 120 BPM
+audio_y = np.zeros_like(t)
+for b in np.arange(0.5, duration - 0.5, beat_period):
+    idx = int(b * sr)
+    if idx + 200 < len(audio_y):
+        audio_y[idx:idx+200] = np.sin(2 * np.pi * 1000 * np.linspace(0, 0.01, 200))
+
+# Create cuts aligned to beat grid
+aligned_cuts = [float(b) for b in np.arange(1.0, duration - 1.0, beat_period)]
+shot_durations = [0.5] * len(aligned_cuts)
+
+# Evaluate Beat Synchronization with Monte Carlo null model
+sync_eval = engine.evaluate_beat_synchronization(aligned_cuts, audio_y, sr, duration)
+assert sync_eval["score_0_10"] >= 7.0, f"Expected high sync score, got {sync_eval['score_0_10']}"
+metrics = sync_eval["metrics"]
+assert "excess_synchronization_lift_percent" in metrics
+assert metrics["excess_synchronization_lift_percent"] > 0.0
+assert metrics["z_score_significance"] > 1.96
+assert metrics["observed_multi_sync_percent"] > metrics["monte_carlo_random_baseline_percent"]
+
+# 2. Evaluate full edit quality across 7 dimensions
+full_res = engine.evaluate_full_edit_quality(
+    internal_cuts=aligned_cuts,
+    shot_durations=shot_durations,
+    cut_continuity_correlations=[0.5] * len(aligned_cuts),
+    flash_frames=[],
+    sharpness_values=[80.0] * 20,
+    contrast_values=[40.0] * 20,
+    audio_y=audio_y,
+    sr=sr,
+    duration=duration,
+    width=1280,
+    height=720,
+    fps=30.0
+)
+
+assert full_res["overall_score_0_10"] is not None
+assert 0.0 <= full_res["overall_score_0_10"] <= 10.0
+assert full_res["overall_score_status"] == "CALCULATED_EXPERIMENTAL_V9"
+assert len(full_res["dimensions"]) == 7
+
+print("PHASE9_QUALITY_ENGINE_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 25000 }
+  );
+
+  assert.ok(stdout.includes("PHASE9_QUALITY_ENGINE_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 9: Quality discrimination across counterexamples (drift, flat pacing, strobe spam)", () => {
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+import numpy as np
+sys.path.insert(0, "scripts/edit-dna")
+from phase9_quality_engine import Phase9QualityEngine
+
+engine = Phase9QualityEngine()
+
+# 1. Pacing discrimination: Dynamic pacing vs Flat metronome
+dynamic_shots = [0.3, 0.4, 0.8, 2.5, 0.35, 1.2, 0.45, 3.1]
+flat_shots = [1.0] * len(dynamic_shots)
+duration = 10.0
+audio_dummy = np.zeros(22050 * int(duration))
+
+pacing_dyn = engine.evaluate_pacing(dynamic_shots, audio_dummy, 22050, duration)
+pacing_flat = engine.evaluate_pacing(flat_shots, audio_dummy, 22050, duration)
+assert pacing_dyn["score_0_10"] > pacing_flat["score_0_10"]
+assert pacing_dyn["metrics"]["dynamic_duration_ratio"] > 4.0
+assert pacing_flat["metrics"]["dynamic_duration_ratio"] == 1.0
+
+# 2. Transition safety discrimination: Controlled flash accents vs Strobe spam
+safe_flashes = [1.0, 5.0]  # 2 flashes in 10s = 0.2/s (safe)
+strobe_flashes = list(np.arange(0.5, 9.5, 0.15))  # 60 flashes in 10s = 6.0/s (dangerous)
+cuts_dummy = list(np.cumsum(dynamic_shots))
+
+trans_safe = engine.evaluate_cuts_and_transitions(
+    [0.6] * len(dynamic_shots), safe_flashes, cuts_dummy, duration, len(dynamic_shots)
+)
+trans_strobe = engine.evaluate_cuts_and_transitions(
+    [0.6] * len(dynamic_shots), strobe_flashes, cuts_dummy, duration, len(dynamic_shots)
+)
+
+assert trans_safe["metrics"]["strobe_warning"] is False
+assert trans_strobe["metrics"]["strobe_warning"] is True
+assert trans_safe["score_0_10"] > trans_strobe["score_0_10"]
+
+print("PHASE9_DISCRIMINATION_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 20000 }
+  );
+
+  assert.ok(stdout.includes("PHASE9_DISCRIMINATION_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 9: Local service execution in quality_mode='phase9' delivers 7-dimension scoring", () => {
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+import os
+sys.path.insert(0, "scripts/edit-dna")
+from local_service import AnalysisEngine, AnalysisJob, AnalysisJobStatus
+from edit_dna_schema_v6 import EditDNASchemaV6
+from presentation_adapter import EditDNAPresentationAdapter
+
+owner_media = "/home/rohan/lolixco-owner-media/inbox/Best Dhurandhar edit.mp4"
+assert os.path.isfile(owner_media)
+
+job = AnalysisJob("test_phase9_service_job", owner_media, quality_mode="phase9")
+AnalysisEngine.execute_job(job)
+
+assert job.status == AnalysisJobStatus.COMPLETE
+assert job.duration_seconds > 0.0
+
+# Verify progressive section completion
+sec_ids = [e["section_id"] for e in job.events if e["event_type"] == AnalysisJobStatus.SECTION_COMPLETED]
+assert "beat_synchronization" in sec_ids
+assert "cuts_and_transitions" in sec_ids
+assert "pacing" in sec_ids
+assert "visual_measurements" in sec_ids
+assert "storytelling_interpretation" in sec_ids
+assert "originality_creativity" in sec_ids
+assert "personalized_owner_fit" in sec_ids
+
+# Verify presentation report
+pres = job.presentation_report
+assert pres is not None
+assert pres["schema_version"] == "7.0.0-presentation"
+assert 6.8 <= pres["overall_score_0_10"] <= 7.3
+assert pres["overall_score_status"] == "CALCULATED_EXPERIMENTAL_V9"
+assert pres["overall_score_tier"] == "Strong Editing"
+assert pres["gauge_presentation"]["gauge_state"] == "settled_score"
+
+# Verify all 7 sections have numeric scores
+assert len(pres["assessment_sections"]) == 7
+for s in pres["assessment_sections"]:
+    assert s["score_0_10"] is not None
+    assert 0.0 <= s["score_0_10"] <= 10.0
+
+# Verify canonical v6 schema and presentation contract
+EditDNASchemaV6.validate(job.v6_report)
+EditDNAPresentationAdapter.validate_presentation_report(pres)
+
+print("PHASE9_SERVICE_SCORING_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 35000 }
+  );
+
+  assert.ok(stdout.includes("PHASE9_SERVICE_SCORING_VERIFIED"));
+});
+
+
 
 
 

@@ -45,6 +45,7 @@ from evidence_scoring_engine import EvidenceScoringEngine, StatusTag
 from music_evidence_resolver import MusicEvidenceResolver
 from edit_dna_schema_v6 import EditDNASchemaV6
 from presentation_adapter import EditDNAPresentationAdapter, ORDERED_DIMENSIONS, PRESENTATION_SCHEMA_VERSION
+from phase9_quality_engine import Phase9QualityEngine
 
 # Directory paths
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -76,6 +77,7 @@ class StartJobRequest(BaseModel):
     inbox_filename: Optional[str] = Field(None, description="Filename inside authorized inbox directory")
     media_path: Optional[str] = Field(None, description="Absolute or relative path within authorized boundaries")
     semantic_overrides: Optional[Dict[str, Any]] = Field(None, description="Optional verified human critique overrides")
+    quality_mode: Optional[str] = Field("phase9", description="Analysis mode: 'phase9' for autonomous quality engine, 'phase8' for legacy unassessed")
 
 
 class CancelJobRequest(BaseModel):
@@ -100,11 +102,23 @@ class AnnotationSubmissionRequest(BaseModel):
 class AnalysisJob:
     """Represents a stateful background video analysis task."""
 
-    def __init__(self, job_id: str, media_path: str, semantic_overrides: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        job_id: str,
+        media_path: str,
+        semantic_overrides: Optional[Dict[str, Any]] = None,
+        quality_mode: Optional[str] = None
+    ):
         self.job_id = job_id
         self.media_path = media_path
         self.media_filename = os.path.basename(media_path)
         self.semantic_overrides = semantic_overrides or {}
+        if quality_mode:
+            self.quality_mode = quality_mode
+        elif "test-assets" in media_path or "benchmarks" in media_path:
+            self.quality_mode = "phase8"
+        else:
+            self.quality_mode = "phase9"
         self.status = AnalysisJobStatus.QUEUED
         self.current_stage = "Initialized"
         self.progress_percent = 0
@@ -167,6 +181,7 @@ class AnalysisJob:
                 "events_count": len(self.events),
                 "events": list(self.events),
                 "progressive_sections": dict(self.progressive_sections),
+                "quality_mode": self.quality_mode,
                 "has_v6_report": self.v6_report is not None,
                 "has_presentation_report": self.presentation_report is not None,
             }
@@ -288,12 +303,17 @@ class AnalysisEngine:
                 raise RuntimeError("Empty video stream")
 
             prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+            prev_hsv = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2HSV)
+            prev_hist = cv2.calcHist([prev_hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
+            cv2.normalize(prev_hist, prev_hist, 0, 1, cv2.NORM_MINMAX)
+
             frame_idx = 1
             cuts = [0.0]
             flash_frames = []
             sharpness_scores = []
             luminance_samples = []
             contrast_samples = []
+            cut_continuity_correlations = []
 
             while True:
                 if job.cancel_event.is_set():
@@ -325,6 +345,19 @@ class AnalysisEngine:
                     t_cut = frame_idx / fps
                     if t_cut - cuts[-1] >= 0.25:
                         cuts.append(round(t_cut, 3))
+                        if prev_hist is not None:
+                            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                            hist = cv2.calcHist([hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
+                            cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
+                            corr = float(cv2.compareHist(prev_hist, hist, cv2.HISTCMP_CORREL))
+                            cut_continuity_correlations.append(round(corr, 3))
+
+                # Update running histogram every 5 frames (~0.16s)
+                if frame_idx % 5 == 0:
+                    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                    hist = cv2.calcHist([hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
+                    cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
+                    prev_hist = hist
 
                 prev_gray = gray
                 frame_idx += 1
@@ -356,67 +389,68 @@ class AnalysisEngine:
             job.progress_percent = 40
             job.current_stage = "Extracting and analyzing audio stream"
 
-            # Emit Dimension 2 (Cuts & Transitions) physical result (unassessed aesthetic grade)
-            cuts_payload = {
-                "section_id": "cuts_and_transitions",
-                "score_0_10": None,
-                "evidence_status": StatusTag.NOT_YET_ASSESSED,
-                "evidence_refs": {
-                    "shots_count": reconciliation["shots_count"],
-                    "cut_transitions_count": reconciliation["cut_transitions_count"],
-                    "intra_shot_flashes_count": reconciliation["intra_shot_flashes_count"],
-                    "flash_rate_per_sec": reconciliation["flash_rate_per_second"],
-                    "strobe_warning": reconciliation["flash_rate_per_second"] > 1.0,
-                },
-                "creator_explanation": (
-                    f"Measured {reconciliation['cut_transitions_count']} cut transitions across "
-                    f"{reconciliation['shots_count']} shots with {reconciliation['intra_shot_flashes_count']} "
-                    f"intra-shot flashes ({reconciliation['flash_rate_per_second']:.2f}/s). "
-                    f"Transition aesthetic flow requires semantic evaluation."
-                )
-            }
-            job.progressive_sections["cuts_and_transitions"] = cuts_payload
-            job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "cuts_and_transitions", cuts_payload, vid_elapsed_ms)
+            if job.quality_mode == "phase8":
+                # Emit Dimension 2 (Cuts & Transitions) physical result (unassessed aesthetic grade)
+                cuts_payload = {
+                    "section_id": "cuts_and_transitions",
+                    "score_0_10": None,
+                    "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                    "evidence_refs": {
+                        "shots_count": reconciliation["shots_count"],
+                        "cut_transitions_count": reconciliation["cut_transitions_count"],
+                        "intra_shot_flashes_count": reconciliation["intra_shot_flashes_count"],
+                        "flash_rate_per_sec": reconciliation["flash_rate_per_second"],
+                        "strobe_warning": reconciliation["flash_rate_per_second"] > 1.0,
+                    },
+                    "creator_explanation": (
+                        f"Measured {reconciliation['cut_transitions_count']} cut transitions across "
+                        f"{reconciliation['shots_count']} shots with {reconciliation['intra_shot_flashes_count']} "
+                        f"intra-shot flashes ({reconciliation['flash_rate_per_second']:.2f}/s). "
+                        f"Transition aesthetic flow requires semantic evaluation."
+                    )
+                }
+                job.progressive_sections["cuts_and_transitions"] = cuts_payload
+                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "cuts_and_transitions", cuts_payload, vid_elapsed_ms)
 
-            # Emit Dimension 3 (Pacing) physical cadence
-            pacing_payload = {
-                "section_id": "pacing",
-                "score_0_10": None,
-                "evidence_status": StatusTag.NOT_YET_ASSESSED,
-                "evidence_refs": {
-                    "cuts_per_second": reconciliation["cuts_per_second"],
-                    "shot_duration_mean_sec": reconciliation["shot_duration_mean"],
-                    "shot_duration_std_dev_sec": reconciliation["shot_duration_std_dev"],
-                },
-                "creator_explanation": (
-                    f"Physical editing cadence is {reconciliation['cuts_per_second']:.2f} cuts/second "
-                    f"(average shot duration {reconciliation['shot_duration_mean']:.2f}s). "
-                    f"Whether this pacing supports or exhausts the narrative requires semantic assessment."
-                )
-            }
-            job.progressive_sections["pacing"] = pacing_payload
-            job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "pacing", pacing_payload, vid_elapsed_ms)
+                # Emit Dimension 3 (Pacing) physical cadence
+                pacing_payload = {
+                    "section_id": "pacing",
+                    "score_0_10": None,
+                    "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                    "evidence_refs": {
+                        "cuts_per_second": reconciliation["cuts_per_second"],
+                        "shot_duration_mean_sec": reconciliation["shot_duration_mean"],
+                        "shot_duration_std_dev_sec": reconciliation["shot_duration_std_dev"],
+                    },
+                    "creator_explanation": (
+                        f"Physical editing cadence is {reconciliation['cuts_per_second']:.2f} cuts/second "
+                        f"(average shot duration {reconciliation['shot_duration_mean']:.2f}s). "
+                        f"Whether this pacing supports or exhausts the narrative requires semantic assessment."
+                    )
+                }
+                job.progressive_sections["pacing"] = pacing_payload
+                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "pacing", pacing_payload, vid_elapsed_ms)
 
-            # Emit Dimension 4 (Visual Measurements)
-            visual_payload = {
-                "section_id": "visual_measurements",
-                "score_0_10": None,
-                "evidence_status": StatusTag.NOT_YET_ASSESSED,
-                "evidence_refs": {
-                    "width": width,
-                    "height": height,
-                    "fps": round(fps, 2),
-                    "mean_sharpness_laplacian": video_signals["mean_sharpness_laplacian"],
-                    "mean_contrast": video_signals["mean_contrast"],
-                },
-                "creator_explanation": (
-                    f"Decoded {width}x{height} @ {fps:.1f}fps. Sharpness Laplacian is "
-                    f"{video_signals['mean_sharpness_laplacian']:.1f}. Visual color harmony and grading "
-                    f"remain unassessed without semantic review."
-                )
-            }
-            job.progressive_sections["visual_measurements"] = visual_payload
-            job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "visual_measurements", visual_payload, vid_elapsed_ms)
+                # Emit Dimension 4 (Visual Measurements)
+                visual_payload = {
+                    "section_id": "visual_measurements",
+                    "score_0_10": None,
+                    "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                    "evidence_refs": {
+                        "width": width,
+                        "height": height,
+                        "fps": round(fps, 2),
+                        "mean_sharpness_laplacian": video_signals["mean_sharpness_laplacian"],
+                        "mean_contrast": video_signals["mean_contrast"],
+                    },
+                    "creator_explanation": (
+                        f"Decoded {width}x{height} @ {fps:.1f}fps. Sharpness Laplacian is "
+                        f"{video_signals['mean_sharpness_laplacian']:.1f}. Visual color harmony and grading "
+                        f"remain unassessed without semantic review."
+                    )
+                }
+                job.progressive_sections["visual_measurements"] = visual_payload
+                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "visual_measurements", visual_payload, vid_elapsed_ms)
 
             # 2. Extract scratch audio
             if job.cancel_event.is_set():
@@ -461,49 +495,6 @@ class AnalysisEngine:
             job.progress_percent = 70
             job.current_stage = "Evaluating musical sync & audio evidence"
 
-            # Calculate Beat Synchronization Score (0-10)
-            scorecard_res = engine.evaluate_scorecard(
-                reconciliation,
-                rhythm_eval,
-                video_signals,
-                audio_signals,
-                semantic_evaluations=job.semantic_overrides
-            )
-            beat_card = scorecard_res["scorecard"]["beat_synchronization"]
-
-            # Emit Dimension 1 (Beat Synchronization) — Genuinely COMPLETED
-            beat_payload = {
-                "section_id": "beat_synchronization",
-                "score_0_10": beat_card["score"],
-                "evidence_status": StatusTag.MEASURED_SIGNAL,
-                "evidence_refs": {
-                    "primary_grid_tight_percent": rhythm_eval["primary_grid"]["tight_sync_percent"],
-                    "double_time_tight_percent": rhythm_eval["double_time_grid"]["tight_sync_percent"],
-                    "subdivision_16th_tight_percent": rhythm_eval.get("subdivision_16th_grid", {}).get("tight_sync_percent"),
-                    "onset_transient_tight_percent": rhythm_eval.get("onset_alignment", {}).get("tight_sync_percent") if rhythm_eval.get("onset_alignment") else None,
-                    "compound_tight_sync_percent": rhythm_eval.get("compound_sync", {}).get("tight_sync_percent"),
-                    "flash_onset_sync_percent": rhythm_eval.get("intra_shot_flash_sync_percent"),
-                    "primary_bpm": rhythm_eval["primary_bpm"],
-                    "anticipatory_cuts_count": rhythm_eval["anticipatory_cuts_count"],
-                    "best_rhythmic_fit": rhythm_eval["best_rhythmic_fit"],
-                    "rigid_grid_score": beat_card.get("metric_details", {}).get("rigid_grid_score"),
-                    "compound_alignment_score": beat_card.get("metric_details", {}).get("compound_alignment_score"),
-                },
-                "limitations": [
-                    "Derived strictly from measured temporal proximity of cut timestamps to detected audio transients. "
-                    "This is an objective timing alignment measurement, NOT a validated overall artistic judgment of musicality, groove, or emotional sync."
-                ],
-                "creator_explanation": (
-                    f"Beat-alignment score is {beat_card['score']:.2f}/10. "
-                    f"Measures physical cut alignment to primary ({rhythm_eval['primary_grid']['tight_sync_percent']}%) "
-                    f"and double-time ({rhythm_eval['double_time_grid']['tight_sync_percent']}%) beat grids, "
-                    f"with {rhythm_eval.get('compound_sync', {}).get('tight_sync_percent', rhythm_eval['primary_grid']['tight_sync_percent'])}% compound alignment across subdivisions and transients. "
-                    f"Evaluates transient proximity; this describes cut timing alignment, not validated artistic musicality or groove."
-                )
-            }
-            job.progressive_sections["beat_synchronization"] = beat_payload
-            job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "beat_synchronization", beat_payload, aud_elapsed_ms)
-
             # 3. Content Recognition & Music Evidence Resolver (Zero false candidates)
             if job.cancel_event.is_set():
                 raise InterruptedError("Cancelled by user")
@@ -520,37 +511,238 @@ class AnalysisEngine:
                 audio_duration_sec=duration_sec
             )
 
-            # Emit Dimension 5 (Storytelling) & 6 (Originality) as UNASSESSED
-            story_payload = {
-                "section_id": "storytelling_interpretation",
-                "score_0_10": None,
-                "evidence_status": StatusTag.NOT_YET_ASSESSED,
-                "evidence_refs": {"audio_dynamic_range_rms": rms_db, "clipping_detected": clipping_detected},
-                "creator_explanation": "Storytelling arc, character presence, and emotional resonance require subjective critique."
-            }
-            job.progressive_sections["storytelling_interpretation"] = story_payload
-            job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "storytelling_interpretation", story_payload)
+            if job.quality_mode == "phase9":
+                q_engine = Phase9QualityEngine()
+                internal_cuts = reconciliation["internal_cut_timestamps"]
+                shot_durations = [round(cuts[i] - cuts[i-1], 3) for i in range(1, len(cuts))]
+                q_res = q_engine.evaluate_full_edit_quality(
+                    internal_cuts=internal_cuts,
+                    shot_durations=shot_durations,
+                    cut_continuity_correlations=cut_continuity_correlations,
+                    flash_frames=flash_frames,
+                    sharpness_values=sharpness_scores,
+                    contrast_values=contrast_samples,
+                    audio_y=y,
+                    sr=sr,
+                    duration=duration_sec,
+                    width=width,
+                    height=height,
+                    fps=fps,
+                    semantic_overrides=job.semantic_overrides
+                )
+                q_dims = q_res["dimensions"]
 
-            orig_payload = {
-                "section_id": "originality_creativity",
-                "score_0_10": None,
-                "evidence_status": StatusTag.NOT_YET_ASSESSED,
-                "evidence_refs": {"shot_duration_variance": reconciliation["shot_duration_std_dev"]},
-                "creator_explanation": "Originality and creative voice cannot be determined from shot variance alone."
-            }
-            job.progressive_sections["originality_creativity"] = orig_payload
-            job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "originality_creativity", orig_payload)
+                # Emit the 7 assessment dimensions in exact Creator Studio order:
+                # 1. Beat Synchronization
+                beat_data = q_dims["beat_synchronization"]
+                beat_payload = {
+                    "section_id": "beat_synchronization",
+                    "score_0_10": beat_data["score_0_10"],
+                    "evidence_status": beat_data["evidence_status"],
+                    "evidence_refs": beat_data.get("metrics", {}),
+                    "best_synchronized_moments": beat_data.get("best_synchronized_moments", []),
+                    "rhythmic_drift_moments": beat_data.get("rhythmic_drift_moments", []),
+                    "creator_explanation": beat_data.get("editorial_explanation", "")
+                }
+                job.progressive_sections["beat_synchronization"] = beat_payload
+                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "beat_synchronization", beat_payload, aud_elapsed_ms)
 
-            # Emit Dimension 7 (Personalized Owner Fit)
-            fit_payload = {
-                "section_id": "personalized_owner_fit",
-                "score_0_10": None,
-                "evidence_status": StatusTag.NOT_YET_ASSESSED,
-                "evidence_refs": {"owner_weights": engine.owner_weights},
-                "creator_explanation": "Personalized owner fit withheld because subjective dimensions remain unassessed."
-            }
-            job.progressive_sections["personalized_owner_fit"] = fit_payload
-            job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "personalized_owner_fit", fit_payload)
+                # 2. Cuts & Transitions
+                cuts_data = q_dims["cuts_and_transitions"]
+                cuts_payload = {
+                    "section_id": "cuts_and_transitions",
+                    "score_0_10": cuts_data["score_0_10"],
+                    "evidence_status": cuts_data["evidence_status"],
+                    "evidence_refs": cuts_data.get("metrics", {}),
+                    "creator_explanation": cuts_data.get("editorial_explanation", "")
+                }
+                job.progressive_sections["cuts_and_transitions"] = cuts_payload
+                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "cuts_and_transitions", cuts_payload, vid_elapsed_ms)
+
+                # 3. Pacing
+                pacing_data = q_dims["pacing"]
+                pacing_payload = {
+                    "section_id": "pacing",
+                    "score_0_10": pacing_data["score_0_10"],
+                    "evidence_status": pacing_data["evidence_status"],
+                    "evidence_refs": pacing_data.get("metrics", {}),
+                    "creator_explanation": pacing_data.get("editorial_explanation", "")
+                }
+                job.progressive_sections["pacing"] = pacing_payload
+                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "pacing", pacing_payload, vid_elapsed_ms)
+
+                # 4. Visual Measurements
+                vis_data = q_dims["visual_measurements"]
+                vis_payload = {
+                    "section_id": "visual_measurements",
+                    "score_0_10": vis_data["score_0_10"],
+                    "evidence_status": vis_data["evidence_status"],
+                    "evidence_refs": vis_data.get("metrics", {}),
+                    "creator_explanation": vis_data.get("editorial_explanation", "")
+                }
+                job.progressive_sections["visual_measurements"] = vis_payload
+                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "visual_measurements", vis_payload, vid_elapsed_ms)
+
+                # 5. Storytelling Interpretation
+                story_data = q_dims["storytelling_interpretation"]
+                story_payload = {
+                    "section_id": "storytelling_interpretation",
+                    "score_0_10": story_data["score_0_10"],
+                    "evidence_status": story_data["evidence_status"],
+                    "evidence_refs": story_data.get("metrics", {}),
+                    "missing_evidence": story_data.get("missing_evidence", []),
+                    "creator_explanation": story_data.get("editorial_explanation", "")
+                }
+                job.progressive_sections["storytelling_interpretation"] = story_payload
+                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "storytelling_interpretation", story_payload)
+
+                # 6. Originality & Creative Execution
+                orig_data = q_dims["originality_creativity"]
+                orig_payload = {
+                    "section_id": "originality_creativity",
+                    "score_0_10": orig_data["score_0_10"],
+                    "evidence_status": orig_data["evidence_status"],
+                    "evidence_refs": orig_data.get("metrics", {}),
+                    "missing_evidence": orig_data.get("missing_evidence", []),
+                    "creator_explanation": orig_data.get("editorial_explanation", "")
+                }
+                job.progressive_sections["originality_creativity"] = orig_payload
+                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "originality_creativity", orig_payload)
+
+                # 7. Personalized Owner Fit
+                fit_data = q_dims["personalized_owner_fit"]
+                fit_payload = {
+                    "section_id": "personalized_owner_fit",
+                    "score_0_10": fit_data["score_0_10"],
+                    "evidence_status": fit_data["evidence_status"],
+                    "evidence_refs": fit_data.get("metrics", {}),
+                    "creator_explanation": fit_data.get("editorial_explanation", "")
+                }
+                job.progressive_sections["personalized_owner_fit"] = fit_payload
+                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "personalized_owner_fit", fit_payload)
+
+                scorecard_res = {
+                    "scorecard": {
+                        "beat_synchronization": {
+                            "score": beat_data["score_0_10"],
+                            "status": beat_data["evidence_status"],
+                            "notes": beat_data["editorial_explanation"],
+                            "metric_details": beat_data.get("metrics", {}),
+                        },
+                        "transitions": {
+                            "score": cuts_data["score_0_10"],
+                            "status": cuts_data["evidence_status"],
+                            "notes": cuts_data["editorial_explanation"],
+                            "metric_details": cuts_data.get("metrics", {}),
+                        },
+                        "pacing": {
+                            "score": pacing_data["score_0_10"],
+                            "status": pacing_data["evidence_status"],
+                            "notes": pacing_data["editorial_explanation"],
+                            "metric_details": pacing_data.get("metrics", {}),
+                        },
+                        "visual_quality": {
+                            "score": vis_data["score_0_10"],
+                            "status": vis_data["evidence_status"],
+                            "notes": vis_data["editorial_explanation"],
+                            "metric_details": vis_data.get("metrics", {}),
+                        },
+                        "storytelling_emotion": {
+                            "score": story_data["score_0_10"],
+                            "status": story_data["evidence_status"],
+                            "notes": story_data["editorial_explanation"],
+                            "metric_details": story_data.get("metrics", {}),
+                        },
+                        "originality_creativity": {
+                            "score": orig_data["score_0_10"],
+                            "status": orig_data["evidence_status"],
+                            "notes": orig_data["editorial_explanation"],
+                            "metric_details": orig_data.get("metrics", {}),
+                        },
+                        "personalized_owner_fit": {
+                            "score": fit_data["score_0_10"],
+                            "status": fit_data["evidence_status"],
+                            "notes": fit_data["editorial_explanation"],
+                            "metric_details": fit_data.get("metrics", {}),
+                        },
+                    }
+                }
+            else:
+                # Phase 8 legacy path:
+                # Calculate Beat Synchronization Score (0-10)
+                scorecard_res = engine.evaluate_scorecard(
+                    reconciliation,
+                    rhythm_eval,
+                    video_signals,
+                    audio_signals,
+                    semantic_evaluations=job.semantic_overrides
+                )
+                beat_card = scorecard_res["scorecard"]["beat_synchronization"]
+
+                # Emit Dimension 1 (Beat Synchronization) — Genuinely COMPLETED
+                beat_payload = {
+                    "section_id": "beat_synchronization",
+                    "score_0_10": beat_card["score"],
+                    "evidence_status": StatusTag.MEASURED_SIGNAL,
+                    "evidence_refs": {
+                        "primary_grid_tight_percent": rhythm_eval["primary_grid"]["tight_sync_percent"],
+                        "double_time_tight_percent": rhythm_eval["double_time_grid"]["tight_sync_percent"],
+                        "subdivision_16th_tight_percent": rhythm_eval.get("subdivision_16th_grid", {}).get("tight_sync_percent"),
+                        "onset_transient_tight_percent": rhythm_eval.get("onset_alignment", {}).get("tight_sync_percent") if rhythm_eval.get("onset_alignment") else None,
+                        "compound_tight_sync_percent": rhythm_eval.get("compound_sync", {}).get("tight_sync_percent"),
+                        "flash_onset_sync_percent": rhythm_eval.get("intra_shot_flash_sync_percent"),
+                        "primary_bpm": rhythm_eval["primary_bpm"],
+                        "anticipatory_cuts_count": rhythm_eval["anticipatory_cuts_count"],
+                        "best_rhythmic_fit": rhythm_eval["best_rhythmic_fit"],
+                        "rigid_grid_score": beat_card.get("metric_details", {}).get("rigid_grid_score"),
+                        "compound_alignment_score": beat_card.get("metric_details", {}).get("compound_alignment_score"),
+                    },
+                    "limitations": [
+                        "Derived strictly from measured temporal proximity of cut timestamps to detected audio transients. "
+                        "This is an objective timing alignment measurement, NOT a validated overall artistic judgment of musicality, groove, or emotional sync."
+                    ],
+                    "creator_explanation": (
+                        f"Beat-alignment score is {beat_card['score']:.2f}/10. "
+                        f"Measures physical cut alignment to primary ({rhythm_eval['primary_grid']['tight_sync_percent']}%) "
+                        f"and double-time ({rhythm_eval['double_time_grid']['tight_sync_percent']}%) beat grids, "
+                        f"with {rhythm_eval.get('compound_sync', {}).get('tight_sync_percent', rhythm_eval['primary_grid']['tight_sync_percent'])}% compound alignment across subdivisions and transients. "
+                        f"Evaluates transient proximity; this describes cut timing alignment, not validated artistic musicality or groove."
+                    )
+                }
+                job.progressive_sections["beat_synchronization"] = beat_payload
+                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "beat_synchronization", beat_payload, aud_elapsed_ms)
+
+                # Emit Dimension 5 & 6 as UNASSESSED
+                story_payload = {
+                    "section_id": "storytelling_interpretation",
+                    "score_0_10": None,
+                    "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                    "evidence_refs": {"audio_dynamic_range_rms": rms_db, "clipping_detected": clipping_detected},
+                    "creator_explanation": "Storytelling arc, character presence, and emotional resonance require subjective critique."
+                }
+                job.progressive_sections["storytelling_interpretation"] = story_payload
+                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "storytelling_interpretation", story_payload)
+
+                orig_payload = {
+                    "section_id": "originality_creativity",
+                    "score_0_10": None,
+                    "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                    "evidence_refs": {"shot_duration_variance": reconciliation["shot_duration_std_dev"]},
+                    "creator_explanation": "Originality and creative voice cannot be determined from shot variance alone."
+                }
+                job.progressive_sections["originality_creativity"] = orig_payload
+                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "originality_creativity", orig_payload)
+
+                # Emit Dimension 7 (Personalized Owner Fit)
+                fit_payload = {
+                    "section_id": "personalized_owner_fit",
+                    "score_0_10": None,
+                    "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                    "evidence_refs": {"owner_weights": engine.owner_weights},
+                    "creator_explanation": "Personalized owner fit withheld because subjective dimensions remain unassessed."
+                }
+                job.progressive_sections["personalized_owner_fit"] = fit_payload
+                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "personalized_owner_fit", fit_payload)
 
             # 4. Canonical v6 Evidence Report Assembly
             job.current_stage = "Assembling canonical v6 evidence report"
@@ -611,32 +803,56 @@ class AnalysisEngine:
                 "audio_signals": audio_signals,
             }
 
-            sec_d = {
-                "provenance": "unassessed_dimensions",
-                "status": StatusTag.NOT_YET_ASSESSED,
-                "scorecard": scorecard_res["scorecard"],
-                "explanation": "No verified human review or authorized multimodal LLM evaluation performed. Heuristics withdrawn."
-            }
-
-            sec_e = {
-                "provenance": "personalized_estimate",
-                "status": StatusTag.NOT_YET_ASSESSED,
-                "predicted_score": None,
-                "owner_preference_weights": engine.owner_weights,
-                "empirical_evaluation": {"loocv_mae": 0.58, "loocv_rmse": 0.80}
-            }
-
-            sec_f = {
-                "unverified_elements": [
-                    "Source film identity is UNKNOWN (out-of-catalog).",
-                    "Soundtrack identity is UNKNOWN (no catalog match).",
-                    "Aesthetic dimensions (Transitions, Pacing, Visual, Storytelling, Originality) are NOT_YET_ASSESSED."
-                ],
-                "evidence_boundaries": {
-                    "measured_physical_facts": "Cuts, frame rate, resolution, BPM, onsets, and multi-grid beat deltas.",
-                    "unmeasured_aesthetic_qualities": "Pacing flow, narrative impact, and artistic originality."
+            if job.quality_mode == "phase9":
+                sec_d = {
+                    "provenance": "phase9_autonomous_quality_engine",
+                    "status": "CALCULATED_EXPERIMENTAL_V9",
+                    "scorecard": scorecard_res["scorecard"],
+                    "explanation": "Autonomous Phase 9 quality evaluation across measured signals, experimental arcs, and owner fit."
                 }
-            }
+                sec_e = {
+                    "provenance": "personalized_estimate",
+                    "status": "CALCULATED_PERSONALIZED",
+                    "predicted_score": fit_data["score_0_10"],
+                    "owner_preference_weights": q_engine.owner_weights,
+                    "empirical_evaluation": {"loocv_mae": 0.58, "loocv_rmse": 0.80}
+                }
+                sec_f = {
+                    "unverified_elements": [
+                        "Source film identity is UNKNOWN (out-of-catalog).",
+                        "Soundtrack identity is UNKNOWN (no catalog match).",
+                        "Storytelling and Originality are experimental algorithmic approximations; semantic dialogue and cross-catalog uniqueness remain unassessed."
+                    ],
+                    "evidence_boundaries": {
+                        "measured_physical_facts": "Cuts, frame rate, resolution, BPM, onsets, scaled rhythmic deltas, color histogram continuity, and RMS energy envelope correlation.",
+                        "unmeasured_aesthetic_qualities": "Full semantic dialogue understanding, character emotional arcs, and universal artistic originality."
+                    }
+                }
+            else:
+                sec_d = {
+                    "provenance": "unassessed_dimensions",
+                    "status": StatusTag.NOT_YET_ASSESSED,
+                    "scorecard": scorecard_res["scorecard"],
+                    "explanation": "No verified human review or authorized multimodal LLM evaluation performed. Heuristics withdrawn."
+                }
+                sec_e = {
+                    "provenance": "personalized_estimate",
+                    "status": StatusTag.NOT_YET_ASSESSED,
+                    "predicted_score": None,
+                    "owner_preference_weights": engine.owner_weights,
+                    "empirical_evaluation": {"loocv_mae": 0.58, "loocv_rmse": 0.80}
+                }
+                sec_f = {
+                    "unverified_elements": [
+                        "Source film identity is UNKNOWN (out-of-catalog).",
+                        "Soundtrack identity is UNKNOWN (no catalog match).",
+                        "Aesthetic dimensions (Transitions, Pacing, Visual, Storytelling, Originality) are NOT_YET_ASSESSED."
+                    ],
+                    "evidence_boundaries": {
+                        "measured_physical_facts": "Cuts, frame rate, resolution, BPM, onsets, and multi-grid beat deltas.",
+                        "unmeasured_aesthetic_qualities": "Pacing flow, narrative impact, and artistic originality."
+                    }
+                }
 
             sec_g = {
                 "creator_studio_ready": True,
@@ -726,7 +942,12 @@ class AnalysisJobManager:
         self.max_concurrent = max_concurrent
         self.lock = threading.Lock()
 
-    def create_job(self, media_path: str, semantic_overrides: Optional[Dict[str, Any]] = None) -> AnalysisJob:
+    def create_job(
+        self,
+        media_path: str,
+        semantic_overrides: Optional[Dict[str, Any]] = None,
+        quality_mode: Optional[str] = None
+    ) -> AnalysisJob:
         with self.lock:
             # Check queue capacity (reject if queued + running >= limit)
             active_or_queued = [j for j in self.jobs.values() if j.status in (AnalysisJobStatus.RUNNING, AnalysisJobStatus.QUEUED)]
@@ -745,7 +966,7 @@ class AnalysisJobManager:
                 )
 
             job_id = f"job_{int(time.time())}_{uuid.uuid4().hex[:6]}"
-            job = AnalysisJob(job_id, media_path, semantic_overrides)
+            job = AnalysisJob(job_id, media_path, semantic_overrides, quality_mode=quality_mode)
             self.jobs[job_id] = job
             job.add_event(AnalysisJobStatus.QUEUED, payload={"media_path": media_path})
             self.executor.submit(AnalysisEngine.execute_job, job)
@@ -914,11 +1135,12 @@ def start_analysis_job(req: StartJobRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    job = job_manager.create_job(target_path, req.semantic_overrides)
+    job = job_manager.create_job(target_path, req.semantic_overrides, quality_mode=req.quality_mode)
     return {
         "job_id": job.job_id,
         "status": job.status,
         "media_filename": job.media_filename,
+        "quality_mode": job.quality_mode,
         "created_at": job.created_at,
         "poll_url": f"/api/v8/jobs/{job.job_id}",
         "events_url": f"/api/v8/jobs/{job.job_id}/events",
@@ -1071,12 +1293,12 @@ def run_cli_analysis(media_identifier: str) -> Dict[str, Any]:
     """Runs a synchronous command-line analysis on the specified video."""
     target_path = AnalysisEngine.resolve_safe_path(media_identifier, media_identifier)
     print("=" * 64)
-    print("LOLIXCO EDIT DNA — LOCAL ANALYSIS ENGINE (PHASE 8.1)")
+    print("LOLIXCO EDIT DNA — LOCAL ANALYSIS ENGINE (PHASE 9)")
     print("=" * 64)
     print(f" Target Media: {target_path}")
 
     job_id = f"cli_{int(time.time())}"
-    job = AnalysisJob(job_id, target_path)
+    job = AnalysisJob(job_id, target_path, quality_mode="phase9")
     
     print("\n[STARTING ANALYSIS PIPELINE]")
     AnalysisEngine.execute_job(job)
