@@ -66,18 +66,31 @@ class Phase9QualityEngine:
         """
         cuts = np.array(internal_cuts)
         total_cuts = len(cuts)
-        if total_cuts == 0 or len(audio_y) == 0:
+        if len(audio_y) == 0:
             return {
                 "score_0_10": None,
                 "evidence_status": STATUS_NOT_YET_ASSESSED,
-                "reason": "Missing cuts or audio data",
+                "reason": "Video contains no audio track",
                 "bpm": 0.0,
                 "total_cuts_evaluated": total_cuts,
                 "metrics": {
                     "top_transient_coverage_percent": 0.0,
                     "observed_multi_sync_percent": 0.0,
                 },
-                "editorial_explanation": "Missing cut timestamps or audio waveform data; beat synchronization unassessed."
+                "editorial_explanation": "Video contains no audio track; beat synchronization unassessed."
+            }
+        if total_cuts == 0:
+            return {
+                "score_0_10": None,
+                "evidence_status": STATUS_NOT_YET_ASSESSED,
+                "reason": "Missing cuts for beat synchronization",
+                "bpm": 0.0,
+                "total_cuts_evaluated": 0,
+                "metrics": {
+                    "top_transient_coverage_percent": 0.0,
+                    "observed_multi_sync_percent": 0.0,
+                },
+                "editorial_explanation": "Missing cut timestamps; beat synchronization unassessed."
             }
 
         # Require usable timing evidence before grading
@@ -449,12 +462,12 @@ class Phase9QualityEngine:
         Evaluates dynamic pacing modulation, breathing room vs kinetic bursts,
         and cut cadence correlation with musical energy (RMS).
         """
-        if not shot_durations or len(audio_y) == 0 or duration <= 1.0:
+        if not shot_durations or duration <= 1.0:
             return {
                 "score_0_10": None,
                 "evidence_status": STATUS_NOT_YET_ASSESSED,
-                "reason": "Missing shot durations or audio track (or duration <= 1.0s)",
-                "editorial_explanation": "Missing shot durations or audio track (or clip duration <= 1.0s); pacing analysis withheld.",
+                "reason": "Missing shot durations or clip duration <= 1.0s",
+                "editorial_explanation": "Missing shot durations or clip duration <= 1.0s; pacing analysis withheld.",
                 "metrics": {
                     "cuts_per_second": 0.0,
                     "shot_duration_mean_sec": 0.0,
@@ -487,6 +500,28 @@ class Phase9QualityEngine:
         breathing_pct = round((breathing_room / total_shots) * 100.0, 1)
         kinetic_pct = round((kinetic_action / total_shots) * 100.0, 1)
         rapid_pct = round((rapid_burst / total_shots) * 100.0, 1)
+
+        if len(audio_y) == 0:
+            return {
+                "score_0_10": None,
+                "evidence_status": STATUS_NOT_YET_ASSESSED,
+                "reason": "Video contains no audio track for cadence-to-music correlation",
+                "metrics": {
+                    "cuts_per_second": cps,
+                    "shot_duration_mean_sec": round(mean_dur, 2),
+                    "shot_duration_median_sec": round(median_dur, 2),
+                    "shot_duration_std_dev_sec": round(std_dur, 2),
+                    "dynamic_duration_ratio": dynamic_ratio,
+                    "breathing_room_percent": breathing_pct,
+                    "kinetic_action_percent": kinetic_pct,
+                    "rapid_burst_percent": rapid_pct,
+                    "cadence_to_audio_correlation": 0.0,
+                },
+                "editorial_explanation": (
+                    f"Physical cadence is {cps} cuts/sec (mean {mean_dur:.2f}s, range {min_dur:.2f}s to {max_dur:.2f}s). "
+                    "Video contains no audio track; cadence-to-music correlation and pacing quality score withheld (NOT_YET_ASSESSED)."
+                )
+            }
 
         # Audio RMS energy correlation with visual cut rate
         # Segment video into 4-second windows and compute CPS vs RMS

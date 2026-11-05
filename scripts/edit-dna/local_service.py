@@ -465,36 +465,70 @@ class AnalysisEngine:
                 raise InterruptedError("Cancelled by user")
 
             t_aud_start = time.time()
-            cmd = ["ffmpeg", "-y", "-i", job.media_path, "-vn", "-ar", "22050", "-ac", "1", scratch_audio]
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            has_audio = False
+            try:
+                probe_cmd = [
+                    "ffprobe", "-v", "error", "-select_streams", "a",
+                    "-show_entries", "stream=codec_type", "-of", "csv=p=0",
+                    job.media_path
+                ]
+                probe_res = subprocess.run(probe_cmd, capture_output=True, text=True, check=False)
+                has_audio = "audio" in probe_res.stdout
+            except Exception:
+                has_audio = False
 
-            y, sr = librosa.load(scratch_audio, sr=22050, mono=True)
-            tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr, units="frames")
-            bpm = float(tempo[0] if isinstance(tempo, (list, np.ndarray)) else tempo)
-            beat_times = [float(t) for t in librosa.frames_to_time(beat_frames, sr=sr)]
+            if has_audio:
+                cmd = ["ffmpeg", "-y", "-i", job.media_path, "-vn", "-ar", "22050", "-ac", "1", scratch_audio]
+                ext_res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if ext_res.returncode != 0 or not os.path.isfile(scratch_audio):
+                    has_audio = False
 
-            # Detect audio onsets for acoustic transient alignment
-            onset_frames = librosa.onset.onset_detect(y=y, sr=sr, units="frames")
-            onset_times = [float(t) for t in librosa.frames_to_time(onset_frames, sr=sr)]
+            if has_audio and os.path.isfile(scratch_audio):
+                y, sr = librosa.load(scratch_audio, sr=22050, mono=True)
+                tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr, units="frames")
+                bpm = float(tempo[0] if isinstance(tempo, (list, np.ndarray)) else tempo)
+                beat_times = [float(t) for t in librosa.frames_to_time(beat_frames, sr=sr)]
 
-            peak_amp = float(np.max(np.abs(y)))
-            rms = float(np.sqrt(np.mean(y ** 2)))
-            rms_db = 20 * np.log10(rms + 1e-6)
-            clipping_detected = peak_amp >= 0.99
+                # Detect audio onsets for acoustic transient alignment
+                onset_frames = librosa.onset.onset_detect(y=y, sr=sr, units="frames")
+                onset_times = [float(t) for t in librosa.frames_to_time(onset_frames, sr=sr)]
 
-            # Handle silence and short clips: require usable timing evidence before grading
-            if peak_amp < 1e-4 or duration_sec <= 1.0:
-                beat_times = []
+                peak_amp = float(np.max(np.abs(y)))
+                rms = float(np.sqrt(np.mean(y ** 2)))
+                rms_db = 20 * np.log10(rms + 1e-6)
+                clipping_detected = peak_amp >= 0.99
+
+                # Handle silence and short clips: require usable timing evidence before grading
+                if peak_amp < 1e-4 or duration_sec <= 1.0:
+                    beat_times = []
+                    bpm = 0.0
+                    onset_times = []
+
+                audio_signals = {
+                    "bpm": round(bpm, 1),
+                    "peak_amplitude": round(peak_amp, 3),
+                    "rms_db": round(rms_db, 1),
+                    "clipping_detected": clipping_detected,
+                    "onsets_count": len(onset_times),
+                    "has_audio_stream": True,
+                }
+            else:
+                y = np.array([], dtype=np.float32)
+                sr = 22050
                 bpm = 0.0
+                beat_times = []
                 onset_times = []
-
-            audio_signals = {
-                "bpm": round(bpm, 1),
-                "peak_amplitude": round(peak_amp, 3),
-                "rms_db": round(rms_db, 1),
-                "clipping_detected": clipping_detected,
-                "onsets_count": len(onset_times),
-            }
+                peak_amp = 0.0
+                rms_db = -120.0
+                clipping_detected = False
+                audio_signals = {
+                    "bpm": 0.0,
+                    "peak_amplitude": 0.0,
+                    "rms_db": -120.0,
+                    "clipping_detected": False,
+                    "onsets_count": 0,
+                    "has_audio_stream": False,
+                }
 
             # Multi-tempo rhythmic grid and transient alignment evaluation
             rhythm_eval = engine.evaluate_multi_grid_rhythm(
@@ -705,38 +739,59 @@ class AnalysisEngine:
                 )
                 beat_card = scorecard_res["scorecard"]["beat_synchronization"]
 
-                # Emit Dimension 1 (Beat Synchronization) — Genuinely COMPLETED
-                beat_payload = {
-                    "section_id": "beat_synchronization",
-                    "score_0_10": beat_card["score"],
-                    "evidence_status": StatusTag.MEASURED_SIGNAL,
-                    "evidence_refs": {
-                        "primary_grid_tight_percent": rhythm_eval["primary_grid"]["tight_sync_percent"],
-                        "double_time_tight_percent": rhythm_eval["double_time_grid"]["tight_sync_percent"],
-                        "subdivision_16th_tight_percent": rhythm_eval.get("subdivision_16th_grid", {}).get("tight_sync_percent"),
-                        "onset_transient_tight_percent": rhythm_eval.get("onset_alignment", {}).get("tight_sync_percent") if rhythm_eval.get("onset_alignment") else None,
-                        "compound_tight_sync_percent": rhythm_eval.get("compound_sync", {}).get("tight_sync_percent"),
-                        "flash_onset_sync_percent": rhythm_eval.get("intra_shot_flash_sync_percent"),
-                        "primary_bpm": rhythm_eval["primary_bpm"],
-                        "anticipatory_cuts_count": rhythm_eval["anticipatory_cuts_count"],
-                        "best_rhythmic_fit": rhythm_eval["best_rhythmic_fit"],
-                        "rigid_grid_score": beat_card.get("metric_details", {}).get("rigid_grid_score"),
-                        "compound_alignment_score": beat_card.get("metric_details", {}).get("compound_alignment_score"),
-                    },
-                    "limitations": [
-                        "Derived strictly from measured temporal proximity of cut timestamps to detected audio transients. "
-                        "This is an objective timing alignment measurement, NOT a validated overall artistic judgment of musicality, groove, or emotional sync."
-                    ],
-                    "creator_explanation": (
-                        f"Beat-alignment score is {beat_card['score']:.2f}/10. "
-                        f"Measures physical cut alignment to primary ({rhythm_eval['primary_grid']['tight_sync_percent']}%) "
-                        f"and double-time ({rhythm_eval['double_time_grid']['tight_sync_percent']}%) beat grids, "
-                        f"with {rhythm_eval.get('compound_sync', {}).get('tight_sync_percent', rhythm_eval['primary_grid']['tight_sync_percent'])}% compound alignment across subdivisions and transients. "
-                        f"Evaluates transient proximity; this describes cut timing alignment, not validated artistic musicality or groove."
-                    )
-                }
-                job.progressive_sections["beat_synchronization"] = beat_payload
-                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "beat_synchronization", beat_payload, aud_elapsed_ms)
+                if beat_card.get("score") is None:
+                    beat_payload = {
+                        "section_id": "beat_synchronization",
+                        "score_0_10": None,
+                        "evidence_status": StatusTag.NOT_YET_ASSESSED,
+                        "evidence_refs": {
+                            "primary_bpm": rhythm_eval.get("primary_bpm", 0.0),
+                            "has_audio_stream": audio_signals.get("has_audio_stream", False),
+                        },
+                        "limitations": [
+                            "Audio track missing or rhythm undetected; beat synchronization unassessed."
+                        ],
+                        "creator_explanation": (
+                            "Video file contains no audio track; beat synchronization unassessed."
+                            if not audio_signals.get("has_audio_stream", True)
+                            else "Rhythmic signal unavailable; beat synchronization unassessed."
+                        )
+                    }
+                    job.progressive_sections["beat_synchronization"] = beat_payload
+                    job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "beat_synchronization", beat_payload, aud_elapsed_ms)
+                else:
+                    # Emit Dimension 1 (Beat Synchronization) — Genuinely COMPLETED
+                    beat_payload = {
+                        "section_id": "beat_synchronization",
+                        "score_0_10": beat_card["score"],
+                        "evidence_status": StatusTag.MEASURED_SIGNAL,
+                        "evidence_refs": {
+                            "primary_grid_tight_percent": rhythm_eval["primary_grid"]["tight_sync_percent"],
+                            "double_time_tight_percent": rhythm_eval["double_time_grid"]["tight_sync_percent"],
+                            "subdivision_16th_tight_percent": rhythm_eval.get("subdivision_16th_grid", {}).get("tight_sync_percent"),
+                            "onset_transient_tight_percent": rhythm_eval.get("onset_alignment", {}).get("tight_sync_percent") if rhythm_eval.get("onset_alignment") else None,
+                            "compound_tight_sync_percent": rhythm_eval.get("compound_sync", {}).get("tight_sync_percent"),
+                            "flash_onset_sync_percent": rhythm_eval.get("intra_shot_flash_sync_percent"),
+                            "primary_bpm": rhythm_eval["primary_bpm"],
+                            "anticipatory_cuts_count": rhythm_eval["anticipatory_cuts_count"],
+                            "best_rhythmic_fit": rhythm_eval["best_rhythmic_fit"],
+                            "rigid_grid_score": beat_card.get("metric_details", {}).get("rigid_grid_score"),
+                            "compound_alignment_score": beat_card.get("metric_details", {}).get("compound_alignment_score"),
+                        },
+                        "limitations": [
+                            "Derived strictly from measured temporal proximity of cut timestamps to detected audio transients. "
+                            "This is an objective timing alignment measurement, NOT a validated overall artistic judgment of musicality, groove, or emotional sync."
+                        ],
+                        "creator_explanation": (
+                            f"Beat-alignment score is {beat_card['score']:.2f}/10. "
+                            f"Measures physical cut alignment to primary ({rhythm_eval['primary_grid']['tight_sync_percent']}%) "
+                            f"and double-time ({rhythm_eval['double_time_grid']['tight_sync_percent']}%) beat grids, "
+                            f"with {rhythm_eval.get('compound_sync', {}).get('tight_sync_percent', rhythm_eval['primary_grid']['tight_sync_percent'])}% compound alignment across subdivisions and transients. "
+                            f"Evaluates transient proximity; this describes cut timing alignment, not validated artistic musicality or groove."
+                        )
+                    }
+                    job.progressive_sections["beat_synchronization"] = beat_payload
+                    job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "beat_synchronization", beat_payload, aud_elapsed_ms)
 
                 # Emit Dimension 5 & 6 as UNASSESSED
                 story_payload = {
@@ -783,19 +838,30 @@ class AnalysisEngine:
                 "evidence": {"orb_inliers": 0, "verified_keypoints": 0}
             }
 
-            sec_b = {
-                "provenance": "music_evidence_resolver",
-                "status": music_resolution["status"],
-                "matched_track": music_resolution.get("matched_track"),
-                "confidence": music_resolution.get("confidence", 0.0),
-                "tentative_candidate": music_resolution.get("tentative_candidate"),
-                "conflict_details": music_resolution.get("conflict_details"),
-                "audit_note": (
-                    "No reference audio fingerprint match identified in authorized catalog. "
-                    "Soundtrack identity remains UNKNOWN (0.0 confidence). "
-                    "Measured acoustic parameters (RMS, BPM, clipping) are physical signals, not track identification."
-                ),
-            }
+            if not audio_signals.get("has_audio_stream", True):
+                sec_b = {
+                    "provenance": "music_evidence_resolver",
+                    "status": StatusTag.UNKNOWN,
+                    "matched_track": None,
+                    "confidence": 0.0,
+                    "tentative_candidate": None,
+                    "conflict_details": None,
+                    "audit_note": "Video file does not contain an audio track. Soundtrack identity unassessed.",
+                }
+            else:
+                sec_b = {
+                    "provenance": "music_evidence_resolver",
+                    "status": music_resolution["status"],
+                    "matched_track": music_resolution.get("matched_track"),
+                    "confidence": music_resolution.get("confidence", 0.0),
+                    "tentative_candidate": music_resolution.get("tentative_candidate"),
+                    "conflict_details": music_resolution.get("conflict_details"),
+                    "audit_note": (
+                        "No reference audio fingerprint match identified in authorized catalog. "
+                        "Soundtrack identity remains UNKNOWN (0.0 confidence). "
+                        "Measured acoustic parameters (RMS, BPM, clipping) are physical signals, not track identification."
+                    ),
+                }
 
             sec_c = {
                 "provenance": "measured_signal",
