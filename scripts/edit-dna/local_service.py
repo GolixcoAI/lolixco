@@ -333,8 +333,9 @@ class AnalysisEngine:
                 if mean_lum > 210 or diff > 48.0:
                     flash_frames.append(round(frame_idx / fps, 3))
 
-                # Sample sharpness & contrast every 15 frames (~0.5s)
-                if frame_idx % 15 == 0:
+                # Validate sampling interval for short clips (<= 1.0s or <= 30 frames)
+                sample_interval = max(1, min(15, total_frames // 4)) if total_frames > 0 else 15
+                if frame_idx % sample_interval == 0:
                     lap_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
                     sharpness_scores.append(lap_var)
                     luminance_samples.append(mean_lum)
@@ -363,6 +364,13 @@ class AnalysisEngine:
                 frame_idx += 1
 
             cap.release()
+
+            # Ensure at least one visual sample exists for very short clips
+            if not sharpness_scores and prev_gray is not None:
+                lap_var = float(cv2.Laplacian(prev_gray, cv2.CV_64F).var())
+                sharpness_scores.append(lap_var)
+                luminance_samples.append(float(np.mean(prev_gray)))
+                contrast_samples.append(float(np.std(prev_gray)))
 
             # End of video cut handling
             if cuts[-1] < duration_sec - 0.25:
@@ -474,6 +482,12 @@ class AnalysisEngine:
             rms_db = 20 * np.log10(rms + 1e-6)
             clipping_detected = peak_amp >= 0.99
 
+            # Handle silence and short clips: require usable timing evidence before grading
+            if peak_amp < 1e-4 or duration_sec <= 1.0:
+                beat_times = []
+                bpm = 0.0
+                onset_times = []
+
             audio_signals = {
                 "bpm": round(bpm, 1),
                 "peak_amplitude": round(peak_amp, 3),
@@ -545,7 +559,8 @@ class AnalysisEngine:
                     "creator_explanation": beat_data.get("editorial_explanation", "")
                 }
                 job.progressive_sections["beat_synchronization"] = beat_payload
-                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "beat_synchronization", beat_payload, aud_elapsed_ms)
+                beat_ev_type = AnalysisJobStatus.SECTION_COMPLETED if beat_data["score_0_10"] is not None else AnalysisJobStatus.SECTION_UNASSESSED
+                job.add_event(beat_ev_type, "beat_synchronization", beat_payload, aud_elapsed_ms)
 
                 # 2. Cuts & Transitions
                 cuts_data = q_dims["cuts_and_transitions"]
@@ -583,7 +598,7 @@ class AnalysisEngine:
                 job.progressive_sections["visual_measurements"] = vis_payload
                 job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "visual_measurements", vis_payload, vid_elapsed_ms)
 
-                # 5. Storytelling Interpretation
+                # 5. Storytelling Interpretation (withheld from autonomous score)
                 story_data = q_dims["storytelling_interpretation"]
                 story_payload = {
                     "section_id": "storytelling_interpretation",
@@ -594,9 +609,9 @@ class AnalysisEngine:
                     "creator_explanation": story_data.get("editorial_explanation", "")
                 }
                 job.progressive_sections["storytelling_interpretation"] = story_payload
-                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "storytelling_interpretation", story_payload)
+                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "storytelling_interpretation", story_payload)
 
-                # 6. Originality & Creative Execution
+                # 6. Originality & Creative Execution (withheld from autonomous score)
                 orig_data = q_dims["originality_creativity"]
                 orig_payload = {
                     "section_id": "originality_creativity",
@@ -607,9 +622,9 @@ class AnalysisEngine:
                     "creator_explanation": orig_data.get("editorial_explanation", "")
                 }
                 job.progressive_sections["originality_creativity"] = orig_payload
-                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "originality_creativity", orig_payload)
+                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "originality_creativity", orig_payload)
 
-                # 7. Personalized Owner Fit
+                # 7. Personalized Owner Fit (withheld from autonomous score)
                 fit_data = q_dims["personalized_owner_fit"]
                 fit_payload = {
                     "section_id": "personalized_owner_fit",
@@ -619,7 +634,7 @@ class AnalysisEngine:
                     "creator_explanation": fit_data.get("editorial_explanation", "")
                 }
                 job.progressive_sections["personalized_owner_fit"] = fit_payload
-                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "personalized_owner_fit", fit_payload)
+                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "personalized_owner_fit", fit_payload)
 
                 scorecard_res = {
                     "scorecard": {
@@ -812,7 +827,7 @@ class AnalysisEngine:
                 }
                 sec_e = {
                     "provenance": "personalized_estimate",
-                    "status": "CALCULATED_PERSONALIZED",
+                    "status": fit_data["evidence_status"],
                     "predicted_score": fit_data["score_0_10"],
                     "owner_preference_weights": q_engine.owner_weights,
                     "empirical_evaluation": {"loocv_mae": 0.58, "loocv_rmse": 0.80}
