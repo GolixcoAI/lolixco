@@ -1713,6 +1713,16 @@ assert pres["overall_score_0_10"] is None
 assert pres["overall_score_status"] == "NOT_YET_ASSESSED"
 assert pres["overall_score_tier"] == "Unassessed"
 assert pres["gauge_presentation"]["gauge_state"] == "unassessed_standby"
+assert pres.get("experimental_phase9") is True
+assert pres.get("mode") == "phase9"
+assert pres.get("analysis_mode") == "phase9"
+assert pres.get("engine_version") == "phase9_quality_engine_v9.0"
+
+# Verify Phase 9 explanation, metrics, and method version on beat_synchronization
+beat_sec = pres["assessment_sections"][0]
+assert beat_sec["method_version"] == "phase9_timing_engine_v9.0"
+assert "56.5%" in beat_sec["creator_explanation"]
+assert "97.1%" not in beat_sec["creator_explanation"]
 
 # Verify first 4 sections have numeric scores, last 3 have null
 assert len(pres["assessment_sections"]) == 7
@@ -1834,5 +1844,105 @@ print("PHASE9_STATISTICAL_CONTROLS_VERIFIED")
   );
 
   assert.ok(stdout.includes("PHASE9_STATISTICAL_CONTROLS_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 9: Full service short-clip pipeline test with unassessed event stream and report exports", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+import os
+import subprocess
+import json
+sys.path.insert(0, "scripts/edit-dna")
+from local_service import AnalysisEngine, AnalysisJob, AnalysisJobStatus, PRIVATE_JOBS_DIR
+from edit_dna_schema_v6 import EditDNASchemaV6
+from presentation_adapter import EditDNAPresentationAdapter
+
+# 1. Generate 0.5-second silent MP4 test asset
+test_clip = "/tmp/test_service_short_silent.mp4"
+gen_cmd = [
+    "ffmpeg", "-y",
+    "-f", "lavfi", "-i", "color=c=black:s=320x240:d=0.5",
+    "-f", "lavfi", "-i", "anullsrc=r=22050:cl=mono",
+    "-t", "0.5",
+    "-c:v", "libx264", "-pix_fmt", "yuv420p",
+    "-c:a", "aac",
+    test_clip
+]
+subprocess.run(gen_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+assert os.path.isfile(test_clip)
+
+try:
+    # 2. Run full AnalysisEngine job in phase9 quality mode
+    job = AnalysisJob("test_short_clip_export_job", test_clip, quality_mode="phase9")
+    AnalysisEngine.execute_job(job)
+
+    # 3. Verify job finished completely without uncaught KeyError or crash
+    assert job.status == AnalysisJobStatus.COMPLETE
+    assert job.duration_seconds > 0.0
+
+    # 4. Verify unassessed events emitted for null scores
+    unassessed_events = [e for e in job.events if e["event_type"] == AnalysisJobStatus.SECTION_UNASSESSED]
+    assert len(unassessed_events) >= 6
+    for e in unassessed_events:
+        assert e["payload"]["score_0_10"] is None
+        assert e["payload"]["evidence_status"] == "NOT_YET_ASSESSED"
+        assert len(e["payload"]["creator_explanation"]) > 0
+
+    # 5. Verify presentation report root provenance & withholding
+    pres = job.presentation_report
+    assert pres is not None
+    assert pres["schema_version"] == "7.0.0-presentation"
+    assert pres["experimental_phase9"] is True
+    assert pres["mode"] == "phase9"
+    assert pres["analysis_mode"] == "phase9"
+    assert pres["engine_version"] == "phase9_quality_engine_v9.0"
+    assert pres["overall_score_0_10"] is None
+    assert pres["overall_score_status"] == "NOT_YET_ASSESSED"
+    assert pres["overall_score_tier"] == "Unassessed"
+    assert pres["gauge_presentation"]["gauge_state"] == "unassessed_standby"
+
+    # 6. Verify all 7 sections present with valid explanations
+    assert len(pres["assessment_sections"]) == 7
+    for s in pres["assessment_sections"]:
+        assert len(s["creator_explanation"]) > 0
+        assert "method_version" in s
+        if s["score_0_10"] is None:
+            assert s["evidence_status"] == "NOT_YET_ASSESSED"
+
+    # 7. Validate schemas
+    EditDNASchemaV6.validate(job.v6_report)
+    EditDNAPresentationAdapter.validate_presentation_report(pres)
+
+    # 8. Verify report exports to private disk storage
+    job_dir = os.path.join(PRIVATE_JOBS_DIR, job.job_id)
+    v6_file = os.path.join(job_dir, "report_v6.json")
+    pres_file = os.path.join(job_dir, "report_presentation.json")
+    assert os.path.isfile(v6_file)
+    assert os.path.isfile(pres_file)
+
+    with open(pres_file, "r", encoding="utf-8") as f:
+        exported_pres = json.load(f)
+    assert exported_pres["experimental_phase9"] is True
+    assert exported_pres["mode"] == "phase9"
+    assert len(exported_pres["assessment_sections"]) == 7
+
+    print("FULL_SERVICE_SHORT_CLIP_EXPORT_VERIFIED")
+
+finally:
+    if os.path.isfile(test_clip):
+        os.remove(test_clip)
+      `,
+    ],
+    { encoding: "utf8", timeout: 20000 }
+  );
+
+  assert.ok(stdout.includes("FULL_SERVICE_SHORT_CLIP_EXPORT_VERIFIED"));
 });
 

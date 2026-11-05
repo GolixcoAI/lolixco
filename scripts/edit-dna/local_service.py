@@ -546,6 +546,9 @@ class AnalysisEngine:
                 )
                 q_dims = q_res["dimensions"]
 
+                def _sec_notes(d: Dict[str, Any], fallback: str = "") -> str:
+                    return d.get("editorial_explanation") or d.get("reason") or fallback
+
                 # Emit the 7 assessment dimensions in exact Creator Studio order:
                 # 1. Beat Synchronization
                 beat_data = q_dims["beat_synchronization"]
@@ -556,7 +559,7 @@ class AnalysisEngine:
                     "evidence_refs": beat_data.get("metrics", {}),
                     "best_synchronized_moments": beat_data.get("best_synchronized_moments", []),
                     "rhythmic_drift_moments": beat_data.get("rhythmic_drift_moments", []),
-                    "creator_explanation": beat_data.get("editorial_explanation", "")
+                    "creator_explanation": _sec_notes(beat_data, "Beat synchronization unassessed.")
                 }
                 job.progressive_sections["beat_synchronization"] = beat_payload
                 beat_ev_type = AnalysisJobStatus.SECTION_COMPLETED if beat_data["score_0_10"] is not None else AnalysisJobStatus.SECTION_UNASSESSED
@@ -569,10 +572,11 @@ class AnalysisEngine:
                     "score_0_10": cuts_data["score_0_10"],
                     "evidence_status": cuts_data["evidence_status"],
                     "evidence_refs": cuts_data.get("metrics", {}),
-                    "creator_explanation": cuts_data.get("editorial_explanation", "")
+                    "creator_explanation": _sec_notes(cuts_data, "Cuts & transitions unassessed.")
                 }
                 job.progressive_sections["cuts_and_transitions"] = cuts_payload
-                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "cuts_and_transitions", cuts_payload, vid_elapsed_ms)
+                cuts_ev_type = AnalysisJobStatus.SECTION_COMPLETED if cuts_data["score_0_10"] is not None else AnalysisJobStatus.SECTION_UNASSESSED
+                job.add_event(cuts_ev_type, "cuts_and_transitions", cuts_payload, vid_elapsed_ms)
 
                 # 3. Pacing
                 pacing_data = q_dims["pacing"]
@@ -581,10 +585,11 @@ class AnalysisEngine:
                     "score_0_10": pacing_data["score_0_10"],
                     "evidence_status": pacing_data["evidence_status"],
                     "evidence_refs": pacing_data.get("metrics", {}),
-                    "creator_explanation": pacing_data.get("editorial_explanation", "")
+                    "creator_explanation": _sec_notes(pacing_data, "Pacing unassessed.")
                 }
                 job.progressive_sections["pacing"] = pacing_payload
-                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "pacing", pacing_payload, vid_elapsed_ms)
+                pacing_ev_type = AnalysisJobStatus.SECTION_COMPLETED if pacing_data["score_0_10"] is not None else AnalysisJobStatus.SECTION_UNASSESSED
+                job.add_event(pacing_ev_type, "pacing", pacing_payload, vid_elapsed_ms)
 
                 # 4. Visual Measurements
                 vis_data = q_dims["visual_measurements"]
@@ -593,10 +598,11 @@ class AnalysisEngine:
                     "score_0_10": vis_data["score_0_10"],
                     "evidence_status": vis_data["evidence_status"],
                     "evidence_refs": vis_data.get("metrics", {}),
-                    "creator_explanation": vis_data.get("editorial_explanation", "")
+                    "creator_explanation": _sec_notes(vis_data, "Visual measurements unassessed.")
                 }
                 job.progressive_sections["visual_measurements"] = vis_payload
-                job.add_event(AnalysisJobStatus.SECTION_COMPLETED, "visual_measurements", vis_payload, vid_elapsed_ms)
+                vis_ev_type = AnalysisJobStatus.SECTION_COMPLETED if vis_data["score_0_10"] is not None else AnalysisJobStatus.SECTION_UNASSESSED
+                job.add_event(vis_ev_type, "visual_measurements", vis_payload, vid_elapsed_ms)
 
                 # 5. Storytelling Interpretation (withheld from autonomous score)
                 story_data = q_dims["storytelling_interpretation"]
@@ -606,10 +612,11 @@ class AnalysisEngine:
                     "evidence_status": story_data["evidence_status"],
                     "evidence_refs": story_data.get("metrics", {}),
                     "missing_evidence": story_data.get("missing_evidence", []),
-                    "creator_explanation": story_data.get("editorial_explanation", "")
+                    "creator_explanation": _sec_notes(story_data, "Storytelling interpretation unassessed.")
                 }
                 job.progressive_sections["storytelling_interpretation"] = story_payload
-                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "storytelling_interpretation", story_payload)
+                story_ev_type = AnalysisJobStatus.SECTION_COMPLETED if story_data["score_0_10"] is not None else AnalysisJobStatus.SECTION_UNASSESSED
+                job.add_event(story_ev_type, "storytelling_interpretation", story_payload)
 
                 # 6. Originality & Creative Execution (withheld from autonomous score)
                 orig_data = q_dims["originality_creativity"]
@@ -619,10 +626,11 @@ class AnalysisEngine:
                     "evidence_status": orig_data["evidence_status"],
                     "evidence_refs": orig_data.get("metrics", {}),
                     "missing_evidence": orig_data.get("missing_evidence", []),
-                    "creator_explanation": orig_data.get("editorial_explanation", "")
+                    "creator_explanation": _sec_notes(orig_data, "Originality unassessed.")
                 }
                 job.progressive_sections["originality_creativity"] = orig_payload
-                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "originality_creativity", orig_payload)
+                orig_ev_type = AnalysisJobStatus.SECTION_COMPLETED if orig_data["score_0_10"] is not None else AnalysisJobStatus.SECTION_UNASSESSED
+                job.add_event(orig_ev_type, "originality_creativity", orig_payload)
 
                 # 7. Personalized Owner Fit (withheld from autonomous score)
                 fit_data = q_dims["personalized_owner_fit"]
@@ -631,53 +639,56 @@ class AnalysisEngine:
                     "score_0_10": fit_data["score_0_10"],
                     "evidence_status": fit_data["evidence_status"],
                     "evidence_refs": fit_data.get("metrics", {}),
-                    "creator_explanation": fit_data.get("editorial_explanation", "")
+                    "creator_explanation": _sec_notes(fit_data, "Personalized owner fit unassessed.")
                 }
                 job.progressive_sections["personalized_owner_fit"] = fit_payload
-                job.add_event(AnalysisJobStatus.SECTION_UNASSESSED, "personalized_owner_fit", fit_payload)
+                fit_ev_type = AnalysisJobStatus.SECTION_COMPLETED if fit_data["score_0_10"] is not None else AnalysisJobStatus.SECTION_UNASSESSED
+                job.add_event(fit_ev_type, "personalized_owner_fit", fit_payload)
 
                 scorecard_res = {
                     "scorecard": {
                         "beat_synchronization": {
                             "score": beat_data["score_0_10"],
                             "status": beat_data["evidence_status"],
-                            "notes": beat_data["editorial_explanation"],
+                            "notes": _sec_notes(beat_data),
                             "metric_details": beat_data.get("metrics", {}),
+                            "best_synchronized_moments": beat_data.get("best_synchronized_moments", []),
+                            "rhythmic_drift_moments": beat_data.get("rhythmic_drift_moments", []),
                         },
                         "transitions": {
                             "score": cuts_data["score_0_10"],
                             "status": cuts_data["evidence_status"],
-                            "notes": cuts_data["editorial_explanation"],
+                            "notes": _sec_notes(cuts_data),
                             "metric_details": cuts_data.get("metrics", {}),
                         },
                         "pacing": {
                             "score": pacing_data["score_0_10"],
                             "status": pacing_data["evidence_status"],
-                            "notes": pacing_data["editorial_explanation"],
+                            "notes": _sec_notes(pacing_data),
                             "metric_details": pacing_data.get("metrics", {}),
                         },
                         "visual_quality": {
                             "score": vis_data["score_0_10"],
                             "status": vis_data["evidence_status"],
-                            "notes": vis_data["editorial_explanation"],
+                            "notes": _sec_notes(vis_data),
                             "metric_details": vis_data.get("metrics", {}),
                         },
                         "storytelling_emotion": {
                             "score": story_data["score_0_10"],
                             "status": story_data["evidence_status"],
-                            "notes": story_data["editorial_explanation"],
+                            "notes": _sec_notes(story_data),
                             "metric_details": story_data.get("metrics", {}),
                         },
                         "originality_creativity": {
                             "score": orig_data["score_0_10"],
                             "status": orig_data["evidence_status"],
-                            "notes": orig_data["editorial_explanation"],
+                            "notes": _sec_notes(orig_data),
                             "metric_details": orig_data.get("metrics", {}),
                         },
                         "personalized_owner_fit": {
                             "score": fit_data["score_0_10"],
                             "status": fit_data["evidence_status"],
-                            "notes": fit_data["editorial_explanation"],
+                            "notes": _sec_notes(fit_data),
                             "metric_details": fit_data.get("metrics", {}),
                         },
                     }
@@ -794,20 +805,20 @@ class AnalysisEngine:
                 "cuts_per_second": reconciliation["cuts_per_second"],
                 "shot_duration_mean_sec": reconciliation["shot_duration_mean"],
                 "shot_duration_std_dev_sec": reconciliation["shot_duration_std_dev"],
-                "primary_bpm": rhythm_eval["primary_bpm"],
-                "half_time_bpm": rhythm_eval["half_time_bpm"],
-                "double_time_bpm": rhythm_eval["double_time_bpm"],
-                "best_rhythmic_fit": rhythm_eval["best_rhythmic_fit"],
+                "primary_bpm": rhythm_eval.get("primary_bpm", bpm),
+                "half_time_bpm": rhythm_eval.get("half_time_bpm", round(bpm / 2, 1) if bpm > 0 else 0.0),
+                "double_time_bpm": rhythm_eval.get("double_time_bpm", round(bpm * 2, 1) if bpm > 0 else 0.0),
+                "best_rhythmic_fit": rhythm_eval.get("best_rhythmic_fit", "UNKNOWN"),
                 "rhythm_alignment": {
-                    "primary_grid_tight_percent": rhythm_eval["primary_grid"]["tight_sync_percent"],
-                    "primary_grid_loose_percent": rhythm_eval["primary_grid"]["loose_sync_percent"],
-                    "half_time_tight_percent": rhythm_eval["half_time_grid"]["tight_sync_percent"],
-                    "double_time_tight_percent": rhythm_eval["double_time_grid"]["tight_sync_percent"],
+                    "primary_grid_tight_percent": rhythm_eval.get("primary_grid", {}).get("tight_sync_percent", 0.0),
+                    "primary_grid_loose_percent": rhythm_eval.get("primary_grid", {}).get("loose_sync_percent", 0.0),
+                    "half_time_tight_percent": rhythm_eval.get("half_time_grid", {}).get("tight_sync_percent", 0.0),
+                    "double_time_tight_percent": rhythm_eval.get("double_time_grid", {}).get("tight_sync_percent", 0.0),
                     "subdivision_16th_tight_percent": rhythm_eval.get("subdivision_16th_grid", {}).get("tight_sync_percent"),
                     "onset_transient_tight_percent": rhythm_eval.get("onset_alignment", {}).get("tight_sync_percent") if rhythm_eval.get("onset_alignment") else None,
                     "compound_tight_sync_percent": rhythm_eval.get("compound_sync", {}).get("tight_sync_percent"),
                     "flash_onset_sync_percent": rhythm_eval.get("intra_shot_flash_sync_percent"),
-                    "anticipatory_cuts_count": rhythm_eval["anticipatory_cuts_count"],
+                    "anticipatory_cuts_count": rhythm_eval.get("anticipatory_cuts_count", 0),
                 },
                 "accessibility_signals": {
                     "intra_shot_flashes_count": reconciliation["intra_shot_flashes_count"],
@@ -895,6 +906,9 @@ class AnalysisEngine:
                 section_f_boundaries=sec_f,
                 section_g_contract=sec_g,
             )
+            if job.quality_mode == "phase9":
+                v6_doc["quality_mode"] = "phase9"
+                v6_doc["analysis_mode"] = "phase9"
             job.v6_report = v6_doc
 
             # 5. Phase 7 Presentation Report Assembly
