@@ -97,12 +97,12 @@ class EditDNAPresentationAdapter:
             or sec_map.get(dim, {}).get("score_0_10") is None
         ]
 
-        # If semantic dimensions are missing, we cannot honestly state an overall editing grade
-        if len(unassessed_semantic) >= 3:
+        # If subjective/semantic dimensions are missing, we cannot honestly state an overall editing grade
+        if len(unassessed_semantic) >= 2 or sec_map.get("storytelling_interpretation", {}).get("score_0_10") is None or sec_map.get("originality_creativity", {}).get("score_0_10") is None:
             return (
                 None,
                 "NOT_YET_ASSESSED",
-                f"Overall score withheld because {len(unassessed_semantic)} critical subjective dimensions remain unassessed."
+                f"Overall score withheld because critical subjective dimensions remain unassessed."
             )
 
         # If we have at least 4 assessed dimensions including semantic
@@ -255,16 +255,19 @@ class EditDNAPresentationAdapter:
             "score_0_10": round(float(beat_score), 2) if beat_score is not None else None,
             "evidence_status": beat_status,
             "evidence_refs": {
-                "primary_grid_tight_percent": rhythm_align.get("primary_grid_tight_percent"),
-                "double_time_tight_percent": rhythm_align.get("double_time_tight_percent"),
-                "subdivision_16th_tight_percent": rhythm_align.get("subdivision_16th_tight_percent"),
-                "onset_transient_tight_percent": rhythm_align.get("onset_transient_tight_percent"),
-                "compound_tight_sync_percent": rhythm_align.get("compound_tight_sync_percent"),
-                "flash_onset_sync_percent": rhythm_align.get("flash_onset_sync_percent"),
-                "primary_bpm": sec_c.get("primary_bpm"),
-                "anticipatory_cuts_count": rhythm_align.get("anticipatory_cuts_count", 0),
-                "rigid_grid_score": beat_card.get("metric_details", {}).get("rigid_grid_score"),
-                "compound_alignment_score": beat_card.get("metric_details", {}).get("compound_alignment_score"),
+                **{
+                    "primary_grid_tight_percent": rhythm_align.get("primary_grid_tight_percent"),
+                    "double_time_tight_percent": rhythm_align.get("double_time_tight_percent"),
+                    "subdivision_16th_tight_percent": rhythm_align.get("subdivision_16th_tight_percent"),
+                    "onset_transient_tight_percent": rhythm_align.get("onset_transient_tight_percent"),
+                    "compound_tight_sync_percent": rhythm_align.get("compound_tight_sync_percent"),
+                    "flash_onset_sync_percent": rhythm_align.get("flash_onset_sync_percent"),
+                    "primary_bpm": sec_c.get("primary_bpm"),
+                    "anticipatory_cuts_count": rhythm_align.get("anticipatory_cuts_count", 0),
+                    "rigid_grid_score": beat_card.get("metric_details", {}).get("rigid_grid_score"),
+                    "compound_alignment_score": beat_card.get("metric_details", {}).get("compound_alignment_score"),
+                },
+                **beat_card.get("metric_details", {})
             },
             "timestamps": sec_c.get("video_signals", {}).get("cut_timestamps", [])[:10],
             "method_version": "librosa_multi_tempo_grid_v6.0",
@@ -475,7 +478,8 @@ class EditDNAPresentationAdapter:
             "score_0_10": round(o_score, 2) if o_score is not None else None,
             "evidence_status": o_status,
             "evidence_refs": {
-                "shot_duration_variance": shot_std,
+                **{"shot_duration_variance": shot_std},
+                **orig_card.get("metric_details", {})
             },
             "timestamps": [],
             "method_version": "creative_execution_critique_v6.0",

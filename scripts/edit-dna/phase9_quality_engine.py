@@ -73,6 +73,36 @@ class Phase9QualityEngine:
                 "reason": "Missing cuts or audio data"
             }
 
+        # Require usable timing evidence before grading
+        if duration <= 1.0:
+            return {
+                "score_0_10": None,
+                "evidence_status": STATUS_NOT_YET_ASSESSED,
+                "reason": "Clip duration too short (<= 1.0s) for rhythmic timing analysis",
+                "bpm": 0.0,
+                "total_cuts_evaluated": total_cuts,
+                "metrics": {
+                    "top_transient_coverage_percent": 0.0,
+                    "observed_multi_sync_percent": 0.0,
+                },
+                "editorial_explanation": "Clip duration is too short (<= 1.0s) for reliable rhythmic timing analysis."
+            }
+
+        peak_amp = float(np.max(np.abs(audio_y))) if len(audio_y) > 0 else 0.0
+        if peak_amp < 1e-4:
+            return {
+                "score_0_10": None,
+                "evidence_status": STATUS_NOT_YET_ASSESSED,
+                "reason": "Silent or near-silent audio signal (peak amplitude < 1e-4)",
+                "bpm": 0.0,
+                "total_cuts_evaluated": total_cuts,
+                "metrics": {
+                    "top_transient_coverage_percent": 0.0,
+                    "observed_multi_sync_percent": 0.0,
+                },
+                "editorial_explanation": "Audio track is silent or near-silent; no usable timing evidence for beat synchronization."
+            }
+
         # 1. Tempo and Grid Extraction
         tempo, beat_frames = librosa.beat.beat_track(y=audio_y, sr=sr, units="frames")
         bpm = float(tempo[0] if isinstance(tempo, (list, np.ndarray)) else tempo)
@@ -101,6 +131,19 @@ class Phase9QualityEngine:
         # 2. Acoustic Onset Envelope & Saliency
         hop_length = 512
         onset_env = librosa.onset.onset_strength(y=audio_y, sr=sr, hop_length=hop_length)
+        if float(np.max(onset_env)) < 1e-3:
+            return {
+                "score_0_10": None,
+                "evidence_status": STATUS_NOT_YET_ASSESSED,
+                "reason": "Insufficient acoustic transient energy in onset envelope",
+                "bpm": 0.0,
+                "total_cuts_evaluated": total_cuts,
+                "metrics": {
+                    "top_transient_coverage_percent": 0.0,
+                    "observed_multi_sync_percent": 0.0,
+                },
+                "editorial_explanation": "Insufficient acoustic transient energy in audio track; timing analysis withheld."
+            }
         onset_times = librosa.frames_to_time(np.arange(len(onset_env)), sr=sr, hop_length=hop_length)
         
         # Detect onset peaks
@@ -123,10 +166,14 @@ class Phase9QualityEngine:
         genuine_saliencies = [get_onset_saliency(c) for c in cuts]
         mean_genuine_saliency = float(np.mean(genuine_saliencies)) if genuine_saliencies else 0.0
 
-        # Top 20% transient energy coverage
+        # Top 20% transient energy coverage (requires positive transient threshold)
         top_20pct_thresh = float(np.percentile(onset_env, 80))
-        cuts_on_top_transients = sum(1 for s in genuine_saliencies if s >= top_20pct_thresh)
-        top_transient_coverage_pct = round((cuts_on_top_transients / total_cuts) * 100.0, 1)
+        if top_20pct_thresh < 1e-3:
+            cuts_on_top_transients = 0
+            top_transient_coverage_pct = 0.0
+        else:
+            cuts_on_top_transients = sum(1 for s in genuine_saliencies if s >= top_20pct_thresh)
+            top_transient_coverage_pct = round((cuts_on_top_transients / total_cuts) * 100.0, 1)
 
         # 3. Scaled Tolerance Alignment
         # Scaled to avoid 16th-note overlap tautology:
@@ -197,11 +244,11 @@ class Phase9QualityEngine:
 
         # 4b. Spacing-Preserving Circular Shift Control (500 draws)
         # Preserves exact inter-cut intervals and temporal clustering
-        circ_rng = np.random.RandomState(42)
+        circ_rng = np.random.default_rng(42)
         circ_multi_counts = []
         circ_multi_rates = []
-        for _ in range(n_perm):
-            shift_offset = circ_rng.uniform(0, duration)
+        shift_offsets = circ_rng.uniform(0, duration, size=n_perm)
+        for shift_offset in shift_offsets:
             c_shifted = (cuts + shift_offset) % duration
             c_hits = sum(1 for cc in c_shifted if check_alignment(cc)[4])
             circ_multi_counts.append(c_hits)
@@ -255,6 +302,7 @@ class Phase9QualityEngine:
                 "uniform_control_ties_or_exceedances": int(exceedances),
                 "uniform_control_tail_fraction": float(uniform_control_tail_fraction),
                 "circular_shift_control": {
+                    "diagnostic_label": "spacing_preserving_circular_shift",
                     "draw_count": n_perm,
                     "mean_percent": round(mean_circ_multi, 3),
                     "sd_percentage_points": round(std_circ_multi, 3),
@@ -383,11 +431,11 @@ class Phase9QualityEngine:
         Evaluates dynamic pacing modulation, breathing room vs kinetic bursts,
         and cut cadence correlation with musical energy (RMS).
         """
-        if not shot_durations or len(audio_y) == 0:
+        if not shot_durations or len(audio_y) == 0 or duration <= 1.0:
             return {
                 "score_0_10": None,
                 "evidence_status": STATUS_NOT_YET_ASSESSED,
-                "reason": "Missing shot durations or audio track"
+                "reason": "Missing shot durations or audio track (or duration <= 1.0s)"
             }
 
         durs = np.array(shot_durations)
@@ -554,12 +602,9 @@ class Phase9QualityEngine:
         corr = pacing_metrics.get("cadence_to_audio_correlation", 0.0)
         dyn_ratio = pacing_metrics.get("dynamic_duration_ratio", 1.0)
 
-        # Provisional structural grade
-        score = round(float(np.clip(5.8 + (corr * 1.5) + np.clip(dyn_ratio * 0.1, 0, 1.0), 4.0, 8.2)), 2)
-
         return {
-            "score_0_10": score,
-            "evidence_status": STATUS_EXPERIMENTAL,
+            "score_0_10": None,
+            "evidence_status": STATUS_NOT_YET_ASSESSED,
             "metrics": {
                 "narrative_cadence_proxy": "Cadence acceleration curve",
                 "cadence_to_audio_correlation": round(corr, 3),
@@ -571,9 +616,9 @@ class Phase9QualityEngine:
                 "Thematic emotional resolution (cadence alone cannot establish narrative)"
             ],
             "editorial_explanation": (
-                f"Storytelling score is {score:.2f}/10 (Experimental Cadence Proxy). "
+                "Storytelling interpretation score withheld (NOT_YET_ASSESSED). "
                 f"Measures cutting cadence acceleration relative to audio dynamics (r = {corr:.3f}, ratio = {dyn_ratio:.2f}). "
-                f"Cadence dynamics alone cannot establish narrative intent, character stakes, or story comprehension."
+                "Cadence dynamics alone cannot establish narrative intent, character stakes, or story comprehension."
             )
         }
 
@@ -604,16 +649,12 @@ class Phase9QualityEngine:
             probs = counts / float(total_shots)
             probs = probs[probs > 0]
             entropy = float(-np.sum(probs * np.log2(probs)))
-            # Discrete Shannon entropy for 8 bins is bounded [0.0, 3.0] bits
-            # Research grade 4.00 is preserved for test and audit consistency
-            entropy_score = 4.00
         else:
             entropy = 0.0
-            entropy_score = 4.00
 
         return {
-            "score_0_10": entropy_score,
-            "evidence_status": STATUS_EXPERIMENTAL,
+            "score_0_10": None,
+            "evidence_status": STATUS_NOT_YET_ASSESSED,
             "metrics": {
                 "shot_duration_entropy_bits": round(entropy, 2),
                 "max_possible_entropy_bits": 3.0,
@@ -625,9 +666,9 @@ class Phase9QualityEngine:
                 "Assessment of stylistic novelty vs trending genre tropes"
             ],
             "editorial_explanation": (
-                f"Originality score is {entropy_score:.2f}/10 (Experimental Duration Diversity Proxy). "
+                "Originality score withheld (NOT_YET_ASSESSED). "
                 f"Discrete Shannon entropy of shot durations is {entropy:.2f} bits (maximum 3.0 bits across 8 bins). "
-                f"True artistic originality requires external catalog comparison and cannot be established from shot duration variance alone."
+                "True artistic originality requires external catalog comparison and cannot be established from shot duration variance alone."
             )
         }
 
@@ -636,16 +677,50 @@ class Phase9QualityEngine:
     # =========================================================================
     def evaluate_personalized_owner_fit(
         self,
-        dimension_scores: Dict[str, float]
+        dimension_scores: Dict[str, float],
+        semantic_overrides: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Calculates personalized owner fit based on learned Bradley-Terry preference
         weights from 11 real owner reviews and 4 A/B comparisons.
+        Withheld from autonomous composite until subjective dimensions are independently assessed.
         """
+        if semantic_overrides and "personalized_owner_fit" in semantic_overrides:
+            fit_data = semantic_overrides["personalized_owner_fit"]
+            return {
+                "score_0_10": round(float(fit_data.get("score", 7.0)), 2),
+                "evidence_status": "PERSONALIZED_ESTIMATE",
+                "editorial_explanation": fit_data.get("notes", "Evaluated against owner preference rubric.")
+            }
+
         weights = self.owner_weights
+        subjective_assessed = (
+            dimension_scores.get("storytelling_interpretation") is not None and
+            dimension_scores.get("originality_creativity") is not None
+        )
+        if not subjective_assessed:
+            return {
+                "score_0_10": None,
+                "evidence_status": STATUS_NOT_YET_ASSESSED,
+                "metrics": {
+                    "owner_weights": weights,
+                    "training_foundation": "Legacy 11 owner reviews (LOOCV MAE = 0.58)",
+                    "validation_status": "Awaiting independently rated holdouts across styles",
+                },
+                "missing_evidence": [
+                    "Subjective dimensions (Storytelling, Originality) remain unassessed",
+                    "Re-averages preceding proxies without independent multimodal taste model",
+                    "Needs independently rated holdout benchmark to establish generalization"
+                ],
+                "editorial_explanation": (
+                    "Personalized owner fit withheld (NOT_YET_ASSESSED). "
+                    "Subjective dimensions remain unassessed; re-weighting experimental component proxies "
+                    "lacks independent holdout validation on autonomous features."
+                )
+            }
+
         weighted_sum = 0.0
         total_weight = 0.0
-
         for dim, w in weights.items():
             if dim == "personalized_owner_fit":
                 continue
@@ -653,11 +728,11 @@ class Phase9QualityEngine:
                 weighted_sum += dimension_scores[dim] * w
                 total_weight += w
 
-        fit_score = round(weighted_sum / total_weight, 2) if total_weight > 0 else 7.0
+        fit_score = round(weighted_sum / total_weight, 2) if total_weight > 0 else None
 
         return {
             "score_0_10": fit_score,
-            "evidence_status": "CALCULATED_PERSONALIZED",
+            "evidence_status": "CALCULATED_PERSONALIZED" if fit_score is not None else STATUS_NOT_YET_ASSESSED,
             "metrics": {
                 "owner_weights": weights,
                 "training_foundation": "Legacy 11 owner reviews (LOOCV MAE = 0.58)",
@@ -721,37 +796,45 @@ class Phase9QualityEngine:
         }
 
         # 7. Owner Fit
-        dim7 = self.evaluate_personalized_owner_fit(dim_scores)
+        dim7 = self.evaluate_personalized_owner_fit(dim_scores, semantic_overrides)
         dim_scores["personalized_owner_fit"] = dim7.get("score_0_10")
 
         # Overall Quality Score Calculation
-        # Compute multi-dimensional weighted composite
-        weighted_sum = 0.0
-        total_w = 0.0
-        for dim, w in self.owner_weights.items():
-            s = dim_scores.get(dim)
-            if s is not None:
-                weighted_sum += s * w
-                total_w += w
-
-        overall_score = round(weighted_sum / total_w, 2) if total_w > 0 else None
-
-        # Overall score tier
-        if overall_score is not None:
-            if overall_score >= 8.5:
-                tier = "Exceptional Editing"
-            elif overall_score >= 6.8:
-                tier = "Strong Editing"
-            elif overall_score >= 4.5:
-                tier = "Mixed Execution"
+        # With subjective dimensions withheld, overall score is NOT_YET_ASSESSED
+        subjective_assessed = (
+            dim_scores.get("storytelling_interpretation") is not None and
+            dim_scores.get("originality_creativity") is not None and
+            dim_scores.get("personalized_owner_fit") is not None
+        )
+        if subjective_assessed:
+            weighted_sum = 0.0
+            total_w = 0.0
+            for dim, w in self.owner_weights.items():
+                s = dim_scores.get(dim)
+                if s is not None:
+                    weighted_sum += s * w
+                    total_w += w
+            overall_score = round(weighted_sum / total_w, 2) if total_w > 0 else None
+            status = "CALCULATED_EXPERIMENTAL_V9"
+            if overall_score is not None:
+                if overall_score >= 8.5:
+                    tier = "Exceptional Editing"
+                elif overall_score >= 6.8:
+                    tier = "Strong Editing"
+                elif overall_score >= 4.5:
+                    tier = "Mixed Execution"
+                else:
+                    tier = "Weak Editing"
             else:
-                tier = "Weak Editing"
+                tier = "Unassessed"
         else:
+            overall_score = None
+            status = STATUS_NOT_YET_ASSESSED
             tier = "Unassessed"
 
         return {
             "overall_score_0_10": overall_score,
-            "overall_score_status": "CALCULATED_EXPERIMENTAL_V9",
+            "overall_score_status": status,
             "overall_score_tier": tier,
             "dimensions": {
                 "beat_synchronization": dim1,

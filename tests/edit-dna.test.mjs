@@ -1551,7 +1551,7 @@ assert "circular_shift_control" in metrics
 assert metrics["circular_shift_control"]["plus_one_tail_fraction"] <= 1.0
 assert metrics["observed_multi_sync_percent"] > metrics["monte_carlo_random_baseline_percent"]
 
-# 2. Evaluate full edit quality across 7 dimensions
+# 2. Evaluate full edit quality across 7 dimensions (verifying score eligibility withholding)
 full_res = engine.evaluate_full_edit_quality(
     internal_cuts=aligned_cuts,
     shot_durations=shot_durations,
@@ -1567,10 +1567,35 @@ full_res = engine.evaluate_full_edit_quality(
     fps=30.0
 )
 
-assert full_res["overall_score_0_10"] is not None
-assert 0.0 <= full_res["overall_score_0_10"] <= 10.0
-assert full_res["overall_score_status"] == "CALCULATED_EXPERIMENTAL_V9"
+# Autonomous evaluation cleanly withholds overall score when subjective dimensions are unassessed
+assert full_res["overall_score_0_10"] is None
+assert full_res["overall_score_status"] == "NOT_YET_ASSESSED"
+assert full_res["overall_score_tier"] == "Unassessed"
 assert len(full_res["dimensions"]) == 7
+assert full_res["dimensions"]["storytelling_interpretation"]["score_0_10"] is None
+assert full_res["dimensions"]["originality_creativity"]["score_0_10"] is None
+assert full_res["dimensions"]["personalized_owner_fit"]["score_0_10"] is None
+assert full_res["dimensions"]["beat_synchronization"]["score_0_10"] is not None
+
+# When semantic overrides are provided, overall composite is calculated
+sem_res = engine.evaluate_full_edit_quality(
+    internal_cuts=aligned_cuts,
+    shot_durations=shot_durations,
+    cut_continuity_correlations=[0.5] * len(aligned_cuts),
+    flash_frames=[],
+    sharpness_values=[80.0] * 20,
+    contrast_values=[40.0] * 20,
+    audio_y=audio_y,
+    sr=sr,
+    duration=duration,
+    width=1280,
+    height=720,
+    fps=30.0,
+    semantic_overrides={"storytelling": {"score": 7.5}, "originality": {"score": 8.0}}
+)
+assert sem_res["overall_score_0_10"] is not None
+assert 0.0 <= sem_res["overall_score_0_10"] <= 10.0
+assert sem_res["overall_score_status"] == "CALCULATED_EXPERIMENTAL_V9"
 
 print("PHASE9_QUALITY_ENGINE_VERIFIED")
       `,
@@ -1662,30 +1687,45 @@ AnalysisEngine.execute_job(job)
 assert job.status == AnalysisJobStatus.COMPLETE
 assert job.duration_seconds > 0.0
 
-# Verify progressive section completion
-sec_ids = [e["section_id"] for e in job.events if e["event_type"] == AnalysisJobStatus.SECTION_COMPLETED]
-assert "beat_synchronization" in sec_ids
-assert "cuts_and_transitions" in sec_ids
-assert "pacing" in sec_ids
-assert "visual_measurements" in sec_ids
-assert "storytelling_interpretation" in sec_ids
-assert "originality_creativity" in sec_ids
-assert "personalized_owner_fit" in sec_ids
+# Verify progressive section completion and honest unassessed withholding
+completed_ids = [e["section_id"] for e in job.events if e["event_type"] == AnalysisJobStatus.SECTION_COMPLETED]
+assert "beat_synchronization" in completed_ids
+assert "cuts_and_transitions" in completed_ids
+assert "pacing" in completed_ids
+assert "visual_measurements" in completed_ids
 
-# Verify presentation report
+unassessed_ids = [e["section_id"] for e in job.events if e["event_type"] == AnalysisJobStatus.SECTION_UNASSESSED]
+assert "storytelling_interpretation" in unassessed_ids
+assert "originality_creativity" in unassessed_ids
+assert "personalized_owner_fit" in unassessed_ids
+
+# In events, verify null scores for subjective dimensions
+for e in job.events:
+    if e.get("section_id") in ("storytelling_interpretation", "originality_creativity", "personalized_owner_fit"):
+        assert e["payload"]["score_0_10"] is None
+        assert e["payload"]["evidence_status"] == "NOT_YET_ASSESSED"
+
+# Verify presentation report: overall score withheld in unassessed_standby
 pres = job.presentation_report
 assert pres is not None
 assert pres["schema_version"] == "7.0.0-presentation"
-assert 6.8 <= pres["overall_score_0_10"] <= 7.3
-assert pres["overall_score_status"] == "CALCULATED_EXPERIMENTAL_V9"
-assert pres["overall_score_tier"] == "Strong Editing"
-assert pres["gauge_presentation"]["gauge_state"] == "settled_score"
+assert pres["overall_score_0_10"] is None
+assert pres["overall_score_status"] == "NOT_YET_ASSESSED"
+assert pres["overall_score_tier"] == "Unassessed"
+assert pres["gauge_presentation"]["gauge_state"] == "unassessed_standby"
 
-# Verify all 7 sections have numeric scores
+# Verify first 4 sections have numeric scores, last 3 have null
 assert len(pres["assessment_sections"]) == 7
-for s in pres["assessment_sections"]:
+for s in pres["assessment_sections"][:4]:
     assert s["score_0_10"] is not None
     assert 0.0 <= s["score_0_10"] <= 10.0
+
+for s in pres["assessment_sections"][4:]:
+    assert s["score_0_10"] is None
+    assert s["evidence_status"] == "NOT_YET_ASSESSED"
+
+# Verify shot-duration entropy is retained as a measurement
+assert pres["assessment_sections"][5]["evidence_refs"]["shot_duration_entropy_bits"] is not None
 
 # Verify canonical v6 schema and presentation contract
 EditDNASchemaV6.validate(job.v6_report)
@@ -1700,11 +1740,99 @@ print("PHASE9_SERVICE_SCORING_VERIFIED")
   assert.ok(stdout.includes("PHASE9_SERVICE_SCORING_VERIFIED"));
 });
 
+test("Lolixco Edit DNA — Phase 9: Timing engine rejects silence, zero threshold, and short clips (<= 1.0s)", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+import numpy as np
+sys.path.insert(0, "scripts/edit-dna")
+from phase9_quality_engine import Phase9QualityEngine, STATUS_NOT_YET_ASSESSED
 
+eng = Phase9QualityEngine()
 
+# 1. All-zero audio input (5.0s, 3 cuts)
+res_zero = eng.evaluate_beat_synchronization([1.0, 2.0, 3.0], np.zeros(22050 * 5), 22050, 5.0)
+assert res_zero["score_0_10"] is None
+assert res_zero["evidence_status"] == STATUS_NOT_YET_ASSESSED
+assert res_zero["metrics"]["top_transient_coverage_percent"] == 0.0
 
+# 2. 0.5-second clip (3 cuts)
+res_short = eng.evaluate_beat_synchronization([0.1, 0.2, 0.3], np.zeros(11025), 22050, 0.5)
+assert res_short["score_0_10"] is None
+assert res_short["evidence_status"] == STATUS_NOT_YET_ASSESSED
+assert res_short["metrics"]["top_transient_coverage_percent"] == 0.0
 
+# 3. Pacing with clip <= 1.0s
+res_pacing_short = eng.evaluate_pacing([0.2, 0.3], np.zeros(11025), 22050, 0.5)
+assert res_pacing_short["score_0_10"] is None
+assert res_pacing_short["evidence_status"] == STATUS_NOT_YET_ASSESSED
 
+# 4. Low amplitude noise below 1e-4
+res_silent_noise = eng.evaluate_beat_synchronization([1.0, 2.0], np.ones(22050 * 3) * 1e-5, 22050, 3.0)
+assert res_silent_noise["score_0_10"] is None
+assert res_silent_noise["evidence_status"] == STATUS_NOT_YET_ASSESSED
 
+print("TIMING_SILENCE_AND_SHORT_CLIPS_REJECTED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 15000 }
+  );
+
+  assert.ok(stdout.includes("TIMING_SILENCE_AND_SHORT_CLIPS_REJECTED"));
+});
+
+test("Lolixco Edit DNA — Phase 9: Service statistical controls match reference null distributions and diagnostic label", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+import numpy as np
+sys.path.insert(0, "scripts/edit-dna")
+from local_service import AnalysisEngine, AnalysisJob
+
+owner_media = "/home/rohan/lolixco-owner-media/inbox/Best Dhurandhar edit.mp4"
+job = AnalysisJob("test_stat_controls", owner_media, quality_mode="phase9")
+AnalysisEngine.execute_job(job)
+
+pres = job.presentation_report
+beat_refs = pres["assessment_sections"][0]["evidence_refs"]
+
+# Uniform control verification (500 draws, seed 42)
+assert beat_refs["uniform_control_draw_count"] == 500
+assert beat_refs["uniform_control_ties_or_exceedances"] == 39
+assert abs(beat_refs["uniform_control_tail_fraction"] - 40 / 501) < 1e-5
+
+# Circular shift control verification (500 draws, seed 42, default_rng)
+circ = beat_refs["circular_shift_control"]
+assert circ["diagnostic_label"] == "spacing_preserving_circular_shift"
+assert circ["draw_count"] == 500
+assert circ["ties_or_exceedances"] == 55
+assert abs(circ["plus_one_tail_fraction"] - 56 / 501) < 1e-5
+assert abs(circ["mean_percent"] - 46.574) < 0.05
+assert abs(circ["sd_percentage_points"] - 7.715) < 0.05
+
+# In progressive event stream
+event_refs = job.progressive_sections["beat_synchronization"]["evidence_refs"]
+assert event_refs["circular_shift_control"]["diagnostic_label"] == "spacing_preserving_circular_shift"
+assert event_refs["circular_shift_control"]["ties_or_exceedances"] == 55
+
+print("PHASE9_STATISTICAL_CONTROLS_VERIFIED")
+      `,
+    ],
+    { encoding: "utf8", timeout: 35000 }
+  );
+
+  assert.ok(stdout.includes("PHASE9_STATISTICAL_CONTROLS_VERIFIED"));
+});
 
