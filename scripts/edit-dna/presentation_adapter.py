@@ -38,7 +38,9 @@ ORDERED_DIMENSIONS = [
 VALID_EVIDENCE_STATUSES = {
     "MEASURED_SIGNAL",
     "EVALUATED_SEMANTIC",
+    "EVALUATED_SEMANTIC_EXPERIMENTAL",
     "PERSONALIZED_ESTIMATE",
+    "CALCULATED_PERSONALIZED",
     "NOT_YET_ASSESSED",
     "UNKNOWN",
     "CONFLICT",
@@ -47,6 +49,7 @@ VALID_EVIDENCE_STATUSES = {
 VALID_OVERALL_STATUSES = {
     "CALCULATED_PERSONALIZED",
     "CALCULATED_SEMANTIC",
+    "CALCULATED_EXPERIMENTAL_V9",
     "NOT_YET_ASSESSED",
     "INSUFFICIENT_DATA",
 }
@@ -122,10 +125,15 @@ class EditDNAPresentationAdapter:
                 total_weight += w
 
             final_score = round(weighted_sum / total_weight, 2) if total_weight > 0 else None
+            status_tag = (
+                "CALCULATED_EXPERIMENTAL_V9"
+                if any(s.get("evidence_status") == "EVALUATED_SEMANTIC_EXPERIMENTAL" for s in scored_sections)
+                else "CALCULATED_PERSONALIZED"
+            )
             return (
                 final_score,
-                "CALCULATED_PERSONALIZED",
-                "audited_multi_dimension_weighted_fit_v7.0"
+                status_tag,
+                "phase9_multidimensional_autonomous_quality_v9.0" if status_tag == "CALCULATED_EXPERIMENTAL_V9" else "audited_multi_dimension_weighted_fit_v7.0"
             )
 
         return (
@@ -276,7 +284,7 @@ class EditDNAPresentationAdapter:
 
         # 2. Cuts & Transitions
         trans_override = overrides.get("cuts_and_transitions") or overrides.get("transitions")
-        trans_card = scorecard.get("transitions", {})
+        trans_card = scorecard.get("transitions", {}) or scorecard.get("cuts_and_transitions", {})
         intra_flashes = sec_c.get("accessibility_signals", {}).get("intra_shot_flashes_count", 0)
         flash_rate = sec_c.get("accessibility_signals", {}).get("flash_rate_per_sec", 0.0)
         if trans_override:
@@ -285,7 +293,7 @@ class EditDNAPresentationAdapter:
             t_expl = trans_override.get("notes", "Evaluated by verified human critique.")
         elif trans_card.get("score") is not None:
             t_score = float(trans_card["score"])
-            t_status = trans_card.get("status", "EVALUATED_SEMANTIC")
+            t_status = trans_card.get("status", "MEASURED_SIGNAL")
             t_expl = trans_card.get("notes", "Evaluated transitions score.")
         else:
             t_score = None
@@ -330,7 +338,7 @@ class EditDNAPresentationAdapter:
             p_expl = pacing_override.get("notes", "Evaluated pacing flow.")
         elif pacing_card.get("score") is not None:
             p_score = float(pacing_card["score"])
-            p_status = pacing_card.get("status", "EVALUATED_SEMANTIC")
+            p_status = pacing_card.get("status", "MEASURED_SIGNAL")
             p_expl = pacing_card.get("notes", "Evaluated pacing flow.")
         else:
             p_score = None
@@ -364,7 +372,7 @@ class EditDNAPresentationAdapter:
 
         # 4. Visual Measurements
         vis_override = overrides.get("visual_measurements") or overrides.get("visual_quality")
-        vis_card = scorecard.get("visual_quality", {})
+        vis_card = scorecard.get("visual_quality", {}) or scorecard.get("visual_measurements", {})
         v_sig = sec_c.get("video_signals", {})
         if vis_override:
             v_score = float(vis_override.get("score", 7.0))
@@ -372,7 +380,7 @@ class EditDNAPresentationAdapter:
             v_expl = vis_override.get("notes", "Evaluated visual quality.")
         elif vis_card.get("score") is not None:
             v_score = float(vis_card["score"])
-            v_status = vis_card.get("status", "EVALUATED_SEMANTIC")
+            v_status = vis_card.get("status", "MEASURED_SIGNAL")
             v_expl = vis_card.get("notes", "Evaluated visual quality.")
         else:
             # Visual measurements are physical facts; if no semantic grade, score is None
@@ -410,14 +418,14 @@ class EditDNAPresentationAdapter:
 
         # 5. Storytelling Interpretation
         story_override = overrides.get("storytelling_interpretation") or overrides.get("storytelling_emotion")
-        story_card = scorecard.get("storytelling_emotion", {})
+        story_card = scorecard.get("storytelling_emotion", {}) or scorecard.get("storytelling_interpretation", {})
         if story_override:
             s_score = float(story_override.get("score", 7.0))
             s_status = "EVALUATED_SEMANTIC"
             s_expl = story_override.get("notes", "Evaluated narrative structure.")
         elif story_card.get("score") is not None:
             s_score = float(story_card["score"])
-            s_status = story_card.get("status", "EVALUATED_SEMANTIC")
+            s_status = story_card.get("status", "EVALUATED_SEMANTIC_EXPERIMENTAL")
             s_expl = story_card.get("notes", "Evaluated narrative structure.")
         else:
             s_score = None
@@ -452,7 +460,7 @@ class EditDNAPresentationAdapter:
             o_expl = orig_override.get("notes", "Evaluated creative originality.")
         elif orig_card.get("score") is not None:
             o_score = float(orig_card["score"])
-            o_status = orig_card.get("status", "EVALUATED_SEMANTIC")
+            o_status = orig_card.get("status", "EVALUATED_SEMANTIC_EXPERIMENTAL")
             o_expl = orig_card.get("notes", "Evaluated creative originality.")
         else:
             o_score = None
@@ -480,10 +488,15 @@ class EditDNAPresentationAdapter:
         # 7. Personalized Owner Fit
         fit_override = overrides.get("personalized_owner_fit")
         owner_weights = sec_e.get("owner_preference_weights", {})
+        fit_card = scorecard.get("personalized_owner_fit", {})
         if fit_override:
             fit_score = float(fit_override.get("score", 7.0))
             fit_status = "PERSONALIZED_ESTIMATE"
             fit_expl = fit_override.get("notes", "Personalized fit computed against owner preference rubric.")
+        elif fit_card.get("score") is not None:
+            fit_score = float(fit_card["score"])
+            fit_status = fit_card.get("status", "CALCULATED_PERSONALIZED")
+            fit_expl = fit_card.get("notes", "Evaluated fit matching owner preference weights.")
         elif sec_e.get("predicted_score") is not None:
             fit_score = float(sec_e["predicted_score"])
             fit_status = "PERSONALIZED_ESTIMATE"
