@@ -1545,6 +1545,10 @@ metrics = sync_eval["metrics"]
 assert "excess_synchronization_lift_percent" in metrics
 assert metrics["excess_synchronization_lift_percent"] > 0.0
 assert metrics["z_score_significance"] > 1.96
+assert metrics["standardized_uniform_control_difference"] > 1.96
+assert "uniform_control_tail_fraction" in metrics
+assert "circular_shift_control" in metrics
+assert metrics["circular_shift_control"]["plus_one_tail_fraction"] <= 1.0
 assert metrics["observed_multi_sync_percent"] > metrics["monte_carlo_random_baseline_percent"]
 
 # 2. Evaluate full edit quality across 7 dimensions
@@ -1619,6 +1623,11 @@ trans_strobe = engine.evaluate_cuts_and_transitions(
 assert trans_safe["metrics"]["strobe_warning"] is False
 assert trans_strobe["metrics"]["strobe_warning"] is True
 assert trans_safe["score_0_10"] > trans_strobe["score_0_10"]
+
+# 3. Discrete shot duration entropy (diversity proxy)
+orig_eval = engine.evaluate_originality(dynamic_shots)
+assert "shot_duration_entropy_bits" in orig_eval["metrics"]
+assert 0.0 <= orig_eval["metrics"]["shot_duration_entropy_bits"] <= 3.0
 
 print("PHASE9_DISCRIMINATION_VERIFIED")
       `,
