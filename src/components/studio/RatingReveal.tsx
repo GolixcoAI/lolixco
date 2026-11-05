@@ -29,8 +29,12 @@ function RpmDial({ needle, fill, available }: {needle: number; fill: number; ava
     {major && <text x={x(82)} y={y(82) + 3} textAnchor="middle" fill="#d5dde5" fontSize="9">{i / 2}</text>}
    </g>;
   })}
-  {available && <path className="rpm-needle" d="M 138 152 L 150 148 L 247 152 L 150 156 Z"
-   fill="#ffe63c" transform={`rotate(${needle * 18 - 180} 150 152)`}/>}
+  <path
+   className={available ? 'rpm-needle' : 'rpm-needle-standby'}
+   d={available ? 'M 138 152 L 150 148 L 247 152 L 150 156 Z' : 'M 138 152 L 150 148 L 223 152 L 150 156 Z'}
+   fill={available ? '#ffe63c' : '#aebbc9'}
+   transform={`rotate(${available ? needle * 18 - 180 : -192} 150 152)`}
+  />
   <circle cx="150" cy="152" r="9" fill="#181c23" stroke={available ? '#ffe63c' : '#687482'} strokeWidth="2"/>
   <circle cx="150" cy="152" r="3" fill="#afb7bf"/>
  </svg>;
