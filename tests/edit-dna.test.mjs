@@ -1946,3 +1946,129 @@ finally:
   assert.ok(stdout.includes("FULL_SERVICE_SHORT_CLIP_EXPORT_VERIFIED"));
 });
 
+test("Lolixco Edit DNA — Phase 9: Full service pipeline handles valid MP4 without audio track (-an), continues video measurements, marks audio unassessed", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
+
+  const stdout = execFileSync(
+    pythonBin,
+    [
+      "-c",
+      `
+import sys
+import os
+import subprocess
+import json
+sys.path.insert(0, "scripts/edit-dna")
+from local_service import AnalysisEngine, AnalysisJob, AnalysisJobStatus, PRIVATE_JOBS_DIR
+from edit_dna_schema_v6 import EditDNASchemaV6
+from presentation_adapter import EditDNAPresentationAdapter
+
+# 1. Generate 2.0-second test MP4 with video frames and NO audio track (-an)
+test_clip = "/tmp/test_service_no_audio.mp4"
+gen_cmd = [
+    "ffmpeg", "-y",
+    "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=2.0",
+    "-c:v", "libx264", "-pix_fmt", "yuv420p",
+    "-an",
+    test_clip
+]
+subprocess.run(gen_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+assert os.path.isfile(test_clip)
+
+# Verify with ffprobe that audio stream is absent
+probe_cmd = ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", test_clip]
+probe_out = subprocess.check_output(probe_cmd).decode("utf-8").strip()
+assert probe_out == "", f"Expected no audio stream, got: {probe_out}"
+
+try:
+    # 2. Run full AnalysisEngine job in phase9 quality mode
+    job = AnalysisJob("test_no_audio_export_job", test_clip, quality_mode="phase9")
+    AnalysisEngine.execute_job(job)
+
+    # 3. Verify job finished successfully without FFmpeg crash or stream extraction error
+    assert job.status == AnalysisJobStatus.COMPLETE
+    assert job.duration_seconds > 0.0
+
+    # 4. Verify physical signals explicitly reflect missing audio stream
+    audio_sig = job.v6_report["section_c_physical_signals"]["audio_signals"]
+    assert audio_sig["has_audio_stream"] is False
+    assert audio_sig["bpm"] == 0.0
+    assert audio_sig["onsets_count"] == 0
+    assert audio_sig["peak_amplitude"] == 0.0
+    assert audio_sig["rms_db"] == -120.0
+
+    # 5. Verify video measurements continued successfully
+    video_sig = job.v6_report["section_c_physical_signals"]["video_signals"]
+    assert video_sig["duration_sec"] >= 1.9
+    assert video_sig["fps"] == 25.0
+
+    pres = job.presentation_report
+    assert pres is not None
+    sec_map = {s["dimension_id"]: s for s in pres["assessment_sections"]}
+
+    # Visual measurements evaluated from real video frames
+    vis_sec = sec_map["visual_measurements"]
+    assert vis_sec["score_0_10"] is not None
+    assert vis_sec["score_0_10"] > 0.0
+    assert vis_sec["evidence_status"] == "MEASURED_SIGNAL"
+
+    # Cuts and transitions evaluated from real video frames
+    trans_sec = sec_map["cuts_and_transitions"]
+    assert trans_sec["evidence_status"] in ("MEASURED_SIGNAL", "EVALUATED_SEMANTIC_EXPERIMENTAL", "NOT_YET_ASSESSED")
+
+    # 6. Audio-dependent findings unassessed with honest explanations
+    beat_sec = sec_map["beat_synchronization"]
+    assert beat_sec["score_0_10"] is None
+    assert beat_sec["evidence_status"] == "NOT_YET_ASSESSED"
+    assert "no audio track" in beat_sec["creator_explanation"].lower() or "missing" in beat_sec["creator_explanation"].lower()
+
+    # Music recognition unassessed / UNKNOWN
+    sec_b = job.v6_report["section_b_music_recognition"]
+    assert sec_b["status"] == "UNKNOWN"
+    assert "does not contain an audio track" in sec_b["audit_note"]
+
+    # Pacing: cadence correlation unassessed without audio
+    pacing_sec = sec_map["pacing"]
+    assert pacing_sec["score_0_10"] is None
+    assert pacing_sec["evidence_status"] == "NOT_YET_ASSESSED"
+
+    # Overall score withheld in unassessed standby
+    assert pres["overall_score_0_10"] is None
+    assert pres["overall_score_status"] == "NOT_YET_ASSESSED"
+    assert pres["gauge_presentation"]["gauge_state"] == "unassessed_standby"
+
+    # 7. Validate canonical v6 and presentation schemas
+    EditDNASchemaV6.validate(job.v6_report)
+    EditDNAPresentationAdapter.validate_presentation_report(pres)
+
+    # 8. Verify report exports to private disk storage
+    job_dir = os.path.join(PRIVATE_JOBS_DIR, job.job_id)
+    v6_file = os.path.join(job_dir, "report_v6.json")
+    pres_file = os.path.join(job_dir, "report_presentation.json")
+    assert os.path.isfile(v6_file)
+    assert os.path.isfile(pres_file)
+
+    # 9. Verify legacy Phase 8 mode also handles video without audio track
+    job_p8 = AnalysisJob("test_no_audio_legacy_job", test_clip, quality_mode="legacy")
+    AnalysisEngine.execute_job(job_p8)
+    assert job_p8.status == AnalysisJobStatus.COMPLETE
+    assert job_p8.presentation_report["assessment_sections"][0]["score_0_10"] is None
+    assert job_p8.presentation_report["assessment_sections"][0]["evidence_status"] == "NOT_YET_ASSESSED"
+    EditDNASchemaV6.validate(job_p8.v6_report)
+    EditDNAPresentationAdapter.validate_presentation_report(job_p8.presentation_report)
+
+    print("FULL_SERVICE_NO_AUDIO_TRACK_VERIFIED")
+
+finally:
+    if os.path.isfile(test_clip):
+        os.remove(test_clip)
+      `,
+    ],
+    { encoding: "utf8", timeout: 25000 }
+  );
+
+  assert.ok(stdout.includes("FULL_SERVICE_NO_AUDIO_TRACK_VERIFIED"));
+});
+
+

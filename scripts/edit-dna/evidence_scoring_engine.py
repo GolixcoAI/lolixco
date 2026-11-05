@@ -283,49 +283,77 @@ class EvidenceScoringEngine:
         semantic_evals = semantic_evaluations or {}
 
         # 1. Beat Synchronization (0-10) — grounded in measured delta distribution
-        primary_tight = rhythm_evaluation.get("primary_grid", {}).get("tight_sync_percent", 0.0)
-        primary_loose = rhythm_evaluation.get("primary_grid", {}).get("loose_sync_percent", 0.0)
-        rigid_effective = primary_tight + (primary_loose * 0.5)
-        rigid_grid_score = round(min(10.0, max(1.0, (rigid_effective / 100.0) * 10.0)), 2)
-
-        compound_eval = rhythm_evaluation.get("compound_sync")
-        if compound_eval and compound_eval.get("tight_sync_percent") is not None:
-            c_tight = compound_eval.get("tight_sync_percent", primary_tight)
-            c_loose = compound_eval.get("loose_sync_percent", primary_loose)
-            c_effective = c_tight + (c_loose * 0.5)
-            compound_score = round(min(10.0, max(1.0, (c_effective / 100.0) * 10.0)), 2)
+        has_audio = audio_signals.get("has_audio_stream", True)
+        rhythm_status = rhythm_evaluation.get("status")
+        if not has_audio or rhythm_status == StatusTag.UNKNOWN:
+            beat_sync_card = {
+                "status": StatusTag.NOT_YET_ASSESSED,
+                "score": None,
+                "provenance": "unassessed_no_audio_stream" if not has_audio else "unassessed_rhythm_unknown",
+                "artistic_quality": StatusTag.NOT_YET_ASSESSED,
+                "audit_note": "Video file contains no audio track; beat synchronization unassessed." if not has_audio else "Rhythm unknown; beat synchronization unassessed.",
+                "metric_details": {
+                    "rigid_grid_score": None,
+                    "compound_alignment_score": None,
+                    "primary_grid_tight_percent": 0.0,
+                    "primary_grid_loose_percent": 0.0,
+                    "double_time_tight_percent": None,
+                    "subdivision_16th_tight_percent": None,
+                    "onset_transient_tight_percent": None,
+                    "compound_tight_sync_percent": 0.0,
+                    "flash_onset_sync_percent": None,
+                    "anticipatory_cuts": 0,
+                    "best_rhythmic_fit": "none",
+                },
+                "limitations": [
+                    "Audio stream missing or rhythmic signal unavailable; timing alignment cannot be measured."
+                ],
+                "notes": "Video contains no audio track or rhythmic signal; beat synchronization unassessed."
+            }
         else:
-            c_tight = primary_tight
-            c_loose = primary_loose
-            compound_score = rigid_grid_score
+            primary_tight = rhythm_evaluation.get("primary_grid", {}).get("tight_sync_percent", 0.0)
+            primary_loose = rhythm_evaluation.get("primary_grid", {}).get("loose_sync_percent", 0.0)
+            rigid_effective = primary_tight + (primary_loose * 0.5)
+            rigid_grid_score = round(min(10.0, max(1.0, (rigid_effective / 100.0) * 10.0)), 2)
 
-        # Selected score reports compound technical alignment when multi-anchor evidence exists
-        selected_beat_score = compound_score
+            compound_eval = rhythm_evaluation.get("compound_sync")
+            if compound_eval and compound_eval.get("tight_sync_percent") is not None:
+                c_tight = compound_eval.get("tight_sync_percent", primary_tight)
+                c_loose = compound_eval.get("loose_sync_percent", primary_loose)
+                c_effective = c_tight + (c_loose * 0.5)
+                compound_score = round(min(10.0, max(1.0, (c_effective / 100.0) * 10.0)), 2)
+            else:
+                c_tight = primary_tight
+                c_loose = primary_loose
+                compound_score = rigid_grid_score
 
-        beat_sync_card = {
-            "status": StatusTag.MEASURED_SIGNAL,
-            "score": selected_beat_score,
-            "provenance": "measured_beat_and_transient_deltas",
-            "artistic_quality": StatusTag.NOT_YET_ASSESSED,
-            "metric_details": {
-                "rigid_grid_score": rigid_grid_score,
-                "compound_alignment_score": compound_score,
-                "primary_grid_tight_percent": primary_tight,
-                "primary_grid_loose_percent": primary_loose,
-                "double_time_tight_percent": rhythm_evaluation.get("double_time_grid", {}).get("tight_sync_percent"),
-                "subdivision_16th_tight_percent": rhythm_evaluation.get("subdivision_16th_grid", {}).get("tight_sync_percent"),
-                "onset_transient_tight_percent": rhythm_evaluation.get("onset_alignment", {}).get("tight_sync_percent") if rhythm_evaluation.get("onset_alignment") else None,
-                "compound_tight_sync_percent": c_tight,
-                "flash_onset_sync_percent": rhythm_evaluation.get("intra_shot_flash_sync_percent"),
-                "anticipatory_cuts": rhythm_evaluation.get("anticipatory_cuts_count", 0),
-                "best_rhythmic_fit": rhythm_evaluation.get("best_rhythmic_fit", "unknown")
-            },
-            "limitations": [
-                "Derived strictly from measured temporal proximity of cut timestamps to detected audio transients. "
-                "This is an objective timing alignment measurement, NOT a validated overall artistic judgment of musicality, groove, or emotional sync."
-            ],
-            "notes": "Measures physical timing alignment to beats, subdivisions, and transient hits. Does NOT validate artistic groove, emotional timing, or musical phrasing without verified human critique."
-        }
+            # Selected score reports compound technical alignment when multi-anchor evidence exists
+            selected_beat_score = compound_score
+
+            beat_sync_card = {
+                "status": StatusTag.MEASURED_SIGNAL,
+                "score": selected_beat_score,
+                "provenance": "measured_beat_and_transient_deltas",
+                "artistic_quality": StatusTag.NOT_YET_ASSESSED,
+                "metric_details": {
+                    "rigid_grid_score": rigid_grid_score,
+                    "compound_alignment_score": compound_score,
+                    "primary_grid_tight_percent": primary_tight,
+                    "primary_grid_loose_percent": primary_loose,
+                    "double_time_tight_percent": rhythm_evaluation.get("double_time_grid", {}).get("tight_sync_percent"),
+                    "subdivision_16th_tight_percent": rhythm_evaluation.get("subdivision_16th_grid", {}).get("tight_sync_percent"),
+                    "onset_transient_tight_percent": rhythm_evaluation.get("onset_alignment", {}).get("tight_sync_percent") if rhythm_evaluation.get("onset_alignment") else None,
+                    "compound_tight_sync_percent": c_tight,
+                    "flash_onset_sync_percent": rhythm_evaluation.get("intra_shot_flash_sync_percent"),
+                    "anticipatory_cuts": rhythm_evaluation.get("anticipatory_cuts_count", 0),
+                    "best_rhythmic_fit": rhythm_evaluation.get("best_rhythmic_fit", "unknown")
+                },
+                "limitations": [
+                    "Derived strictly from measured temporal proximity of cut timestamps to detected audio transients. "
+                    "This is an objective timing alignment measurement, NOT a validated overall artistic judgment of musicality, groove, or emotional sync."
+                ],
+                "notes": "Measures physical timing alignment to beats, subdivisions, and transient hits. Does NOT validate artistic groove, emotional timing, or musical phrasing without verified human critique."
+            }
 
         # 2. Transitions (0-10)
         # If semantic assessment provided, use it; otherwise report physical continuity & flash risk
@@ -462,23 +490,25 @@ class EvidenceScoringEngine:
             }
         else:
             # Honest declaration: Overall score cannot be reliably computed without semantic evaluation
+            card_items = [
+                ("beat_synchronization", beat_sync_card),
+                ("transitions", transitions_card),
+                ("pacing", pacing_card),
+                ("visual_quality", visual_quality_card),
+                ("storytelling_emotion", storytelling_card),
+                ("originality_creativity", originality_card),
+            ]
+            assessed_dims = [k for k, v in card_items if v.get("score") is not None]
+            unassessed_dims = [k for k, v in card_items if v.get("score") is None]
             overall_prediction = {
                 "status": StatusTag.NOT_YET_ASSESSED,
                 "predicted_score": None,
                 "calculation_basis": "unassessed_semantic_dimensions",
-                "assessed_dimensions": ["beat_synchronization"],
-                "unassessed_dimensions": [
-                    k for k, v in [
-                        ("transitions", transitions_card),
-                        ("pacing", pacing_card),
-                        ("visual_quality", visual_quality_card),
-                        ("storytelling_emotion", storytelling_card),
-                        ("originality_creativity", originality_card)
-                    ] if v["score"] is None
-                ],
+                "assessed_dimensions": assessed_dims,
+                "unassessed_dimensions": unassessed_dims,
                 "explanation": (
-                    "Subjective overall quality cannot be responsibly scored while 5 of 6 "
-                    "dimensions remain unassessed. Discarded Phase 5 heuristic proxy score of 6.07."
+                    "Subjective overall quality cannot be responsibly scored while "
+                    f"{len(unassessed_dims)} of 6 dimensions remain unassessed."
                 )
             }
 
