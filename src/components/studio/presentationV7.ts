@@ -33,10 +33,25 @@ export function phase9Section(input: unknown) {
  // The Phase 7 export includes legacy beat metrics even when its score comes from Phase 9.
  const legacyBeat = id === 'beat_synchronization' && 'primary_grid_tight_percent' in evidence;
  const legacyBeatKeys = /^(primary_grid|double_time|subdivision_16th|onset_transient|compound_tight|anticipatory|rigid_grid|compound_alignment)/;
+ function cleanRefValue(v: unknown): unknown {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (typeof v === 'string' || typeof v === 'boolean') return v;
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+   const entries = Object.entries(v as Record<string, unknown>)
+    .filter(([k]) => !/significance|p_value|loocv/.test(k))
+    .map(([k, val]) => [k, cleanRefValue(val)])
+    .filter(([_, val]) => val !== undefined);
+   return entries.length ? Object.fromEntries(entries) : undefined;
+  }
+  return undefined;
+ }
  const refs = Object.fromEntries(Object.entries(evidence)
-  .filter(([key, value]) => typeof value === 'number' && Number.isFinite(value)
-   && !/significance|p_value|loocv|entropy/.test(key) && !(legacyBeat && legacyBeatKeys.test(key)))
-  .map(([key, value]) => [key === 'excess_synchronization_lift_percent' ? 'excess_synchronization_percentage_points' : key, value]));
+  .filter(([key]) => !/significance|p_value|loocv/.test(key) && !(legacyBeat && legacyBeatKeys.test(key)))
+  .map(([key, value]) => [
+   key === 'excess_synchronization_lift_percent' ? 'excess_synchronization_percentage_points' : key,
+   cleanRefValue(value)
+  ])
+  .filter(([_, value]) => value !== undefined));
  const momentTimes = (group: unknown) => Array.isArray(group)
   ? group.map(moment => record(moment).timestamp_sec)
    .filter((time): time is number => typeof time === 'number' && Number.isFinite(time) && time >= 0)

@@ -28,3 +28,38 @@ test('Phase 9 exposes experimental proxies while withholding artistic and compos
  assert.doesNotMatch(result.ratings.categories[0].explanation, /Unsupported significance claim/);
  assert.equal(result.ratings.overall.score, null);
 });
+
+test('Phase 9 preserves entropy and circular-shift diagnostics as descriptive measurements', () => {
+ const raw = fixture();
+ raw.overall_score_status = 'CALCULATED_EXPERIMENTAL_V9';
+ raw.assessment_sections[0].evidence_refs = {
+  observed_multi_sync_percent: 56.5,
+  circular_shift_control: {
+   diagnostic_label: 'spacing_preserving_circular_shift',
+   draw_count: 500,
+   ties_or_exceedances: 55,
+  },
+ };
+ raw.assessment_sections[5].evidence_refs = {
+  shot_duration_entropy_bits: 2.12,
+  max_possible_entropy_bits: 3.0,
+  descriptor: 'Clustered duration distribution with accent holds',
+ };
+ const result = adaptStudioReport(raw);
+ assert.deepEqual(result.ratings.categories[0].measurements, {
+  observed_multi_sync_percent: 56.5,
+  circular_shift_control: {
+   diagnostic_label: 'spacing_preserving_circular_shift',
+   draw_count: 500,
+   ties_or_exceedances: 55,
+  },
+ });
+ assert.deepEqual(result.ratings.categories[5].measurements, {
+  shot_duration_entropy_bits: 2.12,
+  max_possible_entropy_bits: 3.0,
+  descriptor: 'Clustered duration distribution with accent holds',
+ });
+ const evidenceLabels = result.evidence.map(e => e.label);
+ assert.ok(evidenceLabels.includes('diagnostic label'));
+ assert.ok(evidenceLabels.includes('shot duration entropy bits'));
+});
