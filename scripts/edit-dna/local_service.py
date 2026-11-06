@@ -297,6 +297,10 @@ class AnalysisEngine:
         t_start = time.time()
         with job.lock:
             if job.cancel_event.is_set():
+                if job.status != AnalysisJobStatus.CANCELLED:
+                    job.status = AnalysisJobStatus.CANCELLED
+                    job.current_stage = "Cancelled"
+                    job.add_event(AnalysisJobStatus.CANCELLED, payload={"message": "Job cancelled by owner", "acknowledged": True})
                 return
             job.started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             job.status = AnalysisJobStatus.RUNNING
@@ -1603,7 +1607,7 @@ class AnalysisJobManager:
             job.current_stage = "Analysis cancelled"
             if getattr(job, "future", None) is not None:
                 job.future.cancel()
-            job.add_event(AnalysisJobStatus.CANCELLED, payload={"message": "Analysis cancelled"})
+            job.add_event(AnalysisJobStatus.CANCELLED, payload={"message": "Analysis cancelled", "acknowledged": True})
             return True
 
     def list_inbox_files(self) -> List[Dict[str, Any]]:
