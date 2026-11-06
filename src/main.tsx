@@ -8,6 +8,8 @@ import "@fontsource/rajdhani/700.css";
 import App from "./App";
 import { previewCatalog } from "./preview-catalog";
 import "./styles/index.css";
+import "./components/studio/studio.css";
+import "./components/studio/rating.css";
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App initialEdits={previewCatalog} />

@@ -420,6 +420,19 @@ test("FIX A: Closing ShortsViewer uses replaceState to prevent Back from reopeni
   assert.equal(historyState.pushCount, 0, "Must NOT use pushState on viewer close");
 });
 
+test("Studio URL normalization retains the local report ID on refresh", () => {
+  const { historyState, cleanup } = setupMountedDom("http://127.0.0.1:5173/?view=studio&analysisJob=job_123_abcdef");
+  try {
+    assert.equal(parseUrlParams().view, "Creator Studio");
+    syncUrl("All", "", "", "Creator Studio", null, false);
+    assert.equal(historyState.search, "?view=studio&analysisJob=job_123_abcdef");
+    syncUrl("All", "", "", "Home", null, true);
+    assert.equal(historyState.search, "");
+  } finally {
+    cleanup();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // 6. REVIEW V2 FIX B: Atomic Tag Navigation & Dedicated Shorts Surface
 // ---------------------------------------------------------------------------

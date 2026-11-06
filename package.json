@@ -15,6 +15,7 @@
     "lab": "./scripts/edit-dna/lab",
     "dna:research": "./scripts/edit-dna/serve",
     "dna:serve": "./scripts/local-dna/run-analyzer.sh",
+    "studio": "./scripts/local-dna/run-studio.sh",
     "dev:dna": "LOLIXCO_LOCAL_DNA=1 vite --host 127.0.0.1 --port 5173 --strictPort"
   },
   "dependencies": {

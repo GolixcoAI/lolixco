@@ -2072,6 +2072,7 @@ finally:
 });
 
 test("Lolixco Edit DNA — Phase 10: Media Inspector stream detection and edge-case classification (A through L)", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
   const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
   const stdout = execFileSync(
     pythonBin,
@@ -2081,7 +2082,7 @@ test("Lolixco Edit DNA — Phase 10: Media Inspector stream detection and edge-c
 import os
 import sys
 import subprocess
-sys.path.insert(0, "/home/rohan/Lolixco/scripts/edit-dna")
+sys.path.insert(0, ${JSON.stringify(resolve(projectRoot, "scripts/edit-dna"))})
 from media_inspector import MediaInspector
 
 # Case A: Normal audiovisual edit (Dhurandhar MP4)
@@ -2180,6 +2181,7 @@ print("MEDIA_INSPECTOR_EDGE_CASES_VERIFIED")
 });
 
 test("Lolixco Edit DNA — Phase 10: Full service pipeline handles audio-only (Case E) and black video (Case D)", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
   const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
   const stdout = execFileSync(
     pythonBin,
@@ -2189,7 +2191,7 @@ test("Lolixco Edit DNA — Phase 10: Full service pipeline handles audio-only (C
 import os
 import sys
 import subprocess
-sys.path.insert(0, "/home/rohan/Lolixco/scripts/edit-dna")
+sys.path.insert(0, ${JSON.stringify(resolve(projectRoot, "scripts/edit-dna"))})
 from local_service import AnalysisJob, AnalysisEngine, AnalysisJobStatus
 from edit_dna_schema_v6 import EditDNASchemaV6
 from presentation_adapter import EditDNAPresentationAdapter
@@ -2260,6 +2262,7 @@ print("SERVICE_AUDIO_ONLY_AND_BLACK_VID_VERIFIED")
 });
 
 test("Lolixco Edit DNA — Phase 10: Ingestion endpoint, YouTube URL execution & frame detail guard", () => {
+  const projectRoot = fileURLToPath(new URL("../", import.meta.url));
   const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
   const stdout = execFileSync(
     pythonBin,
@@ -2270,7 +2273,7 @@ import os
 import sys
 import subprocess
 from fastapi.testclient import TestClient
-sys.path.insert(0, "/home/rohan/Lolixco/scripts/edit-dna")
+sys.path.insert(0, ${JSON.stringify(resolve(projectRoot, "scripts/edit-dna"))})
 from local_service import app, AnalysisJob, AnalysisEngine, AnalysisJobStatus
 from anime_scene_resolver import AnimeSceneResolver
 from edit_dna_schema_v6 import EditDNASchemaV6
