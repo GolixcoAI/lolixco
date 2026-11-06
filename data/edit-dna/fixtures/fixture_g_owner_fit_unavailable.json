@@ -1,0 +1,189 @@
+{
+  "schema_version": "7.0.0-presentation",
+  "is_synthetic_fixture": true,
+  "for_frontend_testing_only": true,
+  "do_not_use_for_training": true,
+  "fixture_id": "fixture_g_owner_fit_unavailable",
+  "fixture_purpose": "Verify presentation when user has not trained an owner preference model: 6 bars scored, bar 7 in standby, overall score computed from objective rubric.",
+  "media_id": "standard_guest_upload.mp4",
+  "media_type": "authorized_video_bytes",
+  "generated_at": "2026-11-04T00:00:00Z",
+  "analysis_status": "COMPLETE",
+  "overall_score_0_10": 7.8,
+  "overall_score_status": "CALCULATED_SEMANTIC",
+  "overall_score_method": "uniform_rubric_v6.0",
+  "overall_score_tier": "Strong Editing",
+  "gauge_presentation": {
+    "min": 0.0,
+    "max": 10.0,
+    "settled_value": 7.8,
+    "display_text": "7.80",
+    "tier_label": "Strong Editing",
+    "gauge_state": "settled_score",
+    "accent_color": "#48BB78"
+  },
+  "reaction_bubbles": [
+    {
+      "tag": "RHYTHM",
+      "callout": "BEAT-LOCKED! Flawless transient hits.",
+      "style": "neon"
+    }
+  ],
+  "assessment_sections": [
+    {
+      "section_id": "beat_synchronization",
+      "dimension_id": "beat_synchronization",
+      "section_name": "Beat Synchronization",
+      "display_name": "Beat Synchronization",
+      "score_0_10": 8.7,
+      "evidence_status": "MEASURED_SIGNAL",
+      "evidence_refs": {
+        "tight_sync_percent": 84.5,
+        "loose_sync_percent": 12.0,
+        "primary_bpm": 128.0
+      },
+      "timestamps": [
+        1.25,
+        2.5,
+        3.75,
+        5.0,
+        6.25
+      ],
+      "method_version": "librosa_multi_tempo_grid_v6.0",
+      "limitations": [
+        "Evaluates transient impact; lyric emotional alignment unmeasured."
+      ],
+      "creator_explanation": "Flawless sync lock with 84.5% of cuts hitting heavy drum transients."
+    },
+    {
+      "section_id": "cuts_and_transitions",
+      "dimension_id": "cuts_and_transitions",
+      "section_name": "Cuts & Transitions",
+      "display_name": "Cuts & Transitions",
+      "score_0_10": 7.8,
+      "evidence_status": "EVALUATED_SEMANTIC",
+      "evidence_refs": {
+        "cut_transitions_count": 32,
+        "intra_shot_flashes_count": 4,
+        "flash_rate_per_sec": 0.18
+      },
+      "timestamps": [
+        2.45,
+        4.88,
+        8.12
+      ],
+      "method_version": "manual_editorial_critique_v1",
+      "limitations": [
+        "Evaluated by human editorial critique."
+      ],
+      "creator_explanation": "Clean match cuts and directional whip-pans maintain continuous screen energy."
+    },
+    {
+      "section_id": "pacing",
+      "dimension_id": "pacing",
+      "section_name": "Pacing",
+      "display_name": "Pacing",
+      "score_0_10": 8.2,
+      "evidence_status": "EVALUATED_SEMANTIC",
+      "evidence_refs": {
+        "cuts_per_second": 1.45,
+        "shot_duration_mean_sec": 0.69,
+        "shot_duration_std_dev_sec": 0.35
+      },
+      "timestamps": [],
+      "method_version": "manual_editorial_critique_v1",
+      "limitations": [
+        "Pacing flow judged in context of song progression."
+      ],
+      "creator_explanation": "Great dynamic build; slow opening that accelerates into the drop."
+    },
+    {
+      "section_id": "visual_measurements",
+      "dimension_id": "visual_measurements",
+      "section_name": "Visual Measurements",
+      "display_name": "Visual Measurements",
+      "score_0_10": 7.5,
+      "evidence_status": "EVALUATED_SEMANTIC",
+      "evidence_refs": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 60.0,
+        "mean_sharpness_laplacian": 412.0
+      },
+      "timestamps": [],
+      "method_version": "laplacian_variance_and_signal_v6.0",
+      "limitations": [
+        "High bit rate confirmed; subtle grading compression noted."
+      ],
+      "creator_explanation": "Crisp 1080p60 master with balanced contrast and vibrant highlights."
+    },
+    {
+      "section_id": "storytelling_interpretation",
+      "dimension_id": "storytelling_interpretation",
+      "section_name": "Storytelling Interpretation",
+      "display_name": "Storytelling Interpretation",
+      "score_0_10": 7.6,
+      "evidence_status": "EVALUATED_SEMANTIC",
+      "evidence_refs": {
+        "narrative_arc": "hero_fall_and_redemption"
+      },
+      "timestamps": [
+        0.0,
+        10.5,
+        22.0
+      ],
+      "method_version": "manual_editorial_critique_v1",
+      "limitations": [
+        "Assessed from character reaction coherence."
+      ],
+      "creator_explanation": "Clear emotional narrative arc tracking the protagonist's duel."
+    },
+    {
+      "section_id": "originality_creativity",
+      "dimension_id": "originality_creativity",
+      "section_name": "Originality & Creative Execution",
+      "display_name": "Originality & Creative Execution",
+      "score_0_10": 7.4,
+      "evidence_status": "EVALUATED_SEMANTIC",
+      "evidence_refs": {
+        "vfx_originality": "custom_kinetic_typography"
+      },
+      "timestamps": [
+        14.2,
+        18.0
+      ],
+      "method_version": "manual_editorial_critique_v1",
+      "limitations": [
+        "Subjective novelty rating."
+      ],
+      "creator_explanation": "Custom geometric text hits and kinetic color grading avoid generic template looks."
+    },
+    {
+      "section_id": "personalized_owner_fit",
+      "dimension_id": "personalized_owner_fit",
+      "section_name": "Personalized Owner Fit",
+      "display_name": "Personalized Owner Fit",
+      "score_0_10": null,
+      "evidence_status": "NOT_YET_ASSESSED",
+      "evidence_refs": {
+        "reason": "anonymous_user_profile"
+      },
+      "timestamps": [],
+      "method_version": "v7.0",
+      "limitations": [
+        "Personalized owner weights require trained editor profile."
+      ],
+      "creator_explanation": "No personalized profile linked for this account. Showing objective rubric only."
+    }
+  ],
+  "context_evidence": {
+    "visual_recognition": {
+      "status": "UNKNOWN",
+      "provenance": "synthetic_fixture"
+    },
+    "music_recognition": {
+      "status": "UNKNOWN",
+      "provenance": "synthetic_fixture"
+    }
+  }
+}

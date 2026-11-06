@@ -12,7 +12,9 @@
     "test:offline": "./scripts/run-isolated-tests.sh",
     "check:assets": "node scripts/check-assets.mjs",
     "check:content": "node scripts/validate-content.mjs",
-    "dna:serve": "/home/rohan/.venvs/lolixco-antigravity/bin/python3 scripts/local-dna/serve.py",
+    "lab": "./scripts/edit-dna/lab",
+    "dna:research": "./scripts/edit-dna/serve",
+    "dna:serve": "./scripts/local-dna/run-analyzer.sh",
     "dev:dna": "LOLIXCO_LOCAL_DNA=1 vite --host 127.0.0.1 --port 5173 --strictPort"
   },
   "dependencies": {

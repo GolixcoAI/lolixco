@@ -1,0 +1,190 @@
+{
+  "schema_version": "7.0.0-presentation",
+  "is_synthetic_fixture": true,
+  "for_frontend_testing_only": true,
+  "do_not_use_for_training": true,
+  "fixture_id": "fixture_h2_high_scoring_exceptional",
+  "fixture_purpose": "Verify top-tier neon glow UI: 9.43 on RPM gauge, neon-yellow bar illumination, celebratory comic bubbles.",
+  "media_id": "toji_vs_gojo_pinnacle_edit.mp4",
+  "media_type": "authorized_video_bytes",
+  "generated_at": "2026-11-04T00:00:00Z",
+  "analysis_status": "COMPLETE",
+  "overall_score_0_10": 9.43,
+  "overall_score_status": "CALCULATED_PERSONALIZED",
+  "overall_score_method": "audited_multi_dimension_weighted_fit_v7.0",
+  "overall_score_tier": "Exceptional Editing",
+  "gauge_presentation": {
+    "min": 0.0,
+    "max": 10.0,
+    "settled_value": 9.43,
+    "display_text": "9.43",
+    "tier_label": "Exceptional Editing",
+    "gauge_state": "settled_score",
+    "accent_color": "#ECC94B"
+  },
+  "reaction_bubbles": [
+    {
+      "tag": "RHYTHM",
+      "callout": "BEAT-LOCKED! 96.2% tight lock.",
+      "style": "neon"
+    },
+    {
+      "tag": "STORY",
+      "callout": "LYRICAL RESONANCE! Masterful narrative.",
+      "style": "neon"
+    },
+    {
+      "tag": "VERDICT",
+      "callout": "CINEMATIC MASTERPIECE! 9.43/10 Exceptional.",
+      "style": "neon"
+    }
+  ],
+  "assessment_sections": [
+    {
+      "section_id": "beat_synchronization",
+      "dimension_id": "beat_synchronization",
+      "section_name": "Beat Synchronization",
+      "display_name": "Beat Synchronization",
+      "score_0_10": 9.8,
+      "evidence_status": "MEASURED_SIGNAL",
+      "evidence_refs": {
+        "tight_sync_percent": 96.2,
+        "primary_bpm": 132.0
+      },
+      "timestamps": [
+        1.14,
+        2.27,
+        3.41,
+        4.54,
+        5.68
+      ],
+      "method_version": "librosa_multi_tempo_grid_v6.0",
+      "limitations": [
+        "Exceptional transient lock."
+      ],
+      "creator_explanation": "Near-perfect frame-accurate transient synchronization (96.2% tight lock)."
+    },
+    {
+      "section_id": "cuts_and_transitions",
+      "dimension_id": "cuts_and_transitions",
+      "section_name": "Cuts & Transitions",
+      "display_name": "Cuts & Transitions",
+      "score_0_10": 9.4,
+      "evidence_status": "EVALUATED_SEMANTIC",
+      "evidence_refs": {
+        "cut_transitions_count": 42,
+        "intra_shot_flashes_count": 2,
+        "flash_rate_per_sec": 0.05
+      },
+      "timestamps": [
+        2.27,
+        4.54,
+        8.0
+      ],
+      "method_version": "manual_editorial_critique_v1",
+      "limitations": [
+        "Seamless velocity matching."
+      ],
+      "creator_explanation": "Godly match cuts; seamless rotational momentum transfer between shots."
+    },
+    {
+      "section_id": "pacing",
+      "dimension_id": "pacing",
+      "section_name": "Pacing",
+      "display_name": "Pacing",
+      "score_0_10": 9.5,
+      "evidence_status": "EVALUATED_SEMANTIC",
+      "evidence_refs": {
+        "cuts_per_second": 1.65,
+        "shot_duration_mean_sec": 0.61
+      },
+      "timestamps": [],
+      "method_version": "manual_editorial_critique_v1",
+      "limitations": [
+        "World-class tension modulation."
+      ],
+      "creator_explanation": "Masterful dynamic tension buildup with breathtaking rhythmic releases."
+    },
+    {
+      "section_id": "visual_measurements",
+      "dimension_id": "visual_measurements",
+      "section_name": "Visual Measurements",
+      "display_name": "Visual Measurements",
+      "score_0_10": 9.2,
+      "evidence_status": "EVALUATED_SEMANTIC",
+      "evidence_refs": {
+        "width": 3840,
+        "height": 2160,
+        "fps": 60.0,
+        "mean_sharpness_laplacian": 620.0
+      },
+      "timestamps": [],
+      "method_version": "laplacian_variance_and_signal_v6.0",
+      "limitations": [
+        "Flawless 4K color grading."
+      ],
+      "creator_explanation": "Pristine 4K60 master with Hollywood-grade ACES color science."
+    },
+    {
+      "section_id": "storytelling_interpretation",
+      "dimension_id": "storytelling_interpretation",
+      "section_name": "Storytelling Interpretation",
+      "display_name": "Storytelling Interpretation",
+      "score_0_10": 9.6,
+      "evidence_status": "EVALUATED_SEMANTIC",
+      "evidence_refs": {
+        "thematic_resonance": "exceptional"
+      },
+      "timestamps": [],
+      "method_version": "manual_editorial_critique_v1",
+      "limitations": [
+        "Profound emotional impact."
+      ],
+      "creator_explanation": "Profound narrative resonance mapping lyrics directly to character decisions."
+    },
+    {
+      "section_id": "originality_creativity",
+      "dimension_id": "originality_creativity",
+      "section_name": "Originality & Creative Execution",
+      "display_name": "Originality & Creative Execution",
+      "score_0_10": 9.1,
+      "evidence_status": "EVALUATED_SEMANTIC",
+      "evidence_refs": {
+        "innovation": "bespoke_vfx_and_framing"
+      },
+      "timestamps": [],
+      "method_version": "manual_editorial_critique_v1",
+      "limitations": [
+        "Unique artistic signature."
+      ],
+      "creator_explanation": "Unmatched creative voice blending anime action with cinematic live-action framing."
+    },
+    {
+      "section_id": "personalized_owner_fit",
+      "dimension_id": "personalized_owner_fit",
+      "section_name": "Personalized Owner Fit",
+      "display_name": "Personalized Owner Fit",
+      "score_0_10": 9.5,
+      "evidence_status": "PERSONALIZED_ESTIMATE",
+      "evidence_refs": {
+        "alignment": "pinnacle"
+      },
+      "timestamps": [],
+      "method_version": "loocv_constrained_regression_v6.1",
+      "limitations": [
+        "Pinnacle match for owner taste."
+      ],
+      "creator_explanation": "Exemplifies every quality prioritized by the owner: musical sync, storytelling, and pacing."
+    }
+  ],
+  "context_evidence": {
+    "visual_recognition": {
+      "status": "UNKNOWN",
+      "provenance": "synthetic_fixture"
+    },
+    "music_recognition": {
+      "status": "UNKNOWN",
+      "provenance": "synthetic_fixture"
+    }
+  }
+}
