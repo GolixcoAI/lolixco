@@ -483,7 +483,7 @@ class Phase9QualityEngine:
 
         durs = np.array(shot_durations)
         total_shots = len(durs)
-        cps = round(total_shots / duration, 2) if duration > 0 else 0.0
+        cps = round((total_shots - 1) / duration, 2) if duration > 0 else 0.0
 
         mean_dur = float(np.mean(durs))
         median_dur = float(np.median(durs))
@@ -535,7 +535,7 @@ class Phase9QualityEngine:
         rms_series = librosa.feature.rms(y=audio_y, frame_length=frame_rms, hop_length=hop_rms)[0]
         rms_times = librosa.frames_to_time(np.arange(len(rms_series)), sr=sr, hop_length=hop_rms)
 
-        cum_times = np.cumsum(durs)
+        cum_times = np.cumsum(durs[:-1])
         for w in range(n_windows):
             t_start = w * window_size
             t_end = (w + 1) * window_size
@@ -547,7 +547,7 @@ class Phase9QualityEngine:
             w_rms = float(np.mean(rms_series[mask])) if np.any(mask) else 0.0
             window_rms.append(w_rms)
 
-        corr_cps_rms = 0.0
+        corr_cps_rms = None
         if len(window_cps) > 2 and np.std(window_cps) > 1e-4 and np.std(window_rms) > 1e-4:
             corr_cps_rms = float(np.corrcoef(window_cps, window_rms)[0, 1])
 
@@ -558,7 +558,7 @@ class Phase9QualityEngine:
         # Avoid total fatigue: must have at least 5% breathing room (+0.5 points)
         base = 5.5
         var_bonus = np.clip((dynamic_ratio - 2.0) * 0.3, 0.0, 1.5)
-        corr_bonus = np.clip(corr_cps_rms * 1.2, -0.8, 1.2)
+        corr_bonus = np.clip((corr_cps_rms or 0) * 1.2, -0.8, 1.2)
         breath_bonus = 0.5 if breathing_pct >= 5.0 else -0.8
 
         score = round(float(np.clip(base + var_bonus + corr_bonus + breath_bonus, 1.0, 9.6)), 2)
@@ -575,14 +575,15 @@ class Phase9QualityEngine:
                 "breathing_room_percent": breathing_pct,
                 "kinetic_action_percent": kinetic_pct,
                 "rapid_burst_percent": rapid_pct,
-                "cadence_to_audio_correlation": round(corr_cps_rms, 3),
+                "cadence_to_audio_correlation": round(corr_cps_rms, 3) if corr_cps_rms is not None else None,
             },
             "editorial_explanation": (
                 f"Pacing score is {score:.2f}/10. "
                 f"Cadence is {cps} cuts/sec with a dynamic range of {dynamic_ratio}x ({min_dur:.2f}s to {max_dur:.2f}s). "
                 f"The edit avoids monotonous cutting through balanced pacing phases: {breathing_pct}% narrative hold, "
                 f"{kinetic_pct}% driving action, and {rapid_pct}% rapid climax cuts. "
-                f"Cutting speed correlates positively (r = {corr_cps_rms:.2f}) with audio energy, accelerating as music builds."
+                + (f"Cadence-to-audio correlation was {corr_cps_rms:.2f}." if corr_cps_rms is not None
+                   else "A cadence-to-audio correlation could not be calculated.")
             )
         }
 
@@ -672,7 +673,7 @@ class Phase9QualityEngine:
 
         # Autonomous structural storytelling heuristic:
         # Measures whether the edit possesses 3-act cadence (setup -> escalation -> climax)
-        corr = pacing_metrics.get("cadence_to_audio_correlation", 0.0)
+        corr = pacing_metrics.get("cadence_to_audio_correlation") or 0.0
         dyn_ratio = pacing_metrics.get("dynamic_duration_ratio", 1.0)
 
         return {

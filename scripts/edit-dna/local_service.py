@@ -27,6 +27,7 @@ import threading
 import subprocess
 import asyncio
 from pathlib import Path
+from tempfile import gettempdir
 from typing import Dict, Any, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
 
@@ -56,12 +57,12 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 AUTHORIZED_INBOX = "/home/rohan/lolixco-owner-media/inbox"
 AUTHORIZED_TEST_ASSETS = os.path.join(PROJECT_ROOT, "test-assets")
 AUTHORIZED_PUBLIC_MEDIA = os.path.join(PROJECT_ROOT, "public/media")
-PRIVATE_JOBS_DIR = os.path.expanduser("~/.lolixco-edit-dna/jobs")
-PRIVATE_INGEST_DIR = os.path.expanduser("~/.lolixco-edit-dna/ingest")
-PRIVATE_ANNOTATIONS_DIR = os.path.expanduser("~/.lolixco-edit-dna/annotations")
-os.makedirs(PRIVATE_JOBS_DIR, exist_ok=True)
-os.makedirs(PRIVATE_INGEST_DIR, exist_ok=True)
-os.makedirs(PRIVATE_ANNOTATIONS_DIR, exist_ok=True)
+PRIVATE_STATE_DIR = Path(os.environ.get("LOLIXCO_DNA_STATE_PARENT") or Path.home()) / ".lolixco-edit-dna"
+PRIVATE_JOBS_DIR = str(PRIVATE_STATE_DIR / "jobs")
+PRIVATE_INGEST_DIR = str(PRIVATE_STATE_DIR / "ingest")
+PRIVATE_ANNOTATIONS_DIR = str(PRIVATE_STATE_DIR / "annotations")
+for private_directory in (PRIVATE_STATE_DIR, PRIVATE_JOBS_DIR, PRIVATE_INGEST_DIR, PRIVATE_ANNOTATIONS_DIR):
+    os.makedirs(private_directory, mode=0o700, exist_ok=True)
 
 # Path boundary roots
 INBOX_ROOT = Path(AUTHORIZED_INBOX).resolve()
@@ -153,7 +154,11 @@ class AnalysisJob:
         self.cancel_event = threading.Event()
         self.event_subscribers: List[asyncio.Queue] = []
         self.loop: Optional[asyncio.AbstractEventLoop] = None
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
+
+    def update_stage(self, stage: str, progress: int):
+        self.current_stage = stage
+        self.progress_percent = progress
 
     def add_event(self, event_type: str, section_id: Optional[str] = None, payload: Optional[Dict[str, Any]] = None, duration_ms: float = 0.0):
         with self.lock:
@@ -290,10 +295,13 @@ class AnalysisEngine:
     def execute_job(cls, job: AnalysisJob):
         """Executes full progressive analysis guided by upfront MediaInspector capabilities."""
         t_start = time.time()
-        job.started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        job.status = AnalysisJobStatus.RUNNING
-        job.current_stage = "Probing media capabilities"
-        job.progress_percent = 5
+        with job.lock:
+            if job.cancel_event.is_set():
+                return
+            job.started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            job.status = AnalysisJobStatus.RUNNING
+            job.current_stage = "Probing media capabilities"
+            job.progress_percent = 5
         job.add_event(AnalysisJobStatus.RUNNING, payload={"message": f"Analyzing {job.media_filename}"})
 
         try:
@@ -564,7 +572,7 @@ class AnalysisEngine:
 
     @classmethod
     def _execute_local_job(cls, job: AnalysisJob, insp: Dict[str, Any], t_start: float):
-        scratch_audio = f"/tmp/edit_dna_job_{job.job_id}.wav"
+        scratch_audio = os.path.join(gettempdir(), f"edit_dna_job_{job.job_id}.wav")
         t_vid_start = time.time()
 
         caps = insp.get("capabilities", {})
@@ -689,7 +697,7 @@ class AnalysisEngine:
 
             else:
                 # Active video frame decoding loop
-                job.current_stage = "Decoding video frames & detecting cut boundaries"
+                job.update_stage("Analyzing video signals", 18)
                 cap = cv2.VideoCapture(job.media_path)
                 if not cap.isOpened():
                     raise RuntimeError(f"Failed to open video stream: {job.media_path}")
@@ -706,11 +714,11 @@ class AnalysisEngine:
                     raise RuntimeError("Empty video stream")
 
                 prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
-                prev_hsv = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2HSV)
-                prev_hist = cv2.calcHist([prev_hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
-                cv2.normalize(prev_hist, prev_hist, 0, 1, cv2.NORM_MINMAX)
+                prev_luminance = float(np.mean(prev_gray))
+                previous_luma_step = 0.0
 
                 frame_idx = 1
+                decode_frame_limit = caps.get("decode_frame_limit")
                 while True:
                     if job.cancel_event.is_set():
                         cap.release()
@@ -719,14 +727,20 @@ class AnalysisEngine:
                     ret, frame = cap.read()
                     if not ret or frame is None:
                         break
+                    if decode_frame_limit and frame_idx >= decode_frame_limit:
+                        cap.release()
+                        raise ValueError("Video exceeds the local decoded frame limit.")
 
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                     diff = float(np.mean(cv2.absdiff(prev_gray, gray)))
                     mean_lum = float(np.mean(gray))
                     std_contrast = float(np.std(gray))
 
-                    if mean_lum > 210 or diff > 48.0:
-                        flash_frames.append(round(frame_idx / fps, 3))
+                    luma_step = mean_lum - prev_luminance
+                    if abs(previous_luma_step) > 48.0 and abs(luma_step) > 48.0 and previous_luma_step * luma_step < 0:
+                        flash_frames.append(round((frame_idx - 1) / fps, 3))
+                    previous_luma_step = luma_step
+                    prev_luminance = mean_lum
 
                     sample_interval = max(1, min(15, total_frames // 4)) if total_frames > 0 else 15
                     if frame_idx % sample_interval == 0:
@@ -739,19 +753,17 @@ class AnalysisEngine:
                         t_cut = frame_idx / fps
                         if t_cut - cuts[-1] >= 0.25:
                             cuts.append(round(t_cut, 3))
-                            if prev_hist is not None:
-                                hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-                                hist = cv2.calcHist([hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
-                                cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
-                                corr = float(cv2.compareHist(prev_hist, hist, cv2.HISTCMP_CORREL))
-                                cut_continuity_correlations.append(round(corr, 3))
+                            # Compare the actual adjacent frames at the detected boundary.
+                            prev_hsv = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2HSV)
+                            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                            prev_hist = cv2.calcHist([prev_hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
+                            hist = cv2.calcHist([hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
+                            cv2.normalize(prev_hist, prev_hist, 0, 1, cv2.NORM_MINMAX)
+                            cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
+                            corr = float(cv2.compareHist(prev_hist, hist, cv2.HISTCMP_CORREL))
+                            cut_continuity_correlations.append(round(corr, 3))
 
-                    if frame_idx % 5 == 0:
-                        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-                        hist = cv2.calcHist([hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
-                        cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
-                        prev_hist = hist
-
+                    prev_frame = frame
                     prev_gray = gray
                     frame_idx += 1
 
@@ -781,8 +793,10 @@ class AnalysisEngine:
                     "cut_timestamps": cuts[:25],
                 }
 
-            job.progress_percent = 45
-            job.current_stage = "Extracting and analyzing audio stream"
+            job.update_stage(
+                "Analyzing audio signals" if has_audio and not is_silent else "Evaluating available stream signals",
+                45,
+            )
 
             # 2. Scratch audio extraction
             if job.cancel_event.is_set():
@@ -799,7 +813,10 @@ class AnalysisEngine:
             clipping_detected = False
 
             if has_audio and not is_silent:
-                cmd = ["ffmpeg", "-y", "-i", job.media_path, "-vn", "-ar", "22050", "-ac", "1", scratch_audio]
+                cmd = ["ffmpeg", "-y", "-i", job.media_path, "-vn", "-ar", "22050", "-ac", "1"]
+                if caps.get("decode_seconds_limit"):
+                    cmd.extend(["-t", str(caps["decode_seconds_limit"])])
+                cmd.append(scratch_audio)
                 ext_res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 if ext_res.returncode == 0 and os.path.isfile(scratch_audio):
                     try:
@@ -853,8 +870,7 @@ class AnalysisEngine:
                     "best_rhythmic_fit": "UNKNOWN",
                 }
 
-            job.progress_percent = 70
-            job.current_stage = "Resolving soundtrack and visual entities"
+            job.update_stage("Evaluating supported dimensions", 70)
 
             resolver = MusicEvidenceResolver()
             raw_candidates: List[Dict[str, Any]] = []
@@ -868,7 +884,7 @@ class AnalysisEngine:
 
             # Anime / Visual recognition
             anime_res = {"status": "UNKNOWN", "matched_title": None, "confidence": 0.0}
-            if has_video and not is_black:
+            if has_video and not is_black and getattr(job, "allow_external_recognition", False):
                 try:
                     anime_res = AnimeSceneResolver.resolve_from_video(job.media_path, timeout_seconds=5)
                 except Exception:
@@ -876,7 +892,7 @@ class AnalysisEngine:
 
             if job.quality_mode == "phase9":
                 q_engine = Phase9QualityEngine()
-                shot_durations = [round(cuts[i] - cuts[i-1], 3) for i in range(1, len(cuts))] if len(cuts) > 1 else []
+                shot_durations = [shot["duration"] for shot in reconciliation.get("shots", [])]
                 q_res = q_engine.evaluate_full_edit_quality(
                     internal_cuts=internal_cuts,
                     shot_durations=shot_durations,
@@ -1490,7 +1506,7 @@ class AnalysisEngine:
             job.v6_report = v6_doc
 
             # 5. Presentation report
-            job.current_stage = "Generating Phase 7 presentation report"
+            job.update_stage("Preparing results", 92)
             pres_doc = EditDNAPresentationAdapter.from_v6_report(v6_doc, semantic_overrides=job.semantic_overrides)
             job.presentation_report = pres_doc
 
@@ -1543,7 +1559,8 @@ class AnalysisJobManager:
         self,
         media_path: str,
         semantic_overrides: Optional[Dict[str, Any]] = None,
-        quality_mode: Optional[str] = None
+        quality_mode: Optional[str] = None,
+        media_filename: Optional[str] = None,
     ) -> AnalysisJob:
         with self.lock:
             # Check queue capacity (reject if queued + running >= limit)
@@ -1564,9 +1581,11 @@ class AnalysisJobManager:
 
             job_id = f"job_{int(time.time())}_{uuid.uuid4().hex[:6]}"
             job = AnalysisJob(job_id, media_path, semantic_overrides, quality_mode=quality_mode)
+            if media_filename is not None:
+                job.media_filename = media_filename
             self.jobs[job_id] = job
-            job.add_event(AnalysisJobStatus.QUEUED, payload={"media_path": media_path})
-            self.executor.submit(AnalysisEngine.execute_job, job)
+            job.add_event(AnalysisJobStatus.QUEUED, payload={"message": "Waiting for the analysis worker"})
+            job.future = self.executor.submit(AnalysisEngine.execute_job, job)
             return job
 
     def get_job(self, job_id: str) -> Optional[AnalysisJob]:
@@ -1576,17 +1595,16 @@ class AnalysisJobManager:
         job = self.jobs.get(job_id)
         if not job:
             return False
-        if job.status in (AnalysisJobStatus.RUNNING, AnalysisJobStatus.QUEUED):
+        with job.lock:
+            if job.status not in (AnalysisJobStatus.RUNNING, AnalysisJobStatus.QUEUED):
+                return False
             job.cancel_event.set()
             job.status = AnalysisJobStatus.CANCELLED
-            job.current_stage = f"Cancellation requested: {reason}"
-            # Immediate notification to event subscribers
-            job.add_event(
-                AnalysisJobStatus.CANCELLED,
-                payload={"message": f"Job cancelled immediately: {reason}", "acknowledged": True}
-            )
+            job.current_stage = "Analysis cancelled"
+            if getattr(job, "future", None) is not None:
+                job.future.cancel()
+            job.add_event(AnalysisJobStatus.CANCELLED, payload={"message": "Analysis cancelled"})
             return True
-        return False
 
     def list_inbox_files(self) -> List[Dict[str, Any]]:
         if not os.path.isdir(AUTHORIZED_INBOX):
@@ -1863,7 +1881,8 @@ async def stream_job_events(job_id: str, request: Request, cursor: Optional[int]
                     if evt.get("event_type") in (AnalysisJobStatus.COMPLETE, AnalysisJobStatus.FAILED, AnalysisJobStatus.CANCELLED):
                         break
                 except asyncio.TimeoutError:
-                    # Keep-alive heartbeat
+                    if job.status in (AnalysisJobStatus.COMPLETE, AnalysisJobStatus.FAILED, AnalysisJobStatus.CANCELLED):
+                        break
                     yield ": keep-alive\n\n"
         finally:
             with job.lock:
