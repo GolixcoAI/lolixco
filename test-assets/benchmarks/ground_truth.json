@@ -1,0 +1,194 @@
+{
+  "bench_01_clean_hard_cuts": {
+    "file": "/home/rohan/Lolixco/test-assets/benchmarks/bench_01_clean_hard_cuts.mp4",
+    "filename": "bench_01_clean_hard_cuts.mp4",
+    "description": "Standard clean anime/action cuts every 1.0s with 120 BPM on-beat percussion",
+    "duration_seconds": 6.0,
+    "fps": 30.0,
+    "has_audio": true,
+    "expected_cuts": [
+      1.0,
+      2.0,
+      3.0,
+      4.0,
+      5.0
+    ],
+    "expected_bpm": 120.0,
+    "expected_beats": [
+      0.0,
+      0.5,
+      1.0,
+      1.5,
+      2.0,
+      2.5,
+      3.0,
+      3.5,
+      4.0,
+      4.5,
+      5.0,
+      5.5
+    ],
+    "expected_sync_classification": "tight",
+    "notes": "Optimal baseline test: all cuts align with 0ms delta."
+  },
+  "bench_02_offset_sync_cuts": {
+    "file": "/home/rohan/Lolixco/test-assets/benchmarks/bench_02_offset_sync_cuts.mp4",
+    "filename": "bench_02_offset_sync_cuts.mp4",
+    "description": "Intentionally desynchronized cuts (beats land 120ms after each cut)",
+    "duration_seconds": 6.0,
+    "fps": 30.0,
+    "has_audio": true,
+    "expected_cuts": [
+      1.0,
+      2.0,
+      3.0,
+      4.0,
+      5.0
+    ],
+    "expected_bpm": 120.0,
+    "expected_beats": [
+      0.12,
+      0.62,
+      1.12,
+      1.62,
+      2.12,
+      2.62,
+      3.12,
+      3.62,
+      4.12,
+      4.62,
+      5.12,
+      5.62
+    ],
+    "expected_sync_classification": "off_beat",
+    "notes": "Stress test for sync scoring: cuts must be penalized for 120ms delta."
+  },
+  "bench_03_fast_phonk_montage": {
+    "file": "/home/rohan/Lolixco/test-assets/benchmarks/bench_03_fast_phonk_montage.mp4",
+    "filename": "bench_03_fast_phonk_montage.mp4",
+    "description": "High-velocity phonk montage (8-frame cuts, ASL < 0.3s)",
+    "duration_seconds": 4.0,
+    "fps": 30.0,
+    "has_audio": true,
+    "expected_cuts": [
+      0.267,
+      0.534,
+      0.801,
+      1.068,
+      1.335,
+      1.602,
+      1.869,
+      2.136,
+      2.403,
+      2.67,
+      2.937,
+      3.204,
+      3.471,
+      3.738
+    ],
+    "expected_bpm": 140.0,
+    "expected_sync_classification": "tight",
+    "notes": "Stress test for rapid pacing and high cut density."
+  },
+  "bench_04_isolated_flash_frames": {
+    "file": "/home/rohan/Lolixco/test-assets/benchmarks/bench_04_isolated_flash_frames.mp4",
+    "filename": "bench_04_isolated_flash_frames.mp4",
+    "description": "2 scenes with single-frame white strobes at 1.0s and 4.5s",
+    "duration_seconds": 6.0,
+    "fps": 30.0,
+    "has_audio": true,
+    "expected_cuts": [
+      3.0
+    ],
+    "expected_flashes": [
+      1.0,
+      4.5
+    ],
+    "notes": "Tests detector resilience: naive detectors register 5 cuts; adaptive detector must detect 1 real cut."
+  },
+  "bench_05_slow_emotional_takes": {
+    "file": "/home/rohan/Lolixco/test-assets/benchmarks/bench_05_slow_emotional_takes.mp4",
+    "filename": "bench_05_slow_emotional_takes.mp4",
+    "description": "Slow emotional cinematography (ASL = 6.0s, CPS = 0.17)",
+    "duration_seconds": 12.0,
+    "fps": 30.0,
+    "has_audio": true,
+    "expected_cuts": [
+      6.0
+    ],
+    "expected_bpm": 60.0,
+    "notes": "Verifies classification of slow emotional pace."
+  },
+  "bench_06_dissolves_fades": {
+    "file": "/home/rohan/Lolixco/test-assets/benchmarks/bench_06_dissolves_fades.mp4",
+    "filename": "bench_06_dissolves_fades.mp4",
+    "description": "Gradual crossfade/dissolve transitions (0.5s duration) without hard cuts",
+    "duration_seconds": 6.0,
+    "fps": 30.0,
+    "has_audio": true,
+    "expected_dissolves": [
+      2.0,
+      4.0
+    ],
+    "notes": "Tests detector behavior on gradual dissolves vs hard cuts."
+  },
+  "bench_07_silent_video": {
+    "file": "/home/rohan/Lolixco/test-assets/benchmarks/bench_07_silent_video.mp4",
+    "filename": "bench_07_silent_video.mp4",
+    "description": "Clean video cuts with no audio stream present in MP4 container",
+    "duration_seconds": 5.0,
+    "fps": 30.0,
+    "has_audio": false,
+    "expected_cuts": [
+      1.5,
+      3.0,
+      4.2
+    ],
+    "notes": "Tests graceful degradation: audio beats reported as absent without crashing."
+  },
+  "bench_08_clipping_audio": {
+    "file": "/home/rohan/Lolixco/test-assets/benchmarks/bench_08_clipping_audio.mp4",
+    "filename": "bench_08_clipping_audio.mp4",
+    "description": "Video with harsh digital clipping and high True Peak (>0 dBTP)",
+    "duration_seconds": 5.0,
+    "fps": 30.0,
+    "has_audio": true,
+    "expected_cuts": [
+      1.0,
+      2.0,
+      3.0,
+      4.0
+    ],
+    "expected_clipping": true,
+    "notes": "Tests audio quality detector: must flag clipping detected."
+  },
+  "bench_09_strobe_overload": {
+    "file": "/home/rohan/Lolixco/test-assets/benchmarks/bench_09_strobe_overload.mp4",
+    "filename": "bench_09_strobe_overload.mp4",
+    "description": "Extreme 15Hz strobe effect inside a scene (stress tests false positive cut rejection)",
+    "duration_seconds": 5.0,
+    "fps": 30.0,
+    "has_audio": true,
+    "expected_cuts": [
+      2.0,
+      3.0
+    ],
+    "notes": "Crucial test: checks if detector explodes with 30 false cuts or detects flash overload."
+  },
+  "bench_10_varied_dynamic_pacing": {
+    "file": "/home/rohan/Lolixco/test-assets/benchmarks/bench_10_varied_dynamic_pacing.mp4",
+    "filename": "bench_10_varied_dynamic_pacing.mp4",
+    "description": "Dramatic pacing shift (buildup 2.0s -> rapid cuts 0.5s -> cooldown 2.5s)",
+    "duration_seconds": 8.0,
+    "fps": 30.0,
+    "has_audio": true,
+    "expected_cuts": [
+      2.0,
+      4.0,
+      4.5,
+      5.0,
+      5.5
+    ],
+    "notes": "Tests pacing variance and dynamic range of shot lengths."
+  }
+}

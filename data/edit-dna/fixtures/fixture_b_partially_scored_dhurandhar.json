@@ -1,0 +1,192 @@
+{
+  "schema_version": "7.0.0-presentation",
+  "is_synthetic_fixture": true,
+  "for_frontend_testing_only": true,
+  "do_not_use_for_training": true,
+  "fixture_id": "fixture_b_partially_scored_dhurandhar",
+  "fixture_purpose": "Verify Dhurandhar real-world case: beat sync bar fills (4.93), other bars show honest unassessed state, overall gauge settles into standby (N/A).",
+  "media_id": "Best Dhurandhar edit.mp4",
+  "media_type": "authorized_video_bytes",
+  "generated_at": "2026-11-04T00:00:00Z",
+  "analysis_status": "PARTIAL",
+  "overall_score_0_10": null,
+  "overall_score_status": "NOT_YET_ASSESSED",
+  "overall_score_method": null,
+  "overall_score_tier": "Unassessed",
+  "gauge_presentation": {
+    "min": 0.0,
+    "max": 10.0,
+    "settled_value": null,
+    "display_text": "N/A",
+    "tier_label": "Unassessed",
+    "gauge_state": "unassessed_standby",
+    "accent_color": "#718096"
+  },
+  "reaction_bubbles": [
+    {
+      "tag": "CADENCE",
+      "callout": "RAPID FIRE! 1.92 cuts/sec kinetic rush.",
+      "style": "info"
+    },
+    {
+      "tag": "AUDIO",
+      "callout": "ACOUSTIC CLASH! Audio profile conflict.",
+      "style": "warning"
+    },
+    {
+      "tag": "VERDICT",
+      "callout": "EVIDENCE RECORDED. Standing by for critique.",
+      "style": "neutral"
+    }
+  ],
+  "assessment_sections": [
+    {
+      "section_id": "beat_synchronization",
+      "dimension_id": "beat_synchronization",
+      "section_name": "Beat Synchronization",
+      "display_name": "Beat Synchronization",
+      "score_0_10": 4.93,
+      "evidence_status": "MEASURED_SIGNAL",
+      "evidence_refs": {
+        "primary_grid_tight_percent": 34.8,
+        "double_time_tight_percent": 68.1,
+        "primary_bpm": 112.3
+      },
+      "timestamps": [
+        0.52,
+        1.04,
+        1.56,
+        2.08
+      ],
+      "method_version": "librosa_multi_tempo_grid_v6.0",
+      "limitations": [
+        "Evaluates transient timing."
+      ],
+      "creator_explanation": "Moderate primary sync (34.8%), but strong 16th-note double-time alignment (68.1%)."
+    },
+    {
+      "section_id": "cuts_and_transitions",
+      "dimension_id": "cuts_and_transitions",
+      "section_name": "Cuts & Transitions",
+      "display_name": "Cuts & Transitions",
+      "score_0_10": null,
+      "evidence_status": "NOT_YET_ASSESSED",
+      "evidence_refs": {
+        "cut_transitions_count": 69,
+        "intra_shot_flashes_count": 14,
+        "flash_rate_per_sec": 0.38
+      },
+      "timestamps": [
+        3.12,
+        5.84,
+        12.4
+      ],
+      "method_version": "opencv_absdiff_debounced_v6.0",
+      "limitations": [
+        "Physical cut counts recorded; subjective flow unassessed."
+      ],
+      "creator_explanation": "Detected 69 cuts and 14 intra-shot flashes. Visual transition smoothness requires semantic evaluation."
+    },
+    {
+      "section_id": "pacing",
+      "dimension_id": "pacing",
+      "section_name": "Pacing",
+      "display_name": "Pacing",
+      "score_0_10": null,
+      "evidence_status": "NOT_YET_ASSESSED",
+      "evidence_refs": {
+        "cuts_per_second": 1.92,
+        "shot_duration_mean_sec": 0.52,
+        "shot_duration_std_dev_sec": 0.42
+      },
+      "timestamps": [],
+      "method_version": "shot_duration_distribution_v6.0",
+      "limitations": [
+        "Cadence measured; narrative pacing unassessed."
+      ],
+      "creator_explanation": "Rapid kinetic cadence at 1.92 cuts/sec. Pacing quality requires editorial review."
+    },
+    {
+      "section_id": "visual_measurements",
+      "dimension_id": "visual_measurements",
+      "section_name": "Visual Measurements",
+      "display_name": "Visual Measurements",
+      "score_0_10": null,
+      "evidence_status": "NOT_YET_ASSESSED",
+      "evidence_refs": {
+        "width": 1280,
+        "height": 720,
+        "fps": 30.0,
+        "mean_sharpness_laplacian": 387.2
+      },
+      "timestamps": [],
+      "method_version": "laplacian_variance_and_signal_v6.0",
+      "limitations": [
+        "Resolution confirmed; color grading unassessed."
+      ],
+      "creator_explanation": "720p30 master with sharpness Laplacian 387.2. Aesthetic visual quality is unassessed."
+    },
+    {
+      "section_id": "storytelling_interpretation",
+      "dimension_id": "storytelling_interpretation",
+      "section_name": "Storytelling Interpretation",
+      "display_name": "Storytelling Interpretation",
+      "score_0_10": null,
+      "evidence_status": "NOT_YET_ASSESSED",
+      "evidence_refs": {
+        "audio_clipping": true,
+        "rms_db": -9.0
+      },
+      "timestamps": [],
+      "method_version": "narrative_arc_critique_v6.0",
+      "limitations": [
+        "Audio dynamics recorded; dramatic narrative arc requires human review."
+      ],
+      "creator_explanation": "Storytelling arc and emotional impact are not yet assessed."
+    },
+    {
+      "section_id": "originality_creativity",
+      "dimension_id": "originality_creativity",
+      "section_name": "Originality & Creative Execution",
+      "display_name": "Originality & Creative Execution",
+      "score_0_10": null,
+      "evidence_status": "NOT_YET_ASSESSED",
+      "evidence_refs": {
+        "shot_duration_variance": 0.42
+      },
+      "timestamps": [],
+      "method_version": "creative_execution_critique_v6.0",
+      "limitations": [
+        "Originality cannot be derived from shot variance."
+      ],
+      "creator_explanation": "Creative execution and unique stylistic voice are not yet assessed."
+    },
+    {
+      "section_id": "personalized_owner_fit",
+      "dimension_id": "personalized_owner_fit",
+      "section_name": "Personalized Owner Fit",
+      "display_name": "Personalized Owner Fit",
+      "score_0_10": null,
+      "evidence_status": "NOT_YET_ASSESSED",
+      "evidence_refs": {
+        "status": "withheld_pending_semantic_evaluation"
+      },
+      "timestamps": [],
+      "method_version": "loocv_constrained_regression_v6.1",
+      "limitations": [
+        "Owner fit requires full rubric evaluation."
+      ],
+      "creator_explanation": "Personalized fit is withheld until semantic dimensions are assessed."
+    }
+  ],
+  "context_evidence": {
+    "visual_recognition": {
+      "status": "UNKNOWN",
+      "explanation": "Out-of-catalog Bollywood footage."
+    },
+    "music_recognition": {
+      "status": "CONFLICT",
+      "explanation": "Acoustic genre clash with classical reference."
+    }
+  }
+}
