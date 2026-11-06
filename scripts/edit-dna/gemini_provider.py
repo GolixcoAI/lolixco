@@ -1,100 +1,183 @@
-#!/usr/bin/env python3
-"""
-Lolixco Edit DNA — Gemini Video Intelligence Provider Abstraction
-Provides optional semantic video understanding via Google's official Gemini Developer API (REST generateContent).
-Supports public YouTube URLs, handles quotas, caching, rate limiting, and graceful fallback.
-
-Modes:
-  - local_only: Pure offline signal and reference matching (zero network calls).
-  - gemini_semantic: Calls Gemini API for semantic scene understanding and character recognition.
-  - hybrid_auto: Runs local analysis and enriches with Gemini if API key is available; falls back gracefully.
-"""
-
-import os
-import sys
-import json
-import time
+"""Server-side Gemini Developer API client for public YouTube audiovisual input."""
 import hashlib
-import urllib.request
+import http.client
+import json
+import os
+import re
+import tempfile
+import threading
+import time
 import urllib.error
-from typing import Dict, Any, Optional, List
+import urllib.request
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 
 PRIMARY_GEMINI_MODEL = "gemini-3.8-flash"
-FALLBACK_GEMINI_MODELS = ["gemini-3.5-flash", "gemini-flash-latest"]
+FALLBACK_GEMINI_MODELS = ("gemini-3.5-flash", "gemini-flash-latest")
 CACHE_DIR = os.path.expanduser("~/.lolixco-edit-dna/cache")
+API_ROOT = "https://generativelanguage.googleapis.com/v1beta/"
+VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
+MODEL_ID = re.compile(r"gemini-[a-z0-9.-]{1,80}")
+MAX_RESPONSE_BYTES = 512 * 1024
+
+
+class ProviderError(Exception):
+    def __init__(self, status, message, http_code=None):
+        super().__init__(message)
+        self.status = status
+        self.message = message
+        self.http_code = http_code
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
 
 
 class GeminiVideoProvider:
-    """
-    Manages semantic video understanding queries via Google's Gemini API.
-    Designed for zero-leakage, token tracking, local caching, and transparent error handling.
-    """
-
-    def __init__(
-        self,
-        api_key: Optional[str] = None,
-        model: str = PRIMARY_GEMINI_MODEL,
-        mode: str = "hybrid_auto",
-        cache_dir: str = CACHE_DIR,
-    ):
-        self.api_key = api_key or self._discover_api_key()
+    def __init__(self, api_key=None, model=PRIMARY_GEMINI_MODEL, mode="hybrid_auto", cache_dir=CACHE_DIR):
+        key = api_key if api_key is not None else os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
+        self.api_key = key.strip()
         self.model = model
         self.mode = mode.lower()
         self.cache_dir = cache_dir
-        os.makedirs(self.cache_dir, exist_ok=True)
-
-    @staticmethod
-    def _discover_api_key() -> str:
-        """Discovers GEMINI_API_KEY from environment or local .env.local file."""
-        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if key:
-            return key.strip()
-
-        # Check .env.local in common locations
-        candidates = [
-            ".env.local",
-            "/home/rohan/Lolixco/.env.local",
-            os.path.join(os.path.dirname(__file__), "../../.env.local"),
-        ]
-        for c in candidates:
-            if os.path.isfile(c):
-                try:
-                    with open(c, "r", encoding="utf-8") as f:
-                        for line in f:
-                            line = line.strip()
-                            if line.startswith("GEMINI_API_KEY=") and not line.startswith("#"):
-                                return line.split("=", 1)[1].strip()
-                except Exception:
-                    pass
-        return ""
+        self._opener = urllib.request.build_opener(NoRedirect())
+        self._discovery_lock = threading.Lock()
+        self._discovery = None
 
     @property
-    def is_available(self) -> bool:
-        """Returns True if the provider has an API key and is not in local_only mode."""
+    def is_available(self):
         return bool(self.api_key) and self.mode != "local_only"
 
-    def get_cache_path(self, video_uri: str, prompt: str) -> str:
-        """Generates a deterministic local cache path based on URI and prompt hash."""
-        key_str = f"{self.model}::{video_uri}::{prompt}"
-        h = hashlib.sha256(key_str.encode("utf-8")).hexdigest()[:16]
-        safe_name = "".join(c if c.isalnum() else "_" for c in video_uri)[-24:]
-        return os.path.join(self.cache_dir, f"gemini_{safe_name}_{h}.json")
+    def _request(self, path, timeout, payload=None):
+        headers = {"x-goog-api-key": self.api_key, "Accept": "application/json"}
+        body = None
+        if payload is not None:
+            headers["Content-Type"] = "application/json"
+            body = json.dumps(payload).encode("utf-8")
+        request = urllib.request.Request(API_ROOT + path, data=body, headers=headers)
+        try:
+            with self._opener.open(request, timeout=timeout) as response:
+                raw = response.read(MAX_RESPONSE_BYTES + 1)
+            if len(raw) > MAX_RESPONSE_BYTES:
+                raise ValueError("oversize response")
+            data = json.loads(raw)
+            if not isinstance(data, dict):
+                raise ValueError("unexpected response")
+            return data
+        except urllib.error.HTTPError as error:
+            # Upstream diagnostics can contain identifiers or request data.
+            diagnostic = ""
+            try:
+                with error:
+                    diagnostic = error.read(8192).decode("utf-8", errors="replace").lower()
+            except (OSError, http.client.HTTPException):
+                pass
+            raise self._http_error(error.code, diagnostic) from None
+        except (OSError, http.client.HTTPException, ValueError):
+            raise ProviderError("temporarily_unavailable", "Gemini did not return a usable response. Try again later.") from None
 
-    def analyze_youtube_video(
-        self,
-        youtube_url: str,
-        custom_prompt: Optional[str] = None,
-        use_cache: bool = True,
-        timeout_seconds: int = 60,
-    ) -> Dict[str, Any]:
-        """
-        Submits a public YouTube URL to Gemini using generateContent.
-        Enforces a metadata-blind prompt to ensure unbiased recognition.
-        """
+    @staticmethod
+    def _http_error(code, diagnostic):
+        if code == 429:
+            return ProviderError("rate_limited", "Gemini rate or quota limit reached. Try again later.", code)
+        if code in (401, 403) or "api_key_invalid" in diagnostic or "api key not valid" in diagnostic:
+            return ProviderError("not_configured", "Gemini rejected the configured API key or project access.", code)
+        if code == 404 and ("not found for api version" in diagnostic or "not supported for generatecontent" in diagnostic):
+            return ProviderError("model_unavailable", "The selected Gemini model is unavailable.", code)
+        if code == 404 or (code == 400 and "video" in diagnostic and any(
+            term in diagnostic for term in ("unavailable", "private", "unlisted", "not found", "cannot access", "can't access")
+        )):
+            return ProviderError("video_unavailable", "Gemini could not access this public YouTube video.", code)
+        if code in (400, 422):
+            return ProviderError("unsupported", "Gemini could not process this video. Try a different public YouTube URL.", code)
+        return ProviderError("temporarily_unavailable", "Gemini is temporarily unavailable. Try again later.", code)
+
+    def discover_models(self, timeout=5):
+        """List account-visible generateContent models with bounded, cached discovery."""
+        if not self.is_available:
+            raise ProviderError("not_configured", "Set GEMINI_API_KEY in the analyzer environment.")
+        with self._discovery_lock:
+            if self._discovery and time.monotonic() < self._discovery[0]:
+                result = self._discovery[1]
+                if isinstance(result, ProviderError):
+                    raise ProviderError(result.status, result.message, result.http_code)
+                return result
+            try:
+                result = self._list_models(timeout)
+            except ProviderError as error:
+                self._discovery = (time.monotonic() + 15, ProviderError(error.status, error.message, error.http_code))
+                raise
+            self._discovery = (time.monotonic() + 300, result)
+            return result
+
+    def _list_models(self, timeout):
+        candidates = tuple(dict.fromkeys((self.model, *FALLBACK_GEMINI_MODELS)))
+        candidates = tuple(name for name in candidates if MODEL_ID.fullmatch(name))
+        discovered = set()
+        params = {"pageSize": 100}
+        deadline = time.monotonic() + timeout
+        for _ in range(4):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProviderError("temporarily_unavailable", "Gemini model discovery timed out.")
+            page = self._request("models?" + urlencode(params), remaining)
+            models = page.get("models")
+            if not isinstance(models, list):
+                raise ProviderError("temporarily_unavailable", "Gemini model discovery returned an unusable response.")
+            for model in models:
+                if isinstance(model, dict) and isinstance(model.get("name"), str) and isinstance(
+                    model.get("supportedGenerationMethods"), list
+                ) and "generateContent" in model["supportedGenerationMethods"]:
+                    discovered.add(model["name"].removeprefix("models/"))
+            next_page = page.get("nextPageToken")
+            if not isinstance(next_page, str) or not next_page or set(candidates) <= discovered:
+                break
+            params["pageToken"] = next_page
+        eligible = tuple(name for name in candidates if name in discovered)
+        if not eligible:
+            raise ProviderError("unsupported", "No supported Gemini Flash model is available for this API key.")
+        return eligible
+
+    @staticmethod
+    def _canonicalize_youtube_url(url):
+        """Reduce only recognized YouTube watch, Shorts, and share URLs to a video ID."""
+        if not isinstance(url, str) or len(url) > 2048:
+            return ""
+        try:
+            parsed = urlsplit(url.strip())
+            port = parsed.port
+        except ValueError:
+            return ""
+        if parsed.scheme not in ("http", "https") or parsed.username or parsed.password or port is not None:
+            return ""
+        if parsed.hostname == "youtu.be":
+            video_id = parsed.path.lstrip("/")
+        elif parsed.hostname in ("www.youtube.com", "youtube.com", "m.youtube.com"):
+            if parsed.path == "/watch":
+                values = parse_qs(parsed.query).get("v", [])
+                video_id = values[0] if len(values) == 1 else ""
+            else:
+                video_id = parsed.path.removeprefix("/shorts/") if parsed.path.startswith("/shorts/") else ""
+        else:
+            return ""
+        return f"https://www.youtube.com/watch?v={video_id}" if VIDEO_ID.fullmatch(video_id) else ""
+
+    def get_cache_path(self, video_uri, prompt):
+        digest = hashlib.sha256(f"{self.model}::{video_uri}::{prompt}".encode("utf-8")).hexdigest()
+        return os.path.join(self.cache_dir, f"gemini_{digest}.json")
+
+    def analyze_youtube_video(self, youtube_url, custom_prompt=None, use_cache=True, timeout_seconds=60,
+                              *, schema=None, clip_seconds=None):
+        """Return structured observations, or a safe classified failure without invented evidence."""
         canonical_url = self._canonicalize_youtube_url(youtube_url)
+        if not canonical_url:
+            return self._failed(ProviderError("unsupported", "Enter a valid public YouTube URL."))
+        if self.mode == "local_only":
+            return self._failed(ProviderError("bypassed", "Gemini was bypassed in offline mode."))
+        if not self.is_available:
+            return self._failed(ProviderError("missing_credentials", "Set GEMINI_API_KEY in the analyzer environment."))
 
-        # Standard metadata-blind prompt requesting structured output
         prompt = custom_prompt or (
             "You are an expert film, anime, and video-editing analyst for the Lolixco Edit DNA intelligence system.\n"
             "Examine the provided video thoroughly and return a valid JSON object with the following schema:\n"
@@ -125,233 +208,114 @@ class GeminiVideoProvider:
             "}\n"
         )
 
-        cache_path = self.get_cache_path(canonical_url, prompt)
-        if use_cache and os.path.isfile(cache_path):
+        cache_path = self.get_cache_path(canonical_url, json.dumps([prompt, schema, clip_seconds], sort_keys=True))
+        if use_cache:
             try:
-                with open(cache_path, "r", encoding="utf-8") as f:
-                    cached_data = json.load(f)
-                    cached_data["cached"] = True
-                    return cached_data
-            except Exception:
+                with open(cache_path, encoding="utf-8") as source:
+                    cached = json.load(source)
+                if cached.get("status") == "success":
+                    return {**cached, "cached": True}
+            except (OSError, ValueError, AttributeError):
                 pass
 
-        if self.mode == "local_only":
-            return {
-                "status": "bypassed",
-                "mode": "local_only",
-                "message": "Gemini API bypassed by provider mode 'local_only'. Operating entirely offline.",
-                "analysis": None,
-                "usage": {"input_tokens": 0, "output_tokens": 0, "estimated_cost_usd": 0.0},
-            }
+        start = time.monotonic()
+        try:
+            models = self.discover_models(min(5, timeout_seconds))
+            result = self._generate(models, canonical_url, prompt, schema, clip_seconds, start + timeout_seconds)
+        except ProviderError as error:
+            return self._failed(error)
+        result["latency_ms"] = round((time.monotonic() - start) * 1000, 1)
+        if use_cache:
+            self._write_cache(cache_path, result)
+        return result
 
-        if not self.api_key:
-            return {
-                "status": "missing_credentials",
-                "mode": self.mode,
-                "message": (
-                    "GEMINI_API_KEY environment variable is not set. "
-                    "Gemini semantic video understanding is paused. "
-                    "Falling back to local signal and reference matching."
-                ),
-                "setup_guide": {
-                    "step1": "Visit Google AI Studio: https://aistudio.google.com/apikey",
-                    "step2": "Create a free Gemini API key (no credit card or paid billing required).",
-                    "step3": "Export the key locally in your shell or add to .env.local: export GEMINI_API_KEY='your_key_here'",
-                    "step4": "Re-run Lolixco Edit DNA to enable hybrid semantic analysis.",
-                },
-                "analysis": None,
-                "usage": {"input_tokens": 0, "output_tokens": 0, "estimated_cost_usd": 0.0},
-            }
+    def _write_cache(self, cache_path, result):
+        temp_path = None
+        try:
+            os.makedirs(self.cache_dir, mode=0o700, exist_ok=True)
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self.cache_dir, delete=False) as output:
+                temp_path = output.name
+                json.dump(result, output)
+            os.replace(temp_path, cache_path)
+        except OSError:
+            if temp_path is not None:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
 
-        # Model trial list: primary model followed by active fallbacks
-        models_to_try = [self.model]
-        for fb in FALLBACK_GEMINI_MODELS:
-            if fb not in models_to_try:
-                models_to_try.append(fb)
-
-        last_error = None
-        start_time = time.time()
-
-        for model_name in models_to_try:
-            endpoint_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.api_key}"
-            payload = {
-                "contents": [{
-                    "parts": [
-                        {
-                            "file_data": {
-                                "file_uri": canonical_url,
-                                "mime_type": "video/webm",
-                            }
-                        },
-                        {
-                            "text": prompt
-                        }
-                    ]
-                }],
-                "generationConfig": {
-                    "response_mime_type": "application/json",
-                    "temperature": 0.2,
-                }
-            }
-
-            req_body = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(
-                endpoint_url,
-                data=req_body,
-                headers={
-                    "Content-Type": "application/json",
-                    "User-Agent": "LolixcoEditDNA/2.0",
-                },
-                method="POST",
-            )
-
+    def _generate(self, models, url, prompt, schema, clip_seconds, deadline):
+        video = {"fileData": {"fileUri": url}}
+        config = {"responseMimeType": "application/json", "maxOutputTokens": 2500}
+        if schema is not None:
+            config["responseJsonSchema"] = schema
+        if clip_seconds is not None:
+            video["videoMetadata"] = {"startOffset": "0s", "endOffset": f"{clip_seconds}s"}
+        payload = {"contents": [{"parts": [video, {"text": prompt}]}], "generationConfig": config}
+        for index, model in enumerate(models):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProviderError("temporarily_unavailable", "Gemini analysis timed out. Try again later.")
+            if model.startswith("gemini-3."):
+                config["thinkingConfig"] = {"thinkingLevel": "LOW"}
+            else:
+                config.pop("thinkingConfig", None)
             try:
-                with urllib.request.urlopen(req, timeout=timeout_seconds) as response:
-                    latency_ms = round((time.time() - start_time) * 1000.0, 1)
-                    resp_bytes = response.read()
-                    data = json.loads(resp_bytes.decode("utf-8"))
-
-                    output_text = ""
-                    cands = data.get("candidates", [])
-                    if cands and "content" in cands[0]:
-                        parts = cands[0]["content"].get("parts", [])
-                        output_text = "\n".join(p.get("text", "") for p in parts if "text" in p)
-
-                    usage_meta = data.get("usageMetadata", {})
-                    input_tokens = usage_meta.get("promptTokenCount", 0)
-                    output_tokens = usage_meta.get("candidatesTokenCount", 0)
-
-                    # Gemini Flash pricing: $0.00 on Free Tier; ~$0.75 / $3.75 per 1M tokens on Paid Tier
-                    estimated_cost_paid_tier = (input_tokens / 1_000_000.0 * 0.75) + (
-                        output_tokens / 1_000_000.0 * 3.75
-                    )
-
-                    # Parse structured JSON output
-                    structured = {}
-                    try:
-                        structured = json.loads(output_text)
-                        if isinstance(structured, list) and len(structured) > 0 and isinstance(structured[0], dict):
-                            structured = structured[0]
-                    except Exception:
-                        structured = self._parse_markdown_sections(output_text)
-
-                    result = {
-                        "status": "success",
-                        "mode": self.mode,
-                        "model": model_name,
-                        "video_uri": canonical_url,
-                        "latency_ms": latency_ms,
-                        "analysis": {
-                            "raw_text": output_text,
-                            "structured": structured,
-                        },
-                        "usage": {
-                            "input_tokens": input_tokens,
-                            "output_tokens": output_tokens,
-                            "total_tokens": input_tokens + output_tokens,
-                            "free_tier_cost_usd": 0.0,
-                            "estimated_paid_tier_cost_usd": round(estimated_cost_paid_tier, 6),
-                        },
-                        "cached": False,
-                    }
-
-                    # Cache successful result
-                    try:
-                        with open(cache_path, "w", encoding="utf-8") as f:
-                            json.dump(result, f, indent=2)
-                    except Exception:
-                        pass
-
-                    return result
-
-            except urllib.error.HTTPError as e:
-                err_code = e.code
-                err_body = e.read().decode("utf-8", errors="replace")
-                last_error = (err_code, err_body)
-                # If 503 (demand spike) or 404 (model deprecated), continue loop to try fallback model
-                if err_code in (503, 404, 429) and model_name != models_to_try[-1]:
-                    time.sleep(1.0)
+                result = self._request(f"models/{model}:generateContent", remaining, payload)
+            except ProviderError as error:
+                if error.status == "model_unavailable" and index + 1 < len(models):
                     continue
-                break
-            except Exception as e:
-                last_error = (0, str(e))
-                break
+                if error.status == "model_unavailable":
+                    raise ProviderError("unsupported", "The configured Gemini Flash models could not process this request.")
+                raise
+            return self._parse_result(result, model, url)
 
-        # Fallback exhausted or terminal error
-        latency_ms = round((time.time() - start_time) * 1000.0, 1)
-        err_code, err_msg = last_error if last_error else (500, "Unknown network failure")
-        status_desc = "api_error"
-        if err_code == 429:
-            status_desc = "quota_exhausted"
-        elif err_code in (401, 403):
-            status_desc = "auth_error"
-        elif err_code == 503:
-            status_desc = "service_unavailable"
-
+    def _parse_result(self, result, model, url):
+        try:
+            candidate = result["candidates"][0]
+            if candidate.get("finishReason") not in (None, "STOP"):
+                raise ValueError("generation did not complete")
+            parts = candidate["content"]["parts"]
+            output_text = "\n".join(part["text"] for part in parts if isinstance(part.get("text"), str) and not part.get("thought"))
+            structured = json.loads(output_text)
+            if isinstance(structured, list) and len(structured) == 1:
+                structured = structured[0]
+            if not isinstance(structured, dict) or not structured:
+                raise ValueError("empty observation")
+        except (AttributeError, KeyError, IndexError, TypeError, ValueError):
+            raise ProviderError("unsupported", "Gemini did not return usable audiovisual observations for this video.") from None
+        usage = result.get("usageMetadata")
+        usage = usage if isinstance(usage, dict) else {}
+        counts = {}
+        for field, key in (("promptTokenCount", "input_tokens"), ("candidatesTokenCount", "output_tokens"),
+                           ("thoughtsTokenCount", "thinking_tokens"), ("totalTokenCount", "total_tokens")):
+            if type(usage.get(field)) is int and usage[field] >= 0:
+                counts[key] = usage[field]
         return {
-            "status": status_desc,
-            "http_code": err_code,
-            "latency_ms": latency_ms,
-            "error_message": f"Gemini API returned error: {err_msg[:300]}",
+            "status": "success",
             "mode": self.mode,
-            "analysis": None,
-            "usage": {"input_tokens": 0, "output_tokens": 0, "estimated_cost_usd": 0.0},
+            "model": model,
+            "model_version": result.get("modelVersion"),
+            "video_uri": url,
+            "analysis": {"raw_text": output_text, "structured": structured},
+            "usage": counts,
+            "cached": False,
         }
 
-    @staticmethod
-    def _canonicalize_youtube_url(url: str) -> str:
-        """Converts shortened youtu.be, Shorts, or parameter-heavy URLs into standard watch URLs."""
-        if not url:
-            return ""
-        clean_url = url.strip()
-        if "youtu.be/" in clean_url:
-            vid = clean_url.split("youtu.be/")[1].split("?")[0].split("&")[0].split("/")[0]
-            return f"https://www.youtube.com/watch?v={vid}"
-        if "youtube.com/shorts/" in clean_url:
-            vid = clean_url.split("youtube.com/shorts/")[1].split("?")[0].split("&")[0].split("/")[0]
-            return f"https://www.youtube.com/watch?v={vid}"
-        if "youtube.com/watch" in clean_url and "v=" in clean_url:
-            vid = clean_url.split("v=")[1].split("&")[0].split("#")[0]
-            return f"https://www.youtube.com/watch?v={vid}"
-        return clean_url
-
-    @staticmethod
-    def _parse_markdown_sections(text: str) -> Dict[str, Any]:
-        """Fallback markdown section parser if JSON format was corrupted."""
-        sections = {}
-        current_section = "overview"
-        lines = text.splitlines()
-        current_lines = []
-
-        for line in lines:
-            if line.startswith("#") or (line.strip().endswith(":") and len(line.strip()) < 50):
-                header = line.strip("# :*").strip().lower().replace(" ", "_")
-                if current_lines:
-                    sections[current_section] = "\n".join(current_lines).strip()
-                    current_lines = []
-                current_section = header
-            else:
-                current_lines.append(line)
-
-        if current_lines:
-            sections[current_section] = "\n".join(current_lines).strip()
-
-        return sections
+    def _failed(self, error):
+        return {
+            "status": error.status,
+            "mode": self.mode,
+            "message": error.message,
+            "error_message": error.message,
+            "http_code": error.http_code,
+            "analysis": None,
+        }
 
     @classmethod
-    def analyze_structured_stream(cls, url: str) -> Dict[str, Any]:
-        """Convenience class method returning structured evaluation or fallback defaults."""
-        provider = cls()
-        res = provider.analyze_youtube_video(url)
-        if res.get("status") == "success" and res.get("analysis", {}).get("structured"):
-            struct = res["analysis"]["structured"]
-            if isinstance(struct, dict):
-                struct["model_used"] = res.get("model")
-                return struct
-        return {
-            "visual_recognition": {"identified_work": None, "confidence": 0.0, "visual_style_and_grading": res.get("error_message", "No visual recognition data.")},
-            "soundtrack_recognition": {"identified_title": None, "confidence": 0.0, "notes": res.get("error_message", "No audio recognition data.")},
-            "macro_pacing_and_flow": {"rhythm_summary": "Remote observation unavailable or unmeasured."},
-            "storytelling_interpretation": {"narrative_structure": "Remote narrative analysis unavailable."},
-            "originality_and_creative_execution": {"creative_assessment": "Remote originality analysis unavailable."},
-        }
+    def analyze_structured_stream(cls, url):
+        """Legacy research convenience interface. Studio uses the typed result."""
+        result = cls().analyze_youtube_video(url)
+        if result.get("status") == "success":
+            return {**result["analysis"]["structured"], "model_used": result["model"]}
+        return {}
