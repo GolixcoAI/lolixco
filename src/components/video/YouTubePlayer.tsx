@@ -72,6 +72,7 @@ export interface YouTubePlayerProps {
   onPlay?: () => void;
   onPause?: () => void;
   onError?: (errorCode: number, message: string) => void;
+  iframeReferrerPolicy?: HTMLIFrameElement["referrerPolicy"];
   onAutoplayBlocked?: () => void;
   className?: string;
 }
@@ -145,6 +146,7 @@ export const YouTubePlayer = forwardRef<
     onPlay,
     onPause,
     onError,
+    iframeReferrerPolicy,
     onAutoplayBlocked,
     className = "",
   },
@@ -257,6 +259,7 @@ export const YouTubePlayer = forwardRef<
     let instance: YouTubePlayerInstance | null = null;
     let pendingStart = false;
     let destroyed = false;
+    let startupTimer: number | undefined;
     if (autoStart.current.videoId !== videoId)
       autoStart.current = { videoId, allowed: true };
     const destroy = () => {
@@ -322,12 +325,23 @@ export const YouTubePlayer = forwardRef<
     };
     const failed = (code: number, message: string) => {
       if (disposed) return;
+      window.clearTimeout(startupTimer);
       pendingStart = false;
       pause();
       setHasError(true);
       setErrorMessage(message);
       onErrorRef.current?.(code, message);
+      if (iframeReferrerPolicy) {
+        disposed = true;
+        destroy();
+        containerRef.current?.replaceChildren();
+      }
     };
+    if (iframeReferrerPolicy) {
+      startupTimer = window.setTimeout(() => {
+        failed(0, "YouTube did not load the player. Open the video on YouTube or retry.");
+      }, 10000);
+    }
     const play = () => {
       if (!allowed() || !instance) return;
       pendingStart = true;
@@ -347,24 +361,37 @@ export const YouTubePlayer = forwardRef<
           );
           return;
         }
-        // YT replaces its target. React owns the outer host, not that target.
-        const target = document.createElement("div");
+        // For Studio, set the referrer policy before the initial player request.
+        const playerVars = {
+          autoplay: 0,
+          mute: propsRef.current.muted ? 1 : 0,
+          controls: controls ? 1 : 0,
+          rel: 0,
+          playsinline: 1,
+          enablejsapi: 1,
+          origin: window.location.origin,
+        };
+        const target = document.createElement(iframeReferrerPolicy ? "iframe" : "div");
+        if (target instanceof HTMLIFrameElement && iframeReferrerPolicy) {
+          const query = new URLSearchParams(Object.entries(playerVars).map(([key, value]) => [key, String(value)]));
+          target.referrerPolicy = iframeReferrerPolicy;
+          target.title = "YouTube video player";
+          target.width = "100%";
+          target.height = "100%";
+          target.allowFullscreen = true;
+          target.allow = "encrypted-media; picture-in-picture; fullscreen";
+          target.style.border = "0";
+          target.src = `https://www.youtube.com/embed/${videoId}?${query}`;
+        }
         containerRef.current.appendChild(target);
         try {
           instance = new window.YT!.Player(target, {
             videoId,
-            playerVars: {
-              autoplay: 0,
-              mute: propsRef.current.muted ? 1 : 0,
-              controls: controls ? 1 : 0,
-              rel: 0,
-              playsinline: 1,
-              enablejsapi: 1,
-              origin: window.location.origin,
-            },
+            playerVars,
             events: {
               onReady: () => {
                 if (!current()) return;
+                window.clearTimeout(startupTimer);
                 setIsReady(true);
                 try {
                   propsRef.current.muted
@@ -401,9 +428,11 @@ export const YouTubePlayer = forwardRef<
                     ? "This video has been removed or marked private by its creator."
                     : code === 101 || code === 150
                       ? "The creator of this video does not allow embedded playback outside YouTube."
-                      : code === 2
-                        ? "Invalid YouTube video ID parameter."
-                        : "Playback error occurred.";
+                      : code === 153
+                        ? "YouTube could not verify this embedded player's referrer."
+                        : code === 2
+                          ? "Invalid YouTube video ID parameter."
+                          : "YouTube could not play this video in the embedded player.";
                 failed(code, message);
               },
               onAutoplayBlocked: blocked,
@@ -426,6 +455,7 @@ export const YouTubePlayer = forwardRef<
     document.addEventListener("visibilitychange", hidden);
     return () => {
       disposed = true;
+      window.clearTimeout(startupTimer);
       cancelReady();
       document.removeEventListener("visibilitychange", hidden);
       pendingStart = false;
@@ -441,6 +471,7 @@ export const YouTubePlayer = forwardRef<
     controls,
     registerWithCoordinator,
     playbackScope,
+    iframeReferrerPolicy,
     generation,
   ]);
 

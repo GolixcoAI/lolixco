@@ -15,3 +15,14 @@ export function youtubeReferenceId(input: string): string | null {
   return null;
  }
 }
+
+export function youtubeWatchUrl(videoId: string) {
+ return 'https://www.youtube.com/watch?v=' + encodeURIComponent(videoId);
+}
+
+export function youtubePlaybackIssue(code: number) {
+ if (code === 101 || code === 150) return 'The video owner has disabled embedded playback.';
+ if (code === 100) return 'YouTube reports that this video is unavailable or private.';
+ if (code === 153) return 'YouTube could not verify the embedded player’s referrer.';
+ return 'The embedded player could not load this video.';
+}
