@@ -593,7 +593,7 @@ test("Lolixco Edit DNA — Phase 5: Gemini video provider abstraction & fallback
 
   assert.ok(stdout.includes("EXPERIMENT 1: GEMINI VIDEO UNDERSTANDING"));
   assert.ok(stdout.includes("Target YouTube URL : https://youtu.be/_yrPlcZY2jw"));
-  assert.ok(stdout.includes("Report written to data/edit-dna/gemini_youtube_experiment_report.json"));
+  assert.ok(stdout.includes("Offline by default"));
 });
 
 test("Lolixco Edit DNA — Phase 5: Semantic visual representation benchmark evaluates blur, overlays & negatives", () => {
