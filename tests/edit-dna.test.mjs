@@ -1464,13 +1464,22 @@ test("Lolixco Edit DNA — Phase 8.1: Rhythm annotation submission and private o
       `
 import sys
 import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 sys.path.insert(0, "scripts/edit-dna")
 from fastapi.testclient import TestClient
-from local_service import app
+import local_service
 
-client = TestClient(app)
+storage = TemporaryDirectory()
+local_service.PRIVATE_ANNOTATIONS_DIR = storage.name
+feedback = {
+    "owner_rating_midpoint": 7.5,
+    "annotated_timestamps": [{"timestamp_sec": t} for t in (1.0, 2.0, 3.0)],
+}
+(Path(storage.name) / "owner_feedback_dhurandhar.json").write_text(json.dumps(feedback))
+client = TestClient(local_service.app)
 
-# 1. Fetch existing owner feedback for Dhurandhar
+# 1. Resolve synthetic feedback from private annotation storage
 res_owner = client.get("/api/v8/annotations/Best Dhurandhar edit . mp4")
 assert res_owner.status_code == 200
 data_owner = res_owner.json()
@@ -1496,6 +1505,7 @@ res_get = client.get("/api/v8/annotations/test_sample_video.mp4")
 assert res_get.status_code == 200
 assert res_get.json()["annotations_count"] == 2
 
+storage.cleanup()
 print("PHASE8_1_ANNOTATION_API_VERIFIED")
       `,
     ],

@@ -151,7 +151,7 @@ class StagedMedia:
             message = str(error) if isinstance(error, ValueError) and str(error).endswith(".") else "Unsupported media metadata."
             raise HTTPException(422, message) from None
         except (KeyError, subprocess.SubprocessError, OSError):
-            raise HTTPException(422, "The file could not be probed as supported video or audio.") from None
+            raise HTTPException(422, "This file could not be read as video or audio. Choose a supported format or export the file again.") from None
         meta = {"id": media_id, "name": name, "stored_name": path.name, "size_bytes": count, **facts}
         manifest = path.parent / "manifest.json"
         with os.fdopen(os.open(manifest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as report:
