@@ -607,7 +607,7 @@ export default function App({
     fandom
   );
 
-  const isUpNextEnabled = selected !== null && isVideo(selected);
+  const isUpNextEnabled = active !== "Creator Studio" && selected !== null && isVideo(selected);
 
   const { edits: upNextEdits } = useRecommendations(
     {
@@ -622,7 +622,7 @@ export default function App({
   const { edits: homeRecommendedEdits } = useRecommendations({
     surface: "home",
     limit: 50,
-  }, true, initialEdits);
+  }, active !== "Creator Studio", initialEdits);
 
   const homeSections = useMemo(
     () =>
