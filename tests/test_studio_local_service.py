@@ -142,6 +142,11 @@ class StudioLocalServiceTests(unittest.TestCase):
         retry = self.start(media_id)
         self.assertEqual(self.wait_until(retry, "COMPLETE", "FAILED")["status"], "COMPLETE")
         self.request("DELETE", f"jobs/{job_id}")
+        final = self.start(media_id)
+        self.wait_until(final, "RUNNING")
+        self.request("POST", f"jobs/{final}/cancel")
+        self.request("DELETE", f"media/{media_id}")
+        self.request("GET", f"media/{media_id}", 404)
         self.assertTrue(source.is_file())
 
 

@@ -219,8 +219,13 @@ class StagedMedia:
     async def delete(self, media_id: str):
         async with self.lock:
             _, path = self.get(media_id)
-            if self.busy(path.parent):
+            if self.busy(path.parent, include_cancelling=False):
                 raise HTTPException(409, "Cancel or finish the active job before deleting its media.")
+            deadline = time.monotonic() + 2
+            while self.busy(path.parent):
+                if time.monotonic() >= deadline:
+                    raise HTTPException(409, "The worker is stopping. Retry deleting the temporary file in a moment.")
+                await asyncio.sleep(.05)
             shutil.rmtree(path.parent)
         return {"deleted": True}
 
