@@ -3,10 +3,10 @@ import {parsePresentation, phase9Presentation, V7_IDS} from './presentationV7';
 import {adaptRatings,type Ratings} from "./ratingModel";
 export type EvidenceStatus = 'MEASURED'|'EXPERIMENTAL'|'INFERRED'|'PERSONALIZED'|'NOT ASSESSED'|'UNKNOWN'|'CONFLICT';
 export type Evidence = { label: string; status: EvidenceStatus; value: string; provenance: string };
-export type StudioReport = { version: string; mediaNotes?: string[]; referenceTitle?: string; markers:TimelineMarker[]; synthetic?:boolean; experimental?:boolean; ratings: Ratings; evidence: Evidence[]; scenes: {time:number;label:string}[]; music: Evidence; sources: Evidence[] };
+export type StudioReport = { version: string; mediaNotes?: string[]; referenceTitle?: string; metadataOnly?: boolean; remoteObservation?: {model:string; directlyObserved:string; uncertain:string}; sourceNote?: string; markers:TimelineMarker[]; synthetic?:boolean; experimental?:boolean; ratings: Ratings; evidence: Evidence[]; scenes: {time:number;label:string}[]; music: Evidence; sources: Evidence[] };
 const object = (v: unknown): Record<string, unknown> => v && typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
 const text=(v:unknown)=>typeof v==='string'?v:typeof v==='number'&&Number.isFinite(v)?String(v):'';
-export function evidenceStatus(v:unknown):EvidenceStatus { const s=text(v);return ({MEASURED_SIGNAL:'MEASURED',EXPERIMENTAL_PROXY:'EXPERIMENTAL',MEASURED:'MEASURED',EVALUATED_SEMANTIC:'INFERRED',INFERRED:'INFERRED',PERSONALIZED_ESTIMATE:'PERSONALIZED',PERSONALIZED:'PERSONALIZED',NOT_YET_ASSESSED:'NOT ASSESSED',UNKNOWN:'UNKNOWN',CONFLICT:'CONFLICT',VERIFIED_MATCH:'INFERRED',POSSIBLE_MATCH:'INFERRED'} as Record<string,EvidenceStatus>)[s]||'UNKNOWN'; }
+export function evidenceStatus(v:unknown):EvidenceStatus { const s=text(v);return ({MEASURED_SIGNAL:'MEASURED',EXPERIMENTAL_PROXY:'EXPERIMENTAL',EVALUATED_SEMANTIC_EXPERIMENTAL:'EXPERIMENTAL',MEASURED:'MEASURED',EVALUATED_SEMANTIC:'INFERRED',INFERRED:'INFERRED',PERSONALIZED_ESTIMATE:'PERSONALIZED',PERSONALIZED:'PERSONALIZED',NOT_YET_ASSESSED:'NOT ASSESSED',UNKNOWN:'UNKNOWN',CONFLICT:'CONFLICT',VERIFIED_MATCH:'INFERRED',POSSIBLE_MATCH:'INFERRED'} as Record<string,EvidenceStatus>)[s]||'UNKNOWN'; }
 function collect(value:unknown,label:string,inherited:EvidenceStatus,provenance:string,depth=0):Evidence[]{
  if(depth>4)return [];
  const field=object(value);const status=field.status?evidenceStatus(field.status):inherited;const origin=text(field.provenance||field.evaluator)||provenance;
@@ -18,12 +18,55 @@ function collect(value:unknown,label:string,inherited:EvidenceStatus,provenance:
 }
 export function adaptStudioReport(input:unknown):StudioReport {
  const r=object(input);if(r.schema_version==='7.0.0-presentation'){
- const v=parsePresentation(r);const music=object(v.context.music_recognition);const source=object(v.context.visual_recognition);const track=object(music.matched_track);const musicState=evidenceStatus(music.status);
- const reference=object(v.context.youtube_reference);
- const observations=object(v.context.media_observations);
- const mediaNotes=Array.isArray(v.context.media_notes)?v.context.media_notes.filter((note):note is string=>typeof note==='string'):[];
- if(text(reference.author_name))mediaNotes.unshift('Publisher: '+text(reference.author_name));
- return{version:v.schema_version,mediaNotes,referenceTitle:text(reference.title),markers:timelineMarkers(r),synthetic:v.is_synthetic_fixture,experimental:v.experimental,ratings:v.ratings,evidence:[...collect(observations,'Stream measurements','MEASURED','local_stream_observation'),...v.assessment_sections.flatMap(section=>[{label:section.section_id,status:evidenceStatus(section.evidence_status),value:section.creator_explanation||'No explanation supplied',provenance:section.method_version},...collect(section.evidence_refs,'Supporting measurements','MEASURED',section.method_version)])],scenes:v.assessment_sections.find(s=>s.section_id==='cuts_and_transitions')!.timestamps.map((time,i)=>({time,label:`Transition reference ${i+1}`})),music:{label:'Recognition',status:musicState,value:musicState==='CONFLICT'?'Conflicting evidence — review needed':[text(track.title),text(track.artist)].filter(Boolean).join(' · ')||text(music.matched_track)||'Music not yet identified.',provenance:[text(music.provenance),`Recognition status: ${text(music.status)||'UNKNOWN'}`].filter(Boolean).join(' · ')},sources:(Array.isArray(source.candidates)?source.candidates:source.matched_entity?[source.matched_entity]:[]).map(raw=>{const entity=object(raw);return{label:'Source candidate',status:evidenceStatus(source.status),value:text(entity.title||entity.name)||'Unknown source',provenance:[text(source.provenance),`Recognition status: ${text(source.status)||'UNKNOWN'}`].filter(Boolean).join(' · ')}})};
+  const v = parsePresentation(r);
+  const music = object(v.context.music_recognition);
+  const source = object(v.context.visual_recognition);
+  const track = object(music.matched_track);
+  const musicState = evidenceStatus(music.status);
+  const reference = object(v.context.youtube_reference);
+  const remote = object(v.context.remote_observation);
+  const observations = object(v.context.media_observations);
+  const mediaNotes = Array.isArray(v.context.media_notes)
+   ? v.context.media_notes.filter((note): note is string => typeof note === 'string') : [];
+  if (text(reference.author_name)) mediaNotes.unshift('Publisher: ' + text(reference.author_name));
+  const candidates = Array.isArray(source.candidates) ? source.candidates : source.matched_entity ? [source.matched_entity] : [];
+  const trackName = [text(track.title), text(track.artist)].filter(Boolean).join(' · ') || text(music.matched_track);
+  return {
+   version: v.schema_version, mediaNotes, referenceTitle: text(reference.title),
+   metadataOnly: v.assessment_sections.every(section => section.method_version === 'youtube_oembed_metadata_only'),
+   remoteObservation: remote.provider === 'Gemini' && text(remote.model) ? {
+    model: text(remote.model), directlyObserved: text(remote.directly_observed), uncertain: text(remote.uncertain),
+   } : undefined,
+   sourceNote: text(source.explanation),
+   markers: timelineMarkers(r), synthetic: v.is_synthetic_fixture, experimental: v.experimental, ratings: v.ratings,
+   evidence: [
+    ...collect(observations, 'Stream measurements', 'MEASURED', 'local_stream_observation'),
+    ...v.assessment_sections.flatMap(section => {
+     const status = evidenceStatus(section.evidence_status);
+     return [
+      {label: section.section_id, status, value: section.creator_explanation || 'No explanation supplied', provenance: section.method_version},
+      ...collect(section.evidence_refs, 'Supporting evidence',
+       section.evidence_status === 'EVALUATED_SEMANTIC_EXPERIMENTAL' ? 'EXPERIMENTAL' : 'MEASURED', section.method_version),
+     ];
+    }),
+   ],
+   scenes: v.assessment_sections.find(section => section.section_id === 'cuts_and_transitions')!.timestamps
+    .map((time, index) => ({time, label: `Transition reference ${index + 1}`})),
+   music: {
+    label: 'Music recognition', status: musicState,
+    value: musicState === 'CONFLICT' ? 'Conflicting evidence. Review the source candidates.'
+     : trackName || text(music.explanation || music.audit_note) || 'Music identity is unavailable.',
+    provenance: [text(music.provenance), trackName && text(music.explanation)].filter(Boolean).join(' · '),
+   },
+   sources: candidates.flatMap(raw => {
+    const entity = object(raw);
+    const value = text(entity.title || entity.name || raw);
+    return value ? [{
+     label: text(entity.type) || 'Source candidate', status: evidenceStatus(source.status), value,
+     provenance: [text(source.provenance), text(entity.evidence)].filter(Boolean).join(' · '),
+    }] : [];
+   }),
+  };
  }if(r.schema_version!=='6.0.0')throw Error('Import an Edit DNA v6.0.0 report.');
  const semantic = object(r.section_d_semantic_evaluation);
  if (semantic.status === 'CALCULATED_EXPERIMENTAL_V9') {

@@ -1,7 +1,54 @@
-import test from'node:test';import assert from'node:assert/strict';import{adaptRatings,DEMO_RATINGS,CATEGORY_LABELS,REVEAL_MS,categoryValue,needleValue}from'../src/components/studio/ratingModel.ts';
-const grade=score=>({score,status:'EVALUATED_SEMANTIC',provenance:'Synthetic test fixture'});
-const report={section_d_semantic_evaluation:{scorecard:{beat_synchronization:grade(6.9),transitions:grade(0),pacing:grade(10)}},section_e_personalized_model:{provenance:'test_fixture',overall_prediction:{predicted_score:5.17,status:'PERSONALIZED_ESTIMATE'}}};
-test('exact seven categories and supported 0–10 endpoints with two decimal presentation',()=>{const r=adaptRatings(report);assert.equal(CATEGORY_LABELS.length,7);assert.equal(r.categories[0].score,6.9);assert.equal(r.categories[1].score,0);assert.equal(r.categories[2].score,10);assert.equal(r.overall.score.toFixed(2),'5.17');for(let i=0;i<7;i++)assert.equal(categoryValue(DEMO_RATINGS.categories[i].score,REVEAL_MS,i),DEMO_RATINGS.categories[i].score);assert.equal(needleValue(DEMO_RATINGS,REVEAL_MS),5.17)});
-test('missing, conflict, unsupported, out-of-range and unprovenanced grades are not animated',()=>{assert.equal(adaptRatings({}).overall.score,null);for(const v of [grade(92),grade(NaN),{score:7,status:'CONFLICT',provenance:'test'},{score:7,status:'NOT_YET_ASSESSED',provenance:'test'},{score:7,status:'EVALUATED_SEMANTIC'}])assert.equal(adaptRatings({section_d_semantic_evaluation:{scorecard:{pacing:v}}}).categories[2].score,null);});
-test('interpolation is bounded, monotonic and ends at the exact score',()=>{let last=0;for(let t=0;t<=300;t+=10){const v=categoryValue(4.79,t,0);assert.ok(v>=last&&v<=4.79);last=v}assert.equal(last,4.79)});
-test('timing modes and curated run reactions preserve variety without praising weak scores',async()=>{const{REACTION_POOL,selectReactions,RESULT_REVEAL_MS}=await import('../src/components/studio/ratingModel.ts');assert.equal(REACTION_POOL.length,28);assert.ok(RESULT_REVEAL_MS>REVEAL_MS&&RESULT_REVEAL_MS<4500);const a=selectReactions(DEMO_RATINGS,()=>0),b=selectReactions(DEMO_RATINGS,()=>.99);assert.equal(a.length,6);assert.equal(new Set(a).size,6);assert.notDeepEqual(a,b);assert.ok(!a.includes('FINAL VERDICT!'));});
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+ adaptRatings, CATEGORY_LABELS, CHECKPOINT_MS, checkpointValue, pickReaction, REACTION_POOL,
+} from '../src/components/studio/ratingModel.ts';
+
+const grade = score => ({score, status:'EVALUATED_SEMANTIC', provenance:'Synthetic test fixture'});
+const report = {
+ section_d_semantic_evaluation: {scorecard:{beat_synchronization:grade(6.9),transitions:grade(0),pacing:grade(10)}},
+ section_e_personalized_model: {provenance:'test_fixture', overall_prediction:{predicted_score:5.17,status:'PERSONALIZED_ESTIMATE'}},
+};
+
+test('exact seven categories and supported 0–10 endpoints with two decimal presentation', () => {
+ const ratings = adaptRatings(report);
+ assert.equal(CATEGORY_LABELS.length, 7);
+ assert.deepEqual(ratings.categories.slice(0, 3).map(item => item.score), [6.9, 0, 10]);
+ assert.equal(ratings.overall.score.toFixed(2), '5.17');
+});
+
+test('missing, conflict, unsupported, out-of-range and unprovenanced grades are withheld', () => {
+ assert.equal(adaptRatings({}).overall.score, null);
+ for (const pacing of [grade(92),grade(NaN),{score:7,status:'CONFLICT',provenance:'test'},
+  {score:7,status:'NOT_YET_ASSESSED',provenance:'test'},{score:7,status:'EVALUATED_SEMANTIC'}]) {
+  assert.equal(adaptRatings({section_d_semantic_evaluation:{scorecard:{pacing}}}).categories[2].score, null);
+ }
+});
+
+test('checkpoints ease to the true value on rising and falling needle motion', () => {
+ let last = 8.5;
+ for (let time = 0; time <= CHECKPOINT_MS; time += 10) {
+  const value = checkpointValue(8.5, 4.79, time);
+  assert.ok(value <= last && value >= 4.79);
+  last = value;
+ }
+ assert.equal(last, 4.79);
+ assert.equal(checkpointValue(4.79, 9.62, CHECKPOINT_MS), 9.62);
+});
+
+test('comic pool preserves the prior reactions and supports seven distinct checkpoints', () => {
+ assert.equal(new Set(REACTION_POOL).size, 29);
+ assert.ok(REACTION_POOL.includes("YOU'RE COOKING!"));
+ const strong = new Set(), weak = new Set();
+ for (let i = 0; i < 7; i++) {
+  pickReaction(9, strong, () => .99);
+  pickReaction(2, weak, () => .99);
+ }
+ assert.equal(strong.size, 7);
+ assert.equal(weak.size, 7);
+ assert.ok(strong.has('SHUT UP!'));
+ assert.ok(!strong.has('COOKED!'));
+ assert.ok(weak.has('COOKED!'));
+ assert.ok(!weak.has('COOKING!'));
+ assert.ok(!REACTION_POOL.includes('FINAL VERDICT'));
+});

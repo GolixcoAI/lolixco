@@ -129,6 +129,10 @@ export function syncUrl(
   const params = new URLSearchParams();
   if (view === "Creator Studio") {
     params.set("view", "studio");
+    const analysisJob = new URLSearchParams(window.location.search).get("analysisJob");
+    if (analysisJob && /^job_\d+_[a-f0-9]{6}$/.test(analysisJob)) {
+      params.set("analysisJob", analysisJob);
+    }
   } else if (view && view.toLowerCase() === "explore") {
     params.set("view", "explore");
   } else if (view && view.toLowerCase() === "shorts") {
@@ -674,8 +678,6 @@ export default function App({
       "Immersion Mode is planned. Adaptive ambience, continuous playback, and personal playback queue are not implemented in this homepage preview.",
     Shorts:
       "Curated Shorts is planned as a dedicated portrait-video experience with a vertical player. This preview currently supports standard landscape edits.",
-    "Creator Studio":
-      "Creator Studio is planned for temporary in-browser AI video analysis. No uploads, login, or public analytics are active in this demo.",
     Settings:
       "This preview follows your device's reduced-motion and reduced-data preferences. Player controls and A–B loop settings are available inside the video.",
     Help:
