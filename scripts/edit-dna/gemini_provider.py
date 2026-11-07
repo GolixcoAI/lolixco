@@ -1,4 +1,5 @@
 """Server-side Gemini Developer API client for public YouTube audiovisual input."""
+import base64
 import hashlib
 import http.client
 import json
@@ -19,6 +20,9 @@ API_ROOT = "https://generativelanguage.googleapis.com/v1beta/"
 VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
 MODEL_ID = re.compile(r"gemini-[a-z0-9.-]{1,80}")
 MAX_RESPONSE_BYTES = 512 * 1024
+MAX_INLINE_BYTES = 14 * 1024 * 1024
+MAX_OUTPUT_TOKENS = 6000
+VIDEO_MODEL = re.compile(r"gemini-(?:\d+(?:\.\d+)?-flash(?:-lite)?(?:-[a-z0-9.-]+)?|flash-latest)")
 
 
 class ProviderError(Exception):
@@ -74,24 +78,46 @@ class GeminiVideoProvider:
             except (OSError, http.client.HTTPException):
                 pass
             raise self._http_error(error.code, diagnostic) from None
+        except TimeoutError:
+            raise ProviderError("temporarily_unavailable", "Gemini exceeded the request time limit. Try a faster available model or a shorter review interval.") from None
+        except urllib.error.URLError as error:
+            message = "The local analyzer could not connect to Gemini. Check the network connection and retry."
+            if isinstance(error.reason, TimeoutError):
+                message = "Gemini exceeded the request time limit. Try a faster available model or a shorter review interval."
+            raise ProviderError("temporarily_unavailable", message) from None
         except (OSError, http.client.HTTPException, ValueError):
             raise ProviderError("temporarily_unavailable", "Gemini did not return a usable response. Try again later.") from None
 
     @staticmethod
     def _http_error(code, diagnostic):
         if code == 429:
-            return ProviderError("rate_limited", "Gemini rate or quota limit reached. Try again later.", code)
-        if code in (401, 403) or "api_key_invalid" in diagnostic or "api key not valid" in diagnostic:
-            return ProviderError("not_configured", "Gemini rejected the configured API key or project access.", code)
-        if code == 404 and ("not found for api version" in diagnostic or "not supported for generatecontent" in diagnostic):
-            return ProviderError("model_unavailable", "The selected Gemini model is unavailable.", code)
+            message = "Gemini request or token quota was exceeded. Check the selected model's project quota and retry later."
+            if "free_tier" in diagnostic and any(term in diagnostic for term in ("limit: 0", '"limit":"0"', '"quotavalue":"0"')):
+                message = "Gemini reports no free-tier generation quota for the selected model. Select another eligible model or review the project's quota."
+            return ProviderError("quota_exceeded", message, code)
+        if "api_key_invalid" in diagnostic or "api key not valid" in diagnostic or code == 401:
+            return ProviderError("authentication_failed", "Gemini rejected the configured API credential. Check the backend key and restart Studio.", code)
+        if code == 403:
+            if any(term in diagnostic for term in ("api_key_service_blocked", "referer", "referrer", "ip_address_blocked")):
+                message = "The API key's application or service restrictions block this server-side Gemini request."
+            else:
+                message = "The Gemini project or key does not have permission for this request. Check API access and key restrictions."
+            return ProviderError("authentication_failed", message, code)
+        if code == 404 and any(term in diagnostic for term in ("models/", "not found for api version", "not supported for generatecontent")):
+            return ProviderError("model_unavailable", "The selected Gemini model is unavailable for generation. Refresh model discovery or select another model.", code)
         if code == 404 or (code == 400 and "video" in diagnostic and any(
-            term in diagnostic for term in ("unavailable", "private", "unlisted", "not found", "cannot access", "can't access")
+            term in diagnostic for term in ("unavailable", "private", "unlisted", "not found", "cannot access", "can't access", "failed to fetch")
         )):
-            return ProviderError("video_unavailable", "Gemini could not access this public YouTube video.", code)
+            return ProviderError("video_unavailable", "Gemini could not access this video. It may be private, removed, restricted, or temporarily unreachable.", code)
         if code in (400, 422):
-            return ProviderError("unsupported", "Gemini could not process this video. Try a different public YouTube URL.", code)
-        return ProviderError("temporarily_unavailable", "Gemini is temporarily unavailable. Try again later.", code)
+            if any(term in diagnostic for term in ("responsejsonschema", "response_schema", "response schema", "invalid json payload")):
+                message = "Gemini rejected the structured assessment request. Its schema or model options need adjustment."
+            elif "failed_precondition" in diagnostic and any(term in diagnostic for term in ("country", "region", "free tier")):
+                message = "Gemini reports that the selected API tier is unavailable in this region. Review the project's supported access options."
+            else:
+                message = "The selected Gemini model could not support this video request. Try another eligible model or accessible video."
+            return ProviderError("request_unsupported", message, code)
+        return ProviderError("temporarily_unavailable", "Gemini returned a temporary provider error. Retry after a short wait.", code)
 
     def discover_models(self, timeout=5):
         """List account-visible generateContent models with bounded, cached discovery."""
@@ -112,8 +138,9 @@ class GeminiVideoProvider:
             return result
 
     def _list_models(self, timeout):
+        if not self._video_model(self.model):
+            raise ProviderError("request_unsupported", "Select a supported Gemini Flash video-understanding model.")
         candidates = tuple(dict.fromkeys((self.model, *FALLBACK_GEMINI_MODELS)))
-        candidates = tuple(name for name in candidates if MODEL_ID.fullmatch(name))
         discovered = set()
         params = {"pageSize": 100}
         deadline = time.monotonic() + timeout
@@ -129,15 +156,24 @@ class GeminiVideoProvider:
                 if isinstance(model, dict) and isinstance(model.get("name"), str) and isinstance(
                     model.get("supportedGenerationMethods"), list
                 ) and "generateContent" in model["supportedGenerationMethods"]:
-                    discovered.add(model["name"].removeprefix("models/"))
+                    name = model["name"].removeprefix("models/")
+                    if self._video_model(name):
+                        discovered.add(name)
             next_page = page.get("nextPageToken")
             if not isinstance(next_page, str) or not next_page or set(candidates) <= discovered:
                 break
             params["pageToken"] = next_page
-        eligible = tuple(name for name in candidates if name in discovered)
+        eligible = [name for name in candidates if name in discovered]
+        eligible.extend(sorted(discovered - set(eligible), reverse=True))
         if not eligible:
-            raise ProviderError("unsupported", "No supported Gemini Flash model is available for this API key.")
-        return eligible
+            raise ProviderError("model_unavailable", "No Gemini Flash model with generateContent is visible to this API key.")
+        return tuple(eligible)
+
+    @staticmethod
+    def _video_model(name):
+        return isinstance(name, str) and bool(VIDEO_MODEL.fullmatch(name)) and not any(
+            kind in name for kind in ("image", "audio", "tts", "live", "research", "robotics")
+        )
 
     @staticmethod
     def _canonicalize_youtube_url(url):
@@ -168,7 +204,7 @@ class GeminiVideoProvider:
         return os.path.join(self.cache_dir, f"gemini_{digest}.json")
 
     def analyze_youtube_video(self, youtube_url, custom_prompt=None, use_cache=True, timeout_seconds=60,
-                              *, schema=None, clip_seconds=None):
+                              *, schema=None, clip_seconds=None, max_output_tokens=2500):
         """Return structured observations, or a safe classified failure without invented evidence."""
         canonical_url = self._canonicalize_youtube_url(youtube_url)
         if not canonical_url:
@@ -221,7 +257,7 @@ class GeminiVideoProvider:
         start = time.monotonic()
         try:
             models = self.discover_models(min(5, timeout_seconds))
-            result = self._generate(models, canonical_url, prompt, schema, clip_seconds, start + timeout_seconds)
+            result = self._generate(models, canonical_url, prompt, schema, clip_seconds, start + timeout_seconds, max_output_tokens)
         except ProviderError as error:
             return self._failed(error)
         result["latency_ms"] = round((time.monotonic() - start) * 1000, 1)
@@ -244,13 +280,57 @@ class GeminiVideoProvider:
                 except OSError:
                     pass
 
-    def _generate(self, models, url, prompt, schema, clip_seconds, deadline):
+    @staticmethod
+    def _output_limit(value):
+        if type(value) is not int or not 64 <= value <= MAX_OUTPUT_TOKENS:
+            raise ProviderError("request_unsupported", "The requested assessment output exceeds the configured token limit.")
+        return value
+
+    def count_video_tokens(self, youtube_url, custom_prompt="", *, clip_seconds=None, timeout_seconds=20):
+        """Perform the non-generation token preflight for a public YouTube input."""
+        url = self._canonicalize_youtube_url(youtube_url)
+        if not url:
+            raise ProviderError("request_unsupported", "Enter a valid public YouTube URL.")
+        model = self.discover_models(min(5, timeout_seconds))[0]
         video = {"fileData": {"fileUri": url}}
-        config = {"responseMimeType": "application/json", "maxOutputTokens": 2500}
-        if schema is not None:
-            config["responseJsonSchema"] = schema
         if clip_seconds is not None:
             video["videoMetadata"] = {"startOffset": "0s", "endOffset": f"{clip_seconds}s"}
+        result = self._request(f"models/{model}:countTokens", timeout_seconds,
+                               {"contents": [{"parts": [video, {"text": custom_prompt}]}]})
+        total = result.get("totalTokens")
+        if type(total) is not int or total <= 0:
+            raise ProviderError("temporarily_unavailable", "Gemini did not return a usable input token count.")
+        return {"model": model, "input_tokens": total}
+
+    def analyze_inline_video(self, data, mime_type, prompt, schema=None, timeout_seconds=65, *, max_output_tokens=6000):
+        """Analyze already-consented inline bytes without creating a provider Files API object."""
+        if not self.is_available:
+            return self._failed(ProviderError("not_configured", "Set GEMINI_API_KEY in the analyzer environment."))
+        if not isinstance(data, bytes) or not data or len(data) > MAX_INLINE_BYTES or mime_type not in (
+            "video/mp4", "video/webm", "video/quicktime",
+        ):
+            return self._failed(ProviderError("request_unsupported", "The prepared cloud analysis copy must be a supported video below 14 MiB."))
+        started = time.monotonic()
+        try:
+            limit = self._output_limit(max_output_tokens)
+            models = self.discover_models(min(5, timeout_seconds))
+            video = {"inlineData": {"mimeType": mime_type, "data": base64.b64encode(data).decode("ascii")}}
+            result = self._generate_part(models, video, prompt, schema, started + timeout_seconds, "consented_inline_video", limit)
+        except ProviderError as error:
+            return self._failed(error)
+        result["latency_ms"] = round((time.monotonic() - started) * 1000, 1)
+        return result
+
+    def _generate(self, models, url, prompt, schema, clip_seconds, deadline, max_output_tokens=2500):
+        video = {"fileData": {"fileUri": url}}
+        if clip_seconds is not None:
+            video["videoMetadata"] = {"startOffset": "0s", "endOffset": f"{clip_seconds}s"}
+        return self._generate_part(models, video, prompt, schema, deadline, url, self._output_limit(max_output_tokens))
+
+    def _generate_part(self, models, video, prompt, schema, deadline, source, max_output_tokens):
+        config = {"responseMimeType": "application/json", "maxOutputTokens": max_output_tokens}
+        if schema is not None:
+            config["responseJsonSchema"] = schema
         payload = {"contents": [{"parts": [video, {"text": prompt}]}], "generationConfig": config}
         for index, model in enumerate(models):
             remaining = deadline - time.monotonic()
@@ -266,14 +346,17 @@ class GeminiVideoProvider:
                 if error.status == "model_unavailable" and index + 1 < len(models):
                     continue
                 if error.status == "model_unavailable":
-                    raise ProviderError("unsupported", "The configured Gemini Flash models could not process this request.")
+                    raise ProviderError("model_unavailable", "The discovered Gemini Flash models were unavailable for this request.")
                 raise
-            return self._parse_result(result, model, url)
+            return self._parse_result(result, model, source)
 
     def _parse_result(self, result, model, url):
         try:
             candidate = result["candidates"][0]
-            if candidate.get("finishReason") not in (None, "STOP"):
+            reason = candidate.get("finishReason")
+            if reason == "MAX_TOKENS":
+                raise ProviderError("request_unsupported", "Gemini reached the assessment output limit before completing the report. Shorten the request or increase its bounded output budget.")
+            if reason not in (None, "STOP"):
                 raise ValueError("generation did not complete")
             parts = candidate["content"]["parts"]
             output_text = "\n".join(part["text"] for part in parts if isinstance(part.get("text"), str) and not part.get("thought"))
@@ -283,7 +366,7 @@ class GeminiVideoProvider:
             if not isinstance(structured, dict) or not structured:
                 raise ValueError("empty observation")
         except (AttributeError, KeyError, IndexError, TypeError, ValueError):
-            raise ProviderError("unsupported", "Gemini did not return usable audiovisual observations for this video.") from None
+            raise ProviderError("request_unsupported", "Gemini did not return usable audiovisual observations for this video.") from None
         usage = result.get("usageMetadata")
         usage = usage if isinstance(usage, dict) else {}
         counts = {}
