@@ -119,6 +119,8 @@ def run_analysis(job, report_root, work_root, staging_root):
                 arguments = [str(WORKERS / "youtube_worker.py"), video_id]
                 timeout = REMOTE_SECONDS
             elif media_path.parent.parent == staging_root:
+                # The private preference cohort is available only to the offline worker.
+                environment["LOLIXCO_OWNER_STATE_PARENT"] = str(staging_root.parent.parent)
                 arguments = [str(WORKERS / "media_worker.py"), job.media_path, job.job_id, job.quality_mode, workspace]
                 timeout = LOCAL_SECONDS
             else:
