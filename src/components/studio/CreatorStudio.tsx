@@ -2,6 +2,8 @@ import {useEffect, useId, useMemo, useRef, useState, type ReactNode} from 'react
 import {ArrowUpRight, AudioLines, ChevronDown, Download, Film, Layers, Link2, Minus, Play, Plus, ScanLine, SlidersHorizontal, Upload} from 'lucide-react';
 import YouTubePlayer from '../video/YouTubePlayer';
 import RatingReveal from './RatingReveal';
+import ProcessingLabel from './ProcessingLabel';
+import {V7_IDS} from './presentationV7';
 import {applyAnalysisEvent, INITIAL_ANALYSIS, progressPresentation, type AnalysisEvent} from './analysisProgress';
 import {adaptStudioReport, type Evidence, type StudioReport} from './studioAdapter';
 import {useLocalAnalyzer} from './useLocalAnalyzer';
@@ -351,7 +353,7 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
 
    {(analyzer.busy || jobStage) && <div ref={statusPanel} className="studio-job-status" data-status={jobStatus || 'starting'}>
     <div role="status">
-     <strong>{jobStage}</strong>
+     <strong>{analyzer.busy ? <ProcessingLabel>{jobStage}</ProcessingLabel> : jobStage}</strong>
      {analyzer.busy && analyzer.snapshot && <progress aria-label="Analyzer job progress" max={100} value={analyzer.snapshot.progress_percent}/>}
     </div>
     {analyzer.busy && <button type="button" disabled={analyzer.cancelling} onClick={() => void analyzer.cancel()}>Cancel analysis</button>}
@@ -384,6 +386,7 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
      </div>}
      {report?.metadataOnly && <p className="studio-observation-badge">Publisher metadata only</p>}
      <RatingReveal experimental={report?.experimental} localResult={analyzer.enabled && progress.status !== 'IDLE'}
+      inputIdentity={media?.url} settled={V7_IDS.map(id => !!progress.sections[id])}
       processing={analyzer.busy} analysisComplete={!analyzer.busy && progress.status === 'COMPLETE'}
       onSeek={canSeek ? seek : undefined} receivedResultId={analyzer.liveJobId} ratings={report?.ratings}
       synthetic={report?.synthetic} developmentPreview={import.meta.env.DEV || import.meta.env.VITE_STUDIO_TIMING_PREVIEW === 'true'}/>

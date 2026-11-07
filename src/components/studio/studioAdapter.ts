@@ -6,7 +6,7 @@ export type Evidence = { label: string; status: EvidenceStatus; value: string; p
 export type StudioReport = { version: string; mediaNotes?: string[]; referenceTitle?: string; metadataOnly?: boolean; remoteObservation?: {model:string; directlyObserved:string; uncertain:string}; sourceNote?: string; markers:TimelineMarker[]; synthetic?:boolean; experimental?:boolean; ratings: Ratings; evidence: Evidence[]; scenes: {time:number;label:string}[]; music: Evidence; sources: Evidence[] };
 const object = (v: unknown): Record<string, unknown> => v && typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
 const text=(v:unknown)=>typeof v==='string'?v:typeof v==='number'&&Number.isFinite(v)?String(v):'';
-export function evidenceStatus(v:unknown):EvidenceStatus { const s=text(v);return ({MEASURED_SIGNAL:'MEASURED',EXPERIMENTAL_PROXY:'EXPERIMENTAL',EVALUATED_SEMANTIC_EXPERIMENTAL:'EXPERIMENTAL',MEASURED:'MEASURED',EVALUATED_SEMANTIC:'INFERRED',INFERRED:'INFERRED',PERSONALIZED_ESTIMATE:'PERSONALIZED',PERSONALIZED:'PERSONALIZED',NOT_YET_ASSESSED:'NOT ASSESSED',UNKNOWN:'UNKNOWN',CONFLICT:'CONFLICT',VERIFIED_MATCH:'INFERRED',POSSIBLE_MATCH:'INFERRED'} as Record<string,EvidenceStatus>)[s]||'UNKNOWN'; }
+export function evidenceStatus(v:unknown):EvidenceStatus { const s=text(v);return ({MEASURED_SIGNAL:'MEASURED',EXPERIMENTAL_PROXY:'EXPERIMENTAL',EVALUATED_SEMANTIC_EXPERIMENTAL:'EXPERIMENTAL',EXPERIMENTAL_SEMANTIC_SCORE:'EXPERIMENTAL',MEASURED:'MEASURED',EVALUATED_SEMANTIC:'INFERRED',INFERRED:'INFERRED',PERSONALIZED_ESTIMATE:'PERSONALIZED',PERSONALIZED:'PERSONALIZED',NOT_YET_ASSESSED:'NOT ASSESSED',UNKNOWN:'UNKNOWN',CONFLICT:'CONFLICT',VERIFIED_MATCH:'INFERRED',POSSIBLE_MATCH:'INFERRED'} as Record<string,EvidenceStatus>)[s]||'UNKNOWN'; }
 function collect(value:unknown,label:string,inherited:EvidenceStatus,provenance:string,depth=0):Evidence[]{
  if(depth>4)return [];
  const field=object(value);const status=field.status?evidenceStatus(field.status):inherited;const origin=text(field.provenance||field.evaluator)||provenance;
@@ -46,7 +46,7 @@ export function adaptStudioReport(input:unknown):StudioReport {
      return [
       {label: section.section_id, status, value: section.creator_explanation || 'No explanation supplied', provenance: section.method_version},
       ...collect(section.evidence_refs, 'Supporting evidence',
-       section.evidence_status === 'EVALUATED_SEMANTIC_EXPERIMENTAL' ? 'EXPERIMENTAL' : 'MEASURED', section.method_version),
+       ['EVALUATED_SEMANTIC_EXPERIMENTAL','EXPERIMENTAL_SEMANTIC_SCORE'].includes(section.evidence_status) ? 'EXPERIMENTAL' : 'MEASURED', section.method_version),
      ];
     }),
    ],
@@ -93,5 +93,5 @@ export function adaptStudioReport(input:unknown):StudioReport {
  }
  const m=object(r.section_b_music_recognition);const track=object(m.matched_track);const state=evidenceStatus(m.status);const music={label:'Detected music',status:state,value:state==='CONFLICT'?'Conflicting evidence — review needed':text(track.title)?[text(track.title),text(track.artist)].filter(Boolean).join(' · '):'Music not yet identified.',provenance:text(m.provenance)};
  const physical=object(r.section_c_physical_signals);const videoSignals=object(physical.video_signals);const raw=Array.isArray(physical.cut_timestamps)?physical.cut_timestamps:Array.isArray(videoSignals.cut_timestamps)?videoSignals.cut_timestamps:[];const scenes=raw.filter((x):x is number=>typeof x==='number'&&Number.isFinite(x)&&x>=0).map((time,i)=>({time,label:`Cut ${i+1}`}));
- return{version:'6.0.0',mediaNotes:Array.isArray(physical.media_notes)?physical.media_notes.filter((note):note is string=>typeof note==='string'):[],markers:timelineMarkers(r),ratings:adaptRatings(r),evidence,scenes,music,sources};
+ return{version:'6.0.0',experimental:semantic.status==='EVALUATED_SEMANTIC_EXPERIMENTAL',remoteObservation:object(semantic.remote_observation).provider==='Gemini'?{model:text(object(semantic.remote_observation).model),directlyObserved:text(object(semantic.remote_observation).directly_observed),uncertain:text(object(semantic.remote_observation).uncertain)}:undefined,mediaNotes:Array.isArray(physical.media_notes)?physical.media_notes.filter((note):note is string=>typeof note==='string'):[],markers:timelineMarkers(r),ratings:adaptRatings(r),evidence,scenes,music,sources};
 }

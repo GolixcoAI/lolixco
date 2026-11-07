@@ -71,6 +71,10 @@ test('each reaction plan has seven distinct phrases and keeps the special verdic
  assert.ok(!strong.includes('COOKED!'));
  assert.ok(weak.includes('COOKED!'));
  assert.ok(!weak.includes('COOKING!'));
+ assert.ok(!weak.includes('CLEAN!') && !weak.includes('HARD!'));
+ for (let index = 0; index < 20; index++) {
+  assert.ok(sampleReactions(Array(7).fill(0), () => index / 20).every(word => !['CLEAN!', 'HARD!', 'THAT HIT!', 'COOKING!', 'SHUT UP!'].includes(word)));
+ }
  assert.ok(!REACTION_POOL.includes('FINAL VERDICT!'));
 });
 
