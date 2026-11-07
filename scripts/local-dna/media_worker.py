@@ -277,6 +277,7 @@ def main(path, job_id, mode, out):
     job = StreamJob(job_id, str(path), quality_mode=mode)
     job.media_filename = manifest["name"]
     research.AnalysisEngine._execute_local_job(job, {"capabilities": capabilities}, time.time())
+    job.update_stage("Preparing results", 95)
     v6 = job.v6_report
     signals = v6["section_c_physical_signals"]
     signals.update(duration_seconds=facts["duration_seconds"], media_observations=facts, media_notes=notes)
