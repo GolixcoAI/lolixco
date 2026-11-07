@@ -1,6 +1,6 @@
 import {useEffect, useId, useMemo, useRef, useState, type ReactNode} from 'react';
 import {ArrowUpRight, AudioLines, ChevronDown, Download, Film, Layers, Link2, Minus, Play, Plus, ScanLine, SlidersHorizontal, Upload} from 'lucide-react';
-import YouTubePlayer from '../video/YouTubePlayer';
+import YouTubePlayer, {type YouTubePlayerHandle} from '../video/YouTubePlayer';
 import RatingReveal from './RatingReveal';
 import ProcessingLabel from './ProcessingLabel';
 import {V7_IDS} from './presentationV7';
@@ -95,10 +95,12 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
  const [localCloudConsent, setLocalCloudConsent] = useState(false);
  const [previewOpen, setPreviewOpen] = useState(false);
  const [embedIssue, setEmbedIssue] = useState('');
+ const [youtubeReady, setYoutubeReady] = useState(false);
  const [referenceTitle, setReferenceTitle] = useState('');
  const inputRevision = useRef(0);
  const scrollOnStart = useRef(false);
  const player = useRef<HTMLMediaElement | null>(null);
+ const youtubePlayer = useRef<YouTubePlayerHandle>(null);
  const statusPanel = useRef<HTMLDivElement>(null);
  const local = useRef<HTMLInputElement>(null);
  const json = useRef<HTMLInputElement>(null);
@@ -107,15 +109,15 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
 
  const report = progress.status === 'IDLE' ? imported?.report : progressiveReport;
  const markerReport = useMemo(() => {
-  if (!analyzer.reports || report?.remoteObservation) return report;
+  if (!analyzer.reports || media?.type === 'youtube') return report;
   try {return adaptStudioReport(analyzer.reports.v6);}
   catch {return report;}
- }, [analyzer.reports, report]);
+ }, [analyzer.reports, report, media?.type]);
  const youtubeId = media?.type === 'youtube' ? media.id : '';
  const title = media?.type === 'youtube' ? referenceTitle || report?.referenceTitle || media.title : media?.title;
  const {duration, dimensions} = preview;
  const {max_bytes, max_seconds, extensions} = analyzer.mediaLimits;
- const canSeek = duration > 0 && media?.type !== 'youtube';
+ const canSeek = media?.type === 'youtube' ? youtubeReady && !embedIssue : duration > 0;
  const fileLimit = max_bytes / (1024 * 1024);
  const limitsText = `${fileLimit} MiB · ${max_seconds / 60} min · compatible video and audio codecs`;
  const fileIssue = media?.type === 'local' && (
@@ -183,6 +185,7 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
   setConsent(false);
   setLocalCloudConsent(false);
   setEmbedIssue('');
+  setYoutubeReady(false);
   setReferenceTitle('');
   return true;
  }
@@ -221,6 +224,11 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
  }
 
  function seek(seconds: number) {
+  if (media?.type === 'youtube' && canSeek) {
+   youtubePlayer.current?.seekTo(Math.max(0, seconds), true);
+   showPreview();
+   return;
+  }
   if (!player.current || !canSeek) return;
   const target = Math.max(0, Math.min(duration, seconds));
   player.current.currentTime = target;
@@ -406,7 +414,7 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
      <RatingReveal experimental={report?.experimental} localResult={analyzer.enabled && progress.status !== 'IDLE'}
       inputIdentity={media?.url} settled={V7_IDS.map(id => !!progress.sections[id])}
       processing={analyzer.busy} analysisComplete={!analyzer.busy && progress.status === 'COMPLETE'}
-      onSeek={canSeek ? seek : undefined} receivedResultId={analyzer.liveJobId} ratings={report?.ratings}
+      onSeek={canSeek ? seek : undefined} evidenceWatchUrl={media?.type === 'youtube' ? media.url : undefined} receivedResultId={analyzer.liveJobId} ratings={report?.ratings}
       synthetic={report?.synthetic} developmentPreview={import.meta.env.DEV || import.meta.env.VITE_STUDIO_TIMING_PREVIEW === 'true'}/>
      {report && <details className="studio-evidence-details">
       <summary>Evidence Details</summary>
@@ -420,8 +428,8 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
     <Panel title="PREVIEW MONITOR" icon={<Film size={15} aria-hidden="true"/>}>
      <div className={`studio-monitor ${media ? 'loaded' : ''} ${audioOnly(media) ? 'is-audio' : ''} ${media?.type === 'youtube' ? 'is-youtube' : ''}`}>
       {!media ? <div className="studio-empty"><div className="studio-crosshair"><Play size={26}/></div><h3>Media preview</h3><p>Choose a file or paste a YouTube link above.</p></div>
-       : media.type === 'youtube' ? <YouTubePlayer key={media.id} videoId={media.id} title={title} autoPlay={false} controls
-        iframeReferrerPolicy="strict-origin-when-cross-origin" onError={code => setEmbedIssue(youtubePlaybackIssue(code))}
+       : media.type === 'youtube' ? <YouTubePlayer ref={youtubePlayer} key={media.id} videoId={media.id} title={title} autoPlay={false} controls
+        iframeReferrerPolicy="strict-origin-when-cross-origin" onReady={() => setYoutubeReady(true)} onError={code => {setYoutubeReady(false);setEmbedIssue(youtubePlaybackIssue(code));}}
         onPlay={() => setEmbedIssue('')}/>
        : preview.error ? <p className="studio-preview-error">{preview.error}</p>
        : audioOnly(media) ? <audio key={media.url} ref={element => {player.current = element;}} src={media.url} controls preload="metadata"
