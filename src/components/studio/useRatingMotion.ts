@@ -97,6 +97,7 @@ export function useRatingMotion(inputs: MotionInputs) {
    active.from = active.needle;
    active.fromScore = active.scoreValues[active.current.index] ?? 0;
    const isFinish = active.current.index === FINISH;
+   if (!isFinish && active.current.reaction) active.reactionsShown.add(active.current.index);
    show({
     index: active.current.index, reaction: isFinish ? '' : active.current.reaction,
     scored: active.current.score !== null, phase: isFinish ? 'finish' : 'checkpoint',
@@ -185,7 +186,6 @@ export function useRatingMotion(inputs: MotionInputs) {
     step.reaction = active.queue[pending].reaction;
     active.queue[pending] = step;
    } else {
-    active.reactionsShown.add(index);
     const finishIndex = active.queue.findIndex(entry => entry.index === FINISH);
     active.queue.splice(finishIndex < 0 ? active.queue.length : finishIndex, 0, step);
    }
