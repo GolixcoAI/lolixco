@@ -10,8 +10,8 @@ import time
 from pathlib import Path
 
 WORKERS = Path(__file__).resolve().parent
-LOCAL_SECONDS = 100
-REMOTE_SECONDS = 75
+LOCAL_SECONDS = 180
+REMOTE_SECONDS = 150
 YOUTUBE_PREFIX = "https://www.youtube.com/watch?v="
 
 
@@ -35,8 +35,9 @@ def worker_result(job, work, arguments, environment, timeout):
                 if job.cancel_event.is_set():
                     return None
                 if time.monotonic() >= deadline:
-                    message = "Gemini took too long to respond." if timeout == REMOTE_SECONDS else "Local analysis exceeded its 100-second time limit."
-                    raise WorkerError(message, "temporarily_unavailable" if timeout == REMOTE_SECONDS else None)
+                    cloud_request = Path(arguments[0]).name in ("youtube_worker.py", "hybrid_worker.py")
+                    message = "Gemini review exceeded its time limit. Try again or select a faster configured model." if cloud_request else "Local analysis exceeded its 180-second time limit."
+                    raise WorkerError(message, "temporarily_unavailable" if cloud_request else "analysis_timeout")
                 offset = records.tell()
                 line = records.readline()
                 if line.endswith(b"\n"):
@@ -102,6 +103,8 @@ def run_analysis(job, report_root, work_root, staging_root):
     media_path = Path(job.media_path)
     is_remote = job.media_path.startswith(YOUTUBE_PREFIX)
     try:
+        if is_remote and getattr(job, "semantic_consent", False) is not True:
+            raise WorkerError("Public-video Gemini review requires explicit consent for this analysis.", "consent_required")
         with tempfile.TemporaryDirectory(prefix="worker-", dir=work_root) as workspace:
             work = Path(workspace)
             environment = {key: os.environ[key] for key in ("PATH", "HOME", "LANG") if key in os.environ}
@@ -112,15 +115,13 @@ def run_analysis(job, report_root, work_root, staging_root):
             if is_remote:
                 # The opt-in worker receives only the dedicated server setting and credential.
                 environment.update({
-                    key: os.environ[key] for key in ("LOLIXCO_GEMINI_YOUTUBE", "GEMINI_API_KEY", "LOLIXCO_GEMINI_MODEL")
+                    key: os.environ[key] for key in ("LOLIXCO_GEMINI_YOUTUBE", "GEMINI_API_KEY", "LOLIXCO_GEMINI_MODEL", "YOUTUBE_API_KEY")
                     if key in os.environ
                 })
                 video_id = job.media_path.removeprefix(YOUTUBE_PREFIX)
                 arguments = [str(WORKERS / "youtube_worker.py"), video_id]
                 timeout = REMOTE_SECONDS
             elif media_path.parent.parent == staging_root:
-                # The private preference cohort is available only to the offline worker.
-                environment["LOLIXCO_OWNER_STATE_PARENT"] = str(staging_root.parent.parent)
                 arguments = [str(WORKERS / "media_worker.py"), job.media_path, job.job_id, job.quality_mode, workspace]
                 timeout = LOCAL_SECONDS
             else:
@@ -129,6 +130,33 @@ def run_analysis(job, report_root, work_root, staging_root):
             result = worker_result(job, work, arguments, environment, timeout)
             if result is None:
                 return
+            if not is_remote and getattr(job, "semantic_consent", False) is True:
+                if job.cancel_event.is_set():
+                    return
+                semantic_work = work / "semantic"
+                semantic_work.mkdir(mode=0o700)
+                semantic_environment = dict(environment)
+                semantic_environment.update({
+                    key: os.environ[key] for key in ("LOLIXCO_GEMINI_YOUTUBE", "GEMINI_API_KEY", "LOLIXCO_GEMINI_MODEL")
+                    if key in os.environ
+                })
+                try:
+                    hybrid = worker_result(job, semantic_work,
+                        [str(WORKERS / "hybrid_worker.py"), job.media_path, str(work / "result.json")],
+                        semantic_environment, 170)
+                    if hybrid is None:
+                        return
+                    result = hybrid
+                except WorkerError as error:
+                    job.semantic_error_code = error.code or "temporarily_unavailable"
+                    job.semantic_error_message = str(error)
+                    if job.semantic_error_code == "quota_exceeded":
+                        job.provider_retry_at = time.monotonic() + 45
+                    context = result["presentation"].setdefault("context_evidence", {})
+                    context["semantic_provider_status"] = {"status": job.semantic_error_code, "message": str(error)}
+                    context.setdefault("media_notes", []).append("Optional Gemini review could not complete. " + str(error))
+                    for section in result["presentation"]["assessment_sections"][4:]:
+                        section["creator_explanation"] = "Semantic review unavailable. " + str(error)
             v6 = result["v6"]
             if is_remote:
                 v6["youtube_video_id"] = video_id
@@ -155,7 +183,7 @@ def run_analysis(job, report_root, work_root, staging_root):
                 return
             job.error = str(error) if isinstance(error, WorkerError) else "The analysis worker could not complete this media."
             job.error_code = error.code if isinstance(error, WorkerError) else None
-            if is_remote and job.error_code == "rate_limited":
+            if is_remote and job.error_code in ("rate_limited", "quota_exceeded"):
                 job.provider_retry_at = time.monotonic() + 30
             job.current_stage = "Analysis failed"
             job.status = "FAILED"

@@ -1565,6 +1565,7 @@ class AnalysisJobManager:
         semantic_overrides: Optional[Dict[str, Any]] = None,
         quality_mode: Optional[str] = None,
         media_filename: Optional[str] = None,
+        semantic_consent: bool = False,
     ) -> AnalysisJob:
         with self.lock:
             # Check queue capacity (reject if queued + running >= limit)
@@ -1587,6 +1588,7 @@ class AnalysisJobManager:
             job = AnalysisJob(job_id, media_path, semantic_overrides, quality_mode=quality_mode)
             if media_filename is not None:
                 job.media_filename = media_filename
+            job.semantic_consent = semantic_consent is True
             self.jobs[job_id] = job
             job.add_event(AnalysisJobStatus.QUEUED, payload={"message": "Waiting for the analysis worker"})
             job.future = self.executor.submit(AnalysisEngine.execute_job, job)

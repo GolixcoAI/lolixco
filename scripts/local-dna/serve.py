@@ -27,7 +27,7 @@ import local_service
 from staged_media import MEDIA_LIMITS, StagedMedia
 from staged_jobs import run_analysis
 from youtube_analysis import provider_status
-from youtube_reference import inspect_reference
+from youtube_reference import inspect_reference, official_metadata
 
 STATE = local_service.PRIVATE_STATE_DIR
 INBOX = Path(local_service.AUTHORIZED_INBOX).resolve()
@@ -37,7 +37,11 @@ JOB_ID = re.compile(r"job_\d+_[a-f0-9]{6}")
 YOUTUBE_ID = re.compile(r"[A-Za-z0-9_-]{11}")
 LOCAL_ORIGINS = {"http://127.0.0.1:5173", "http://localhost:5173"}
 QUALITY_MODES = ("phase8", "phase9")
-PROVIDER_HTTP = {"not_configured": 503, "rate_limited": 429, "unsupported": 422, "temporarily_unavailable": 503}
+PROVIDER_HTTP = {
+    "not_configured": 503, "configured_disabled": 409, "authentication_failed": 401,
+    "quota_exceeded": 429, "rate_limited": 429, "model_unavailable": 503,
+    "request_unsupported": 422, "unsupported": 422, "video_unavailable": 422, "temporarily_unavailable": 503,
+}
 
 for directory in (STATE, REPORTS, WORK):
     directory.mkdir(mode=0o700, exist_ok=True)
@@ -148,24 +152,39 @@ def quality_mode(body, allowed_keys):
     return body.get("quality_mode", "phase9")
 
 
+async def semantic_consent(body):
+    consent = body.get("semantic_consent", False)
+    if type(consent) is not bool:
+        raise HTTPException(400, "Choose whether this local video may be sent for Gemini review.")
+    if consent:
+        status = await run_in_threadpool(studio_provider_status)
+        if status["status"] != "connected":
+            raise HTTPException(PROVIDER_HTTP.get(status["status"], 503),
+                                {"message": status["message"], "code": status["status"]})
+    return consent
+
+
 @app.post("/api/v8/media/{media_id}/start")
 async def start_staged(media_id: str, request: Request):
-    mode = quality_mode(await parse_body(request), {"quality_mode"})
+    body = await parse_body(request)
+    mode = quality_mode(body, {"quality_mode", "semantic_consent"})
+    consent = await semantic_consent(body)
     async with staging.lock:
         meta, path = staging.get(media_id)
         if staging.busy(path.parent, include_cancelling=False):
             raise HTTPException(409, "This temporary file is already being analyzed.")
-        job = manager.create_job(str(path), quality_mode=mode, media_filename=meta["name"])
+        job = manager.create_job(str(path), quality_mode=mode, media_filename=meta["name"], semantic_consent=consent)
     return {"job_id": job.job_id}
 
 
 @app.post("/api/v8/jobs/start")
 async def start_sample(request: Request):
     body = await parse_body(request)
-    mode = quality_mode(body, {"quality_mode", "inbox_filename"})
+    mode = quality_mode(body, {"quality_mode", "inbox_filename", "semantic_consent"})
+    consent = await semantic_consent(body)
     meta, path = await staging.stage_sample(INBOX, body.get("inbox_filename"))
     try:
-        job = manager.create_job(str(path), quality_mode=mode, media_filename=meta["name"])
+        job = manager.create_job(str(path), quality_mode=mode, media_filename=meta["name"], semantic_consent=consent)
     except HTTPException:
         await staging.delete(meta["id"])
         raise
@@ -200,9 +219,10 @@ async def youtube_reference(request: Request):
 def studio_provider_status():
     now = time.monotonic()
     with manager.lock:
-        limited = any(getattr(job, "provider_retry_at", 0) > now for job in manager.jobs.values())
+        limited = next((job for job in reversed(list(manager.jobs.values())) if getattr(job, "provider_retry_at", 0) > now), None)
     if limited:
-        return {"status": "rate_limited", "message": "Gemini is rate-limited. Wait a moment before trying another public video."}
+        return {"status": getattr(limited, "semantic_error_code", None) or getattr(limited, "error_code", "quota_exceeded"),
+                "message": getattr(limited, "semantic_error_message", None) or limited.error or "Gemini quota is temporarily exhausted."}
     return provider_status()
 
 
@@ -219,8 +239,15 @@ async def start_youtube(request: Request):
             {"detail": provider["message"], "error_code": status},
             status_code=PROVIDER_HTTP.get(status, 503),
         )
+    metadata, _ = await run_in_threadpool(official_metadata, video_id)
+    if metadata.get("age_restricted") is True:
+        return JSONResponse({"detail": "This video is age-restricted. Gemini public-video review cannot use the signed-in viewing permission.",
+                             "error_code": "video_unavailable"}, status_code=422)
+    if metadata.get("availability") == "unavailable" or metadata.get("privacy_status") not in (None, "public"):
+        return JSONResponse({"detail": "YouTube did not identify this video as an accessible public upload.",
+                             "error_code": "video_unavailable"}, status_code=422)
     url = f"https://www.youtube.com/watch?v={video_id}"
-    job = manager.create_job(url, quality_mode="phase9", media_filename=f"YouTube video {video_id}")
+    job = manager.create_job(url, quality_mode="phase9", media_filename=f"YouTube video {video_id}", semantic_consent=True)
     return {"job_id": job.job_id}
 
 
@@ -246,6 +273,7 @@ def studio_job_status(job_id: str):
     if job.status == "COMPLETE":
         result["result_status"] = "partial" if presentation.get("overall_score_0_10") is None else "complete"
         result["quality_mode"] = report.get("quality_mode", job.quality_mode)
+    result["semantic_consent"] = getattr(job, "semantic_consent", False)
     if getattr(job, "error_code", None):
         result["error_code"] = job.error_code
     return result
