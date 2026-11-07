@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
- adaptRatings, CATEGORY_LABELS, CHECKPOINT_MS, checkpointValue, pickReaction, REACTION_POOL,
+ adaptRatings, CATEGORY_LABELS, CHECKPOINT_MS, checkpointValue, sampleReactions, scoreAtCheckpoint, REACTION_POOL,
 } from '../src/components/studio/ratingModel.ts';
 
 const grade = score => ({score, status:'EVALUATED_SEMANTIC', provenance:'Synthetic test fixture'});
@@ -36,19 +36,51 @@ test('checkpoints ease to the true value on rising and falling needle motion', (
  assert.equal(checkpointValue(4.79, 9.62, CHECKPOINT_MS), 9.62);
 });
 
-test('comic pool preserves the prior reactions and supports seven distinct checkpoints', () => {
+test('score readouts and fills share one bounded hundredth through the entire easing curve', () => {
+ for (const target of [0, .01, 3.14, 8.12, 9.99, 10]) {
+  let previous = 0;
+  for (let elapsed = 0; elapsed <= CHECKPOINT_MS; elapsed += 1) {
+   const score = scoreAtCheckpoint(target, elapsed);
+   const text = score.toFixed(2);
+   const fill = score / 10;
+   assert.ok(score >= previous && score <= target);
+   assert.ok(Math.abs(Number(text) / 10 - fill) < 1e-12);
+   previous = score;
+  }
+  assert.equal(scoreAtCheckpoint(target, 0), 0);
+  assert.equal(scoreAtCheckpoint(target, CHECKPOINT_MS), target);
+ }
+ const beginning = scoreAtCheckpoint(8.12, 80) - scoreAtCheckpoint(8.12, 20);
+ const end = scoreAtCheckpoint(8.12, 530) - scoreAtCheckpoint(8.12, 470);
+ assert.ok(beginning > end * 5, 'count-up slows as it approaches the actual score');
+});
+
+test('each reaction plan has seven distinct phrases and keeps the special verdict separate', () => {
  assert.equal(new Set(REACTION_POOL).size, 29);
  assert.ok(REACTION_POOL.includes("YOU'RE COOKING!"));
- const strong = new Set(), weak = new Set();
- for (let i = 0; i < 7; i++) {
-  pickReaction(9, strong, () => .99);
-  pickReaction(2, weak, () => .99);
+ assert.ok(REACTION_POOL.includes('SHUT UP!'));
+ const strong = sampleReactions(Array(7).fill(9), () => .99);
+ const weak = sampleReactions(Array(7).fill(2), () => .99);
+ const unknown = sampleReactions(Array(7).fill(null), () => 0);
+ for (const plan of [strong, weak, unknown]) {
+  assert.equal(plan.length, 7);
+  assert.equal(new Set(plan).size, 7);
+  assert.ok(plan.every(word => REACTION_POOL.includes(word)));
  }
- assert.equal(strong.size, 7);
- assert.equal(weak.size, 7);
- assert.ok(strong.has('SHUT UP!'));
- assert.ok(!strong.has('COOKED!'));
- assert.ok(weak.has('COOKED!'));
- assert.ok(!weak.has('COOKING!'));
- assert.ok(!REACTION_POOL.includes('FINAL VERDICT'));
+ assert.ok(strong.includes('SHUT UP!'));
+ assert.ok(!strong.includes('COOKED!'));
+ assert.ok(weak.includes('COOKED!'));
+ assert.ok(!weak.includes('COOKING!'));
+ assert.ok(!REACTION_POOL.includes('FINAL VERDICT!'));
+});
+
+test('subsequent reaction plans vary while the whole library remains reachable', () => {
+ let seed = 47;
+ const random = () => {
+  seed = (seed * 1664525 + 1013904223) >>> 0;
+  return seed / 4294967296;
+ };
+ const plans = Array.from({length: 100}, () => sampleReactions(Array(7).fill(5), random));
+ assert.equal(new Set(plans.map(plan => plan.join('|'))).size, 100);
+ assert.deepEqual(new Set(plans.flat()), new Set(REACTION_POOL));
 });
