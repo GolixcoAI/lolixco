@@ -1,0 +1,67 @@
+# Stage 16 release readiness — 7 November 2026
+
+This is a local product release candidate and a deployment review. No new infrastructure, deployment, certificate, DNS record, email route, subscription or paid service was created or changed. Raw account identifiers and configuration receipts remain outside git in `/home/rohan/lolixco-stage16-evidence`.
+
+## A. Implemented and locally verifiable
+
+The frontend can use an explicitly enabled, same-origin `/api/v8` service. Production analysis defaults off; `VITE_ANALYSIS_ENABLED=true` is a public feature flag, not authentication or proof that a service is safe to expose. The client does not accept a query-selected or remote analysis host. Development sample tools require both a development build and `?studioTools=1`. The local bridge remains loopback-only and capability-protected. Its secret never enters a browser bundle.
+
+`node scripts/check-release-build.mjs dist` rejects public artifacts containing loopback URLs, private workstation paths, recognizable Google/AWS keys, provider-secret assignments or unexpected symlinks. Reports show filenames and failure categories without echoing matching secret values. CI runs this after its production build and now includes `codex/**` branches. This check complements the catalog-rights and privacy checks; it does not prove absence of every possible secret or a secure public backend.
+
+The Stage 15D file validation, fixed YouTube input pathway, process cancellation, resource limits, six-rubric evidence gates and experimental labels remain the baseline. No scoring formula or owner rating was changed for cleanup. The existing editorial comparison and high synthetic/trailer scores show calibration remains unresolved: the evidence gates validate response sufficiency and shape, not the truth of a model opinion. Keep the six categories, missing scores and methodology limitations visible. Do not convert the displayed hundredths into a precision or accuracy claim.
+
+A fresh saturation review of the two selected Stage 15D smoke-test reports found five 10/10 dimension scores out of twelve, a 9.59 mean and an 8.75 minimum. These particular inputs were selected to prove workflow capability, so this is not an estimated rate of inflation across real edits. It does expose a weakness: a model can award the top 4/4 criterion anchor from favorable sampled impressions, while the response validator cannot independently prove consistent effectiveness across the clip. The next scoring study should use a held-out mix of strong, mixed and deliberately degraded edits, independent editors, per-dimension agreement/coverage, repeated-run variation and genre strata. Do not hide the issue by capping scores or fabricating extra weaknesses during this cleanup. The audit receipt contains only the already public/generated smoke-test aggregates, outside git; no private labels or critique rows were read for it.
+
+## Fresh infrastructure evidence
+
+Authenticated read-only inspection succeeded with the existing profile. This supersedes the older Stage 9 inventory/permission snapshot for the checks below. No media objects or unrelated registration-bucket objects were listed or read.
+
+| Component | Observed now | Consequence |
+| --- | --- | --- |
+| CloudFront inventory | Three standard distributions returned, two enabled | Inventory is not an authorization to update any distribution |
+| Lolixco frontend | Enabled/deployed private S3 REST origin, OAC, HTTPS redirect, security-header policy, `index.html` default root; root HEAD returned 401 | A gated preview exists; public access and its protection removal require separate approval |
+| Lolixco media distribution | Disabled; private S3 REST origin, OAC, HTTPS redirect and security-header policy | Preserve disabled state and private media gates |
+| Other distribution | Unrelated to the two Lolixco bucket candidates | Untouched and outside this change |
+| Two Lolixco S3 candidates | `ap-south-1`, all four bucket public-access blocks enabled, encryption configured, owner-enforced ownership and versioning enabled; no anonymous policy allow found | Suitable controls exist, but effective IAM, exact prefix grants and release artifact rights still require release review |
+| Lifecycle | Frontend has no lifecycle configuration; media/staging has one | Never add a broad cleanup rule to existing assets without retention review |
+| Public API routing | No `/api` behavior on the observed distributions | CloudFront/S3 alone cannot run Python, FFmpeg or Gemini jobs |
+| WAF and standard access logging | No web ACL attached and standard logging disabled on the observed distributions | Review and approve public edge abuse controls, encrypted/redacted logs and alarms before public exposure |
+| Domain/certificate | No custom aliases; public A/AAAA/CNAME queries for `lol.golixco.com` returned no answer | No verified active canonical Lolixco domain or approved TLS/DNS cutover |
+| Email | Cloudflare Email Routing MX records are present for `golixco.com`; exact recipient rule/destination verification cannot be inspected | `support@golixco.com` remains unconfirmed; do not advertise receipt or a working support link |
+
+DNS observations are resolver snapshots, not a complete zone export. MX records identify a mail-routing provider, not an active recipient. Cloudflare requires an active matching rule and a verified destination; verify those owner-side and confirm delivery before enabling the centrally configured support contact. No test email was sent. [Cloudflare routing documentation](https://developers.cloudflare.com/email-service/configuration/email-routing-addresses/).
+
+## B. Frontend deployment preparation
+
+The static React/Vite artifact fits a private S3 REST origin behind CloudFront with OAC, bucket public-access blocking, encryption and a distribution-scoped read policy. Reuse and review the observed dedicated frontend arrangement rather than creating a duplicate by default. Retain the separate media origin and never upload private ratings, inbox files, research state or unresolved hosted assets into the frontend artifact. OAC protects the origin, not the privacy of publicly delivered objects. [AWS origin access guidance](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html).
+
+Keep hashed assets immutable and use a short/revalidated cache policy for the entry document. API and private-result behaviors must have caching disabled with minimum TTL zero, appropriate allowed methods, required authentication/cookie forwarding and no shared-user cache keys. Do not turn all S3/API/asset 403/404 responses into 200 HTML; route only known document paths to the SPA. Query deep links already load through the entry document. An unrecognized document route must produce the useful application 404 rather than Home. [CloudFront origin request behavior](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/RequestAndResponseBehaviorCustomOrigin.html).
+
+Before a release, approve the real public origin and configure absolute canonical/social metadata. Verify its certificate, HTTPS, CSP against the actual YouTube/image/media origins, nosniff, referrer policy, frame/permissions policy and browser playback. CloudFront custom certificates must be in `us-east-1`; DNS ownership, certificate validation, the existing preview gate and any new alias are separate owner-reviewed changes. Do not change the parent site, nameservers or mail records. [Certificate requirements](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/cnames-and-https-requirements.html).
+
+## C. Still blocks public AI production
+
+The current analysis service is a trusted single-workspace application. One shared bridge capability, shared filesystem state and job identifiers are not multi-user authorization. Do not put this process behind a public reverse proxy or copy its loopback capability into public request headers. A production flag cannot make it safe.
+
+| Required control | Concrete acceptance before public analysis |
+| --- | --- |
+| Identity and ownership | Use authenticated users or secure guest sessions. Bind every upload, job, progress stream, preview, export and deletion to its owner; verify denial from a second session, including guessed IDs and restarted jobs. Remove owner inbox/sample endpoints entirely from the public service. |
+| Admission and abuse prevention | Enforce per-session and trusted-client-IP limits before uploads, metadata checks and provider requests; cap queued jobs, bytes, duration, model options and simultaneous work. Review edge WAF rate controls and application abuse challenges without treating IP limits as identity. |
+| Provider spend ceiling | Reserve a worst-case allowed job budget before dispatch, meter actual tokens/calls, set per-user/daily/global ceilings and reject when exhausted. Keep a provider kill switch independent of scaling. Daily free quota is not proof of free processing or a hard spending control. |
+| Processing isolation | Run untrusted FFmpeg/OpenCV work as a non-root isolated container/process with fixed resources, bounded temporary disk, no host/home mounts, minimal egress, no arbitrary URL fetch and no private owner state. Keep credentials in server-side managed secret delivery. |
+| Durable orchestration | Persist tenant/job state, idempotency, cancellation and retry accounting; use a bounded queue and reconcile worker death. Do not rely on one in-memory executor and local disk for a multi-instance service. |
+| Private storage and retention | Owner-bound object keys, encrypted storage, restricted temporary preview/download authorization and explicit delete access. Define media, derived files, reports, logs, backups and failed uploads separately. Run and monitor an application cleanup/reconciliation process; S3 Lifecycle is a backup deletion mechanism, not a precise one-hour SLA. |
+| Data processing approval | Approve provider/project tier, data-use and retention terms, geographic/legal requirements, privacy notice and consent scope. Health/model discovery does not reveal billing tier. Do not promise no training or zero provider retention. |
+| Reliability and support | Load-test queue fairness, bounded reconnects and cancellation under real traffic. Install redacted encrypted operational logging, cost/error alerts, runbooks, a responder and a verified support inbox. |
+
+A practical candidate is a small same-origin admission/status API with a durable queue, private object storage and CPU container workers, initially benchmarked on ECS/Fargate. The current workload uses local FFmpeg/OpenCV and remote Gemini, so a GPU cluster is not justified by existing evidence. Fargate supports fixed CPU/memory resources and ephemeral storage, but task startup, image pull, full media decode, network egress, cancellation and peak memory must be measured with this actual workload before sizing. This is an architecture candidate, not a deployed service or a checked-in production backend. [AWS Fargate workload constraints](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-tasks-services.html).
+
+Cost approval must include container vCPU/memory/runtime, image/storage requests, temporary bytes, queue/API, Gemini calls, internet egress, public IPv4/NAT or endpoints, logs, WAF and monitoring. No current account allowances, credits, free tier or historical static-hosting estimate are deducted as guaranteed savings. Approve a ceiling after benchmark and regional pricing review. [Fargate pricing](https://aws.amazon.com/fargate/pricing/), [S3 pricing](https://aws.amazon.com/s3/pricing/), [CloudFront pricing](https://aws.amazon.com/cloudfront/pricing/), [WAF pricing](https://aws.amazon.com/waf/pricing/).
+
+AWS Shield Standard supplies the baseline network-layer protection. Review WAF rules and application admission limits for HTTP/provider abuse; WAF does not replace an application spend ledger. No Shield Advanced subscription is proposed or enabled. [AWS DDoS tier guidance](https://docs.aws.amazon.com/waf/latest/developerguide/ddos-advanced-summary-deciding.html), [WAF rate rules](https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-rate-based.html).
+
+## Owner approval and rollback packet
+
+Before public release, approve the exact source/build, eligible catalog, hostname/certificate/DNS diff, preview-gate change, public service design, provider data policy/tier, cost ceiling, retention, support activation, monitoring and operator scope. The 30 privately prepared hosted edits retain unresolved picture/audio distribution permissions; no cleanup change grants those rights or publishes them. A reduced YouTube-only release would be a separate scope decision if the original complete collection remains required.
+
+Retain the previous immutable frontend artifact and matching public catalog, configuration/version identifiers and the existing DNS export. Stage and test the new distribution hostname before any approved cutover. Rollback selects the previous frontend and catalog together; public AI has a separate admission kill switch and worker-drain path. Media revocation requires origin permission/object removal plus cache invalidation under its separately approved scope; catalog rollback alone cannot recall cached or downloaded bytes. Reconcile all retained versions and residual service charges. Nothing in this packet authorizes execution.
