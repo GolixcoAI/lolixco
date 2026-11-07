@@ -10,6 +10,7 @@ import stat
 import subprocess
 import time
 from fractions import Fraction
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -19,48 +20,99 @@ from starlette.concurrency import run_in_threadpool
 
 MAX_BYTES = 100 * 1024 * 1024
 MAX_SECONDS = 120
-MAX_FPS = 60
-MAX_DIMENSION = 1920
-MAX_PIXELS = 1920 * 1080
+MAX_FPS = 240
+MAX_DIMENSION = 8192
+MAX_PIXELS = 35_389_440
 TTL = 3600
 MAX_ITEMS = 5
 ID = r"[a-f0-9]{32}"
-FORMATS = "mov,matroska,webm,mp3,wav,flac,ogg,aac"
-VIDEO_CODECS = {"h264", "hevc", "vp8", "vp9", "av1", "mpeg4"}
-AUDIO_CODECS = {"aac", "mp3", "opus", "vorbis", "flac", "alac", "pcm_s16le", "pcm_s24le", "pcm_f32le"}
-EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm", ".mp3", ".wav", ".flac", ".ogg", ".opus", ".m4a", ".aac"}
+FORMATS = "mov,matroska,webm,avi,mpegts,mpeg,mpegvideo,asf,ogg,flv,nut,mxf,mp3,wav,aiff,flac,aac,ac3,eac3,amr"
+EXTENSIONS = {
+    ".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi", ".ts", ".mts", ".m2ts", ".mxf", ".mpg", ".mpeg", ".flv", ".wmv", ".3gp", ".3g2",
+    ".mp3", ".wav", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".aif", ".aiff", ".ac3", ".wma", ".amr",
+}
 MEDIA_LIMITS = {
     "max_bytes": MAX_BYTES, "max_seconds": MAX_SECONDS, "max_fps": MAX_FPS,
     "max_dimension": MAX_DIMENSION, "max_pixels": MAX_PIXELS, "extensions": sorted(EXTENSIONS),
 }
 
 
+class MediaValidationError(ValueError):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
+@lru_cache(maxsize=1)
+def decoder_codecs():
+    raw = subprocess.check_output(["ffmpeg", "-hide_banner", "-decoders"], stderr=subprocess.DEVNULL, timeout=5).decode()
+    codecs = {"video": set(), "audio": set()}
+    for line in raw.splitlines():
+        fields = line.split()
+        if len(fields) < 2 or len(fields[0]) != 6 or fields[0][0] not in ("V", "A"):
+            continue
+        kind = "video" if fields[0][0] == "V" else "audio"
+        codecs[kind].add(fields[1])
+        alias = re.search(r"\(codec ([a-zA-Z0-9_]+)\)", line)
+        if alias:
+            codecs[kind].add(alias.group(1))
+    return codecs
+
+
+def fraction(value, default=0):
+    try:
+        parsed = float(Fraction(value))
+        return parsed if math.isfinite(parsed) else default
+    except (TypeError, ValueError, ZeroDivisionError):
+        return default
+
+
 def probe(path):
-    raw = subprocess.check_output([
-        "ffprobe", "-v", "error", "-max_streams", "8", "-max_alloc", "67108864", "-protocol_whitelist", "file,pipe", "-format_whitelist", FORMATS,
-        "-show_entries", "format=duration,format_name:stream=codec_type,codec_name,width,height,avg_frame_rate,start_time,sample_rate,channels:stream_disposition=attached_pic",
-        "-of", "json", str(path),
-    ], stderr=subprocess.DEVNULL, timeout=12)
-    data = json.loads(raw)
-    duration = float(data["format"]["duration"])
-    if not math.isfinite(duration) or not 0 < duration <= MAX_SECONDS:
-        raise ValueError(f"Duration must be between 0 and {MAX_SECONDS} seconds.")
-    videos = [s for s in data["streams"] if s["codec_type"] == "video" and not s.get("disposition", {}).get("attached_pic")]
-    audio = [s for s in data["streams"] if s["codec_type"] == "audio"]
-    if len(videos) > 1 or len(audio) > 1 or not (videos or audio):
-        raise ValueError("Choose media with one video stream and/or one audio stream.")
+    try:
+        raw = subprocess.check_output([
+            "ffprobe", "-v", "error", "-max_streams", "16", "-max_alloc", "67108864", "-protocol_whitelist", "file,pipe", "-format_whitelist", FORMATS,
+            "-show_entries", "format=duration,format_name,start_time:stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,start_time,duration,sample_rate,channels:stream_disposition=attached_pic",
+            "-of", "json", str(path),
+        ], stderr=subprocess.DEVNULL, timeout=15)
+        data = json.loads(raw)
+    except subprocess.TimeoutExpired:
+        raise MediaValidationError("media_probe_timeout", "Reading the media streams timed out. Try exporting the file again.") from None
+    except (subprocess.CalledProcessError, ValueError, OSError):
+        raise MediaValidationError("media_probe_failed", "This file could not be read as video or audio. It may be corrupt or use an unsupported container.") from None
+    streams = data.get("streams", [])
+    videos = [stream for stream in streams if stream.get("codec_type") == "video" and not stream.get("disposition", {}).get("attached_pic")]
+    audio = [stream for stream in streams if stream.get("codec_type") == "audio"]
+    if not (videos or audio):
+        raise MediaValidationError("no_media_stream", "The selected file contains no video or audio stream.")
+    container = data.get("format", {})
+    duration = fraction(container.get("duration"), None)
+    if duration is None:
+        durations = [fraction(stream.get("duration")) for stream in streams]
+        duration = max(durations, default=0)
+    if not 0 < duration <= MAX_SECONDS + .025:
+        raise MediaValidationError("duration_limit", f"Duration must be between 0 and {MAX_SECONDS} seconds.")
     video = videos[0] if videos else None
     sound = audio[0] if audio else None
+    decoders = decoder_codecs()
     if video:
-        width, height = video["width"], video["height"]
-        fps = float(Fraction(video["avg_frame_rate"]))
-        if video["codec_name"] not in VIDEO_CODECS or not (
-            0 < width * height <= MAX_PIXELS and max(width, height) <= MAX_DIMENSION and 0 < fps <= MAX_FPS
-        ):
-            raise ValueError("Video exceeds the supported codec, 1080p-equivalent resolution, or 60 fps limit.")
-    if sound and (sound["codec_name"] not in AUDIO_CODECS or not 0 < int(sound["sample_rate"]) <= 96000 or not 0 < sound["channels"] <= 8):
-        raise ValueError("Audio codec, sample rate or channel count is unsupported.")
-    return {"duration": duration, "video": video, "audio": sound, "container": data["format"]["format_name"]}
+        width, height = int(video.get("width", 0)), int(video.get("height", 0))
+        fps = max(0, fraction(video.get("avg_frame_rate"))) or max(0, fraction(video.get("r_frame_rate")))
+        if video.get("codec_name") not in decoders["video"]:
+            raise MediaValidationError("decoder_missing", "This FFmpeg installation does not have a decoder for the selected video codec.")
+        if not (0 < width * height <= MAX_PIXELS and max(width, height) <= MAX_DIMENSION and fps <= MAX_FPS * 1.001):
+            raise MediaValidationError("resource_limit", "The source exceeds the 8K/240 fps decoding resource envelope. Export a smaller rendition for analysis.")
+    if sound:
+        if sound.get("codec_name") not in decoders["audio"]:
+            raise MediaValidationError("decoder_missing", "This FFmpeg installation does not have a decoder for the selected audio codec.")
+        rate, channels = int(sound.get("sample_rate", 0)), int(sound.get("channels", 0))
+        if not 0 < rate <= 192000 or not 0 < channels <= 16:
+            raise MediaValidationError("audio_resource_limit", "Audio exceeds the supported 192 kHz or 16-channel resource limit.")
+    starts = [fraction(stream.get("start_time"), None) for stream in [video, sound] if stream]
+    start = fraction(container.get("start_time"), None)
+    if start is None:
+        start = min((value for value in starts if value is not None), default=0)
+    return {"duration": min(duration, MAX_SECONDS), "start_time": start, "video": video, "audio": sound,
+            "container": container.get("format_name", "unknown"), "video_stream_count": len(videos), "audio_stream_count": len(audio)}
 
 
 class StagedMedia:
@@ -147,9 +199,10 @@ class StagedMedia:
     async def validate(self, media_id, name, path, count):
         try:
             facts = await run_in_threadpool(probe, path)
-        except (ValueError, ZeroDivisionError) as error:
-            message = str(error) if isinstance(error, ValueError) and str(error).endswith(".") else "Unsupported media metadata."
-            raise HTTPException(422, message) from None
+        except MediaValidationError as error:
+            raise HTTPException(422, {"code": error.code, "message": str(error)}) from None
+        except (ValueError, ZeroDivisionError):
+            raise HTTPException(422, {"code": "unsupported_metadata", "message": "The media metadata is incomplete or unsupported."}) from None
         except (KeyError, subprocess.SubprocessError, OSError):
             raise HTTPException(422, "This file could not be read as video or audio. Choose a supported format or export the file again.") from None
         meta = {"id": media_id, "name": name, "stored_name": path.name, "size_bytes": count, **facts}

@@ -31,7 +31,7 @@ class StudioLocalServiceTests(unittest.TestCase):
         cls.temporary = tempfile.TemporaryDirectory(prefix="studio-api-test-")
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.root = Path(cls.temporary.name)
-        environment = patch.dict(os.environ, {"LOLIXCO_DNA_STATE_PARENT": str(cls.root), "LOLIXCO_GEMINI_YOUTUBE": "0"})
+        environment = patch.dict(os.environ, {"LOLIXCO_DNA_STATE_PARENT": str(cls.root), "LOLIXCO_GEMINI_YOUTUBE": "0", "GEMINI_API_KEY": ""})
         environment.start()
         cls.addClassCleanup(environment.stop)
         spec = importlib.util.spec_from_file_location("studio_local_test", LOCAL_DNA / "serve.py")
@@ -109,14 +109,16 @@ class StudioLocalServiceTests(unittest.TestCase):
                 event_data = self.request("GET", f"jobs/{job_id}/events").text
                 events = [json.loads(line[6:]) for line in event_data.splitlines() if line.startswith("data: ")]
                 self.assertIn("Inspecting streams", [event["payload"].get("message") for event in events])
-                self.assertEqual(len({event["section_id"] for event in events if event["section_id"]}), 7)
+                self.assertEqual(len({event["section_id"] for event in events if event["section_id"]}), 6)
                 self.assertNotIn(str(self.root), event_data)
                 report = self.request("GET", f"jobs/{job_id}/report/presentation").json()
                 raw = self.request("GET", f"jobs/{job_id}/report/v6").json()
                 self.assertNotIn(str(self.root), json.dumps(raw))
                 self.assertIsNone(report["overall_score_0_10"])
                 sections = {row["section_id"]: row for row in report["assessment_sections"]}
-                self.assertEqual(len(sections), 7)
+                self.assertEqual(len(sections), 6)
+                self.assertEqual(report["schema_version"], "8.0.0-presentation")
+                self.assertNotIn("personalized_owner_fit", sections)
                 self.assertIsNone(sections["beat_synchronization"]["score_0_10"])
                 self.assertEqual(sections["visual_measurements"]["score_0_10"] is not None, expected_visual)
                 if filename == "black.mp4":
