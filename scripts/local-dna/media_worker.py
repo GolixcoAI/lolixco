@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import numpy as np
 from staged_media import FORMATS, MAX_FPS, MAX_SECONDS
+from owner_fit import assess_owner_fit, content_hash
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "edit-dna"))
@@ -309,6 +310,19 @@ def main(path, job_id, mode, out):
     presentation = research.EditDNAPresentationAdapter.from_v6_report(v6)
     presentation["context_evidence"]["media_observations"] = facts
     presentation["context_evidence"]["media_notes"] = notes
+    presentation["context_evidence"]["local_input_sha256"] = content_hash(path)
+    owner_fit = assess_owner_fit(presentation)
+    presentation["assessment_sections"][-1].update(owner_fit)
+    v6["section_e_personalized_model"].update(
+        provenance=owner_fit["method_version"], status=owner_fit["evidence_status"],
+        predicted_score=owner_fit["score_0_10"], explanation=owner_fit["creator_explanation"],
+        owner_fit={**owner_fit, "score": owner_fit["score_0_10"], "status": owner_fit["evidence_status"],
+                   "provenance": owner_fit["method_version"]},
+    )
+    job.add_event(
+        "SECTION_COMPLETED" if owner_fit["score_0_10"] is not None else "SECTION_UNASSESSED",
+        "personalized_owner_fit", owner_fit,
+    )
     result = json_values({"v6": v6, "presentation": presentation})
     (out / "result.json").write_text(json.dumps(result, allow_nan=False))
 
