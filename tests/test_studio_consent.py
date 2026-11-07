@@ -95,7 +95,7 @@ class HybridEvidenceTests(unittest.TestCase):
         cls.fixtures = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.fixtures)
 
-    def run_hybrid(self, duration=20, *, visual_content=True, failure=None):
+    def run_hybrid(self, duration=20, *, visual_content=True, failure=None, second_failure=None, facts_override=None):
         import copy
         import contextlib
         import io
@@ -110,7 +110,10 @@ class HybridEvidenceTests(unittest.TestCase):
         local["v6"] = canonical
         context = local["presentation"]["context_evidence"]
         context["media_observations"] = {"has_video_stream": True, "has_audio_stream": True,
-                                          "audio_activity": True, "duration_seconds": duration}
+                                          "audio_activity": True, "duration_seconds": duration,
+                                          **(facts_override or {})}
+        if not context["media_observations"]["has_audio_stream"] or not context["media_observations"]["audio_activity"]:
+            local["presentation"]["assessment_sections"][0].update(score_0_10=None, evidence_status="NOT_YET_ASSESSED")
         context["governance_contract"] = {
             "cloud_upload_permitted": False, "data_governance": {"local_bytes_only": True, "zero_cloud_retention": True},
         }
@@ -122,35 +125,41 @@ class HybridEvidenceTests(unittest.TestCase):
             previous_directory = Path.cwd()
             try:
                 os.chdir(root)
+                responses = [copy.deepcopy(provider_result), second_failure or copy.deepcopy(provider_result)]
+                if failure:
+                    responses = [failure]
                 with patch.object(self.hybrid, "_require_configured_provider"), \
                      patch.object(self.hybrid, "prepare_semantic_copy", side_effect=lambda source, target: target.write_bytes(b"synthetic-rendition")), \
-                     patch.object(self.hybrid.provider, "analyze_inline_video", return_value=provider_result, side_effect=failure) as inference, \
+                     patch.object(self.hybrid.provider, "analyze_inline_video", side_effect=responses) as inference, \
                      contextlib.redirect_stdout(io.StringIO()):
-                    if failure:
-                        with self.assertRaises(type(failure)):
+                    if failure or second_failure:
+                        with self.assertRaises(type(failure or second_failure)):
                             self.hybrid.main(root / "private-original.mov", local_path)
                         self.assertFalse((root / "semantic-review.mp4").exists())
-                        return None, inference.call_args
+                        return None, list(inference.call_args_list)
                     self.hybrid.main(root / "private-original.mov", local_path)
                 self.assertFalse((root / "semantic-review.mp4").exists())
-                return json.loads((root / "result.json").read_text()), inference.call_args
+                return json.loads((root / "result.json").read_text()), list(inference.call_args_list)
             finally:
                 os.chdir(previous_directory)
 
     def test_cloud_visual_abstention_remains_unscored_despite_decodable_local_frames(self):
-        fused, call = self.run_hybrid(visual_content=False)
+        fused, calls = self.run_hybrid(visual_content=False)
         self.assertEqual([row["score_0_10"] for row in fused["presentation"]["assessment_sections"]], [5, 5, 5, 5, None, None])
         self.assertIsNone(fused["presentation"]["overall_score_0_10"])
-        self.assertIn("0 to 20 seconds", call.args[2])
-        self.assertIn("00:00 to 00:20.00", call.args[2])
-        self.assertNotIn("attached public YouTube video", call.args[2])
+        self.assertEqual(len(calls), 2)
+        for call in calls:
+            self.assertIn("0 to 20 seconds", call.args[2])
+            self.assertIn("00:00 to 00:20.00", call.args[2])
+            self.assertNotIn("attached public YouTube video", call.args[2])
 
     def test_actual_local_duration_bounds_all_semantic_evidence(self):
-        fused, call = self.run_hybrid(duration=4)
+        fused, calls = self.run_hybrid(duration=4)
         self.assertEqual(fused["presentation"]["context_evidence"]["remote_observation"]["requested_review_seconds"], 4)
         self.assertIsNone(fused["presentation"]["assessment_sections"][4]["score_0_10"])
         self.assertTrue(all(timestamp <= 4 for row in fused["presentation"]["assessment_sections"] for timestamp in row["timestamps"]))
-        self.assertIn("0 to 4 seconds", call.args[2])
+        for call in calls:
+            self.assertIn("0 to 4 seconds", call.args[2])
 
     def test_hybrid_exports_record_actual_cloud_consent_and_provider_terms(self):
         fused, _ = self.run_hybrid()
@@ -167,7 +176,24 @@ class HybridEvidenceTests(unittest.TestCase):
 
     def test_request_failure_removes_private_semantic_copy(self):
         from gemini_provider import ProviderError
-        self.run_hybrid(failure=ProviderError("quota_exceeded", "Synthetic quota failure"))
+        _, calls = self.run_hybrid(failure=ProviderError("quota_exceeded", "Synthetic quota failure"))
+        self.assertEqual(len(calls), 1)
+
+    def test_second_review_failure_removes_the_private_copy(self):
+        from gemini_provider import ProviderError
+        _, calls = self.run_hybrid(second_failure=ProviderError("quota_exceeded", "Synthetic second-pass failure"))
+        self.assertEqual(len(calls), 2)
+
+    def test_local_absent_or_silent_audio_vetoes_both_semantic_passes(self):
+        for facts in ({"has_audio_stream": False}, {"audio_activity": False}):
+            with self.subTest(facts=facts):
+                fused, calls = self.run_hybrid(facts_override=facts)
+                self.assertEqual(len(calls), 2)
+                self.assertIsNone(fused["presentation"]["assessment_sections"][0]["score_0_10"])
+                self.assertIsNone(fused["presentation"]["overall_score_0_10"])
+                semantic = fused["v6"]["section_d_semantic_evaluation"]
+                self.assertFalse(semantic["model_observation"]["audio_reviewable"])
+                self.assertFalse(semantic["rhythm_model_observation"]["audio_reviewable"])
 
     def test_private_rendition_preparation_downscales_and_strips_metadata(self):
         import subprocess
