@@ -79,6 +79,14 @@ class ProviderTests(unittest.TestCase):
                 self.assertEqual(result['status'], 'request_unsupported')
                 request.assert_not_called()
 
+    def test_focused_pass_prefers_an_account_visible_model(self):
+        self.provider.model = 'gemini-3.1-flash-lite'
+        with patch.object(self.provider._opener, 'open', side_effect=[discovered('gemini-3.1-flash-lite', 'gemini-3.5-flash'), generated()]) as request:
+            result = self.provider.analyze_inline_video(b'synthetic-video', 'video/mp4', 'Synthetic focused review',
+                                                        preferred_model='gemini-3.5-flash')
+        self.assertEqual(result['model'], 'gemini-3.5-flash')
+        self.assertIn('/models/gemini-3.5-flash:generateContent', request.call_args_list[-1].args[0].full_url)
+
     def test_quota_error_is_terminal_without_generation_retries(self):
         failure = HTTPError('https://generativelanguage.googleapis.com/', 429, 'quota', {}, io.BytesIO(b'private upstream response'))
         with patch.object(self.provider._opener, 'open', side_effect=[discovered('gemini-3.8-flash', 'gemini-3.5-flash'), failure]) as request:

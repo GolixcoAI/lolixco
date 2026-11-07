@@ -50,7 +50,10 @@ def worker_result(job, work, arguments, environment, timeout):
                             if job.cancel_event.is_set():
                                 return None
                             job.current_stage = message["stage"]
-                            job.progress_percent = max(job.progress_percent, min(message["progress"], 99))
+                            progress = message["progress"]
+                            if Path(arguments[0]).name == "media_worker.py" and getattr(job, "semantic_consent", False) is True:
+                                progress = round(progress * .78)
+                            job.progress_percent = max(job.progress_percent, min(progress, 99))
                             if kind == "stage":
                                 job.add_event("STAGE", payload={"message": job.current_stage, "progress": job.progress_percent})
                             elif message["section_id"]:
@@ -143,7 +146,7 @@ def run_analysis(job, report_root, work_root, staging_root):
                 try:
                     hybrid = worker_result(job, semantic_work,
                         [str(WORKERS / "hybrid_worker.py"), job.media_path, str(work / "result.json")],
-                        semantic_environment, 170)
+                        semantic_environment, 200)
                     if hybrid is None:
                         return
                     result = hybrid
