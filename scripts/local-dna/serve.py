@@ -16,6 +16,10 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+if __name__ == "__main__":
+    from configuration import load_configuration
+    load_configuration()
+
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "edit-dna"))
 import local_service

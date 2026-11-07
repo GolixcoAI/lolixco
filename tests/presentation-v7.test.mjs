@@ -91,3 +91,41 @@ test('remote evidence preserves qualitative findings and unscored limits with se
  raw.assessment_sections[4].score_0_10 = 7;
  assert.throws(() => parsePresentation(raw));
 });
+
+test('semantic rubric scores survive presentation and progressive events without an overall grade', () => {
+ const raw = fixture();
+ raw.overall_score_0_10 = null;
+ raw.overall_score_status = 'NOT_YET_ASSESSED';
+ raw.assessment_sections = V7_IDS.map(id => section(id));
+ Object.assign(raw.assessment_sections[4], {
+  score_0_10: 7.5, evidence_status: 'EXPERIMENTAL_SEMANTIC_SCORE',
+  method_version: 'gemini_storytelling_rubric_v1',
+  evidence_refs: {provider_model:'fixture-model',assessment_scope:'Reviewed excerpt',supported_criteria:4},
+ });
+ assert.equal(parsePresentation(raw).ratings.categories[4].score, 7.5);
+ let state = applyAnalysisEvent(INITIAL_ANALYSIS, {job_id:'semantic-fixture',type:'SECTION_COMPLETED',section:raw.assessment_sections[4]});
+ assert.equal(adaptStudioReport(progressPresentation(state)).ratings.categories[4].score, 7.5);
+ assert.equal(adaptStudioReport(progressPresentation(state)).ratings.overall.score, null);
+ raw.assessment_sections[4].method_version = 'cadence_proxy';
+ assert.throws(() => parsePresentation(raw));
+});
+
+test('owner-fit validation survives the Phase9 normalizer only with method-matched feedback', async () => {
+ const {phase9Presentation} = await import('../src/components/studio/presentationV7.ts');
+ const raw = fixture();
+ raw.experimental_phase9 = true;
+ raw.overall_score_0_10 = null;
+ raw.overall_score_status = 'NOT_YET_ASSESSED';
+ raw.assessment_sections = V7_IDS.map(id => section(id));
+ const owner = {
+  section_id:'personalized_owner_fit',score_0_10:6.42,evidence_status:'PERSONALIZED_ESTIMATE',
+  method_version:'studio_owner_preference_v1',creator_explanation:'Synthetic validation fixture',
+  evidence_refs:{compatible_reviews:14,validation:{validation:'leave_one_content_out',passes_baselines:true}},
+ };
+ const canonical = {section_e_personalized_model:{owner_fit:owner}};
+ const result = parsePresentation(phase9Presentation(raw,canonical));
+ assert.equal(result.ratings.categories[6].score, 6.42);
+ assert.equal(result.ratings.overall.score, null);
+ owner.evidence_refs.validation.passes_baselines = false;
+ assert.throws(() => parsePresentation(phase9Presentation(raw,canonical)));
+});

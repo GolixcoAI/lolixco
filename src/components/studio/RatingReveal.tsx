@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, type Ref } from 'react';
 import { CATEGORY_LABELS, DEMO_RATINGS, EMPTY_RATINGS, REACTION_POOL, type Rating, type Ratings } from './ratingModel';
 import { useRatingMotion } from './useRatingMotion';
+import ProcessingLabel from './ProcessingLabel';
 
 const DIAL_ARC = 'M 24 152 A 126 126 0 0 1 276 152';
 const TICKS = Array.from({ length: 21 }, (_, i) => {
@@ -57,12 +58,12 @@ function EvidenceMeasurements({ measurements }: { measurements: Rating['measurem
 
 type RatingRevealProps = {
  ratings?: Ratings; synthetic?: boolean; experimental?: boolean; developmentPreview?: boolean;
- receivedResultId?: string; localResult?: boolean; processing?: boolean; analysisComplete?: boolean;
+ receivedResultId?: string; inputIdentity?: string; settled?: readonly boolean[]; localResult?: boolean; processing?: boolean; analysisComplete?: boolean;
  onSeek?: (time: number) => void;
 };
 
 export default function RatingReveal({
- ratings, synthetic = false, experimental = false, developmentPreview = false, receivedResultId,
+ ratings, synthetic = false, experimental = false, developmentPreview = false, receivedResultId, inputIdentity, settled,
  localResult = false, processing = false, analysisComplete = false, onSeek,
 }: RatingRevealProps) {
  const [demo, setDemo] = useState(false);
@@ -75,35 +76,35 @@ export default function RatingReveal({
   return () => query.removeEventListener('change', update);
  }, []);
  useEffect(() => {
-  if (processing) {
+  if (processing || inputIdentity) {
    setDemo(false);
    setComicPreview('');
   }
- }, [processing]);
+ }, [processing, inputIdentity]);
 
  const demoActive = demo && !processing;
  const model = demoActive ? DEMO_RATINGS : ratings ?? EMPTY_RATINGS;
  const actual = model.overall.score;
  const hasScores = model.categories.some(item => item.score !== null);
- const hasObservations = model.categories.some(item => item.status === 'EVALUATED_SEMANTIC_EXPERIMENTAL');
+ const hasObservations = model.categories.some(item => ['EVALUATED_SEMANTIC_EXPERIMENTAL', 'EXPERIMENTAL_SEMANTIC_SCORE'].includes(item.status));
  const finished = demoActive || analysisComplete || !!ratings && !localResult;
  const motion = useRatingMotion({
-  model, identity: demoActive ? 'synthetic' : receivedResultId || 'studio',
-  animate: demoActive || processing || !!receivedResultId, processing, finished, reduced,
-  completionReaction: hasScores || localResult && !hasObservations ? 'TECHNICAL COMPLETE' : 'REVIEW COMPLETE',
+  model, identity: demoActive ? 'synthetic' : receivedResultId || inputIdentity || 'studio',
+  animate: demoActive || processing || !!receivedResultId, processing, finished, reduced, settled,
+  completionReaction: hasObservations ? 'REVIEW COMPLETE' : hasScores || localResult ? 'TECHNICAL COMPLETE' : 'REVIEW COMPLETE',
  });
  const { view } = motion;
  const reaction = (!processing && comicPreview) || view.reaction;
  const verdict = view.phase === 'complete' && actual !== null;
  const mode = demoActive || synthetic ? 'SYNTHETIC FIXTURE · SAMPLE SCORES'
-  : processing ? 'LIVE ANALYSIS' : experimental ? hasScores ? 'EXPERIMENTAL TECHNICAL SCORES' : 'EXPERIMENTAL OBSERVATIONS'
+  : processing ? 'LIVE ANALYSIS' : experimental ? hasObservations ? 'EXPERIMENTAL SEMANTIC REVIEW' : hasScores ? 'EXPERIMENTAL TECHNICAL SCORES' : 'EXPERIMENTAL OBSERVATIONS'
   : localResult && finished ? 'ANALYSIS RESULTS' : finished ? 'IMPORTED REPORT' : 'EDIT DNA · READY';
- const headline = verdict ? `${actual.toFixed(2)}/10` : processing ? 'Analyzing…'
-  : view.phase === 'checkpoint' || view.phase === 'finish' ? 'Presenting findings…'
+ const headline = verdict ? `${actual.toFixed(2)}/10` : processing ? <ProcessingLabel>Analysing</ProcessingLabel>
+  : view.phase === 'checkpoint' || view.phase === 'finish' ? <ProcessingLabel>Presenting findings</ProcessingLabel>
   : finished ? 'Overall score unavailable' : 'Ready for analysis';
 
  return <div className="rating-reveal" data-phase={view.phase} data-has-overall={actual !== null}
-  data-complete={view.phase === 'complete'} data-checkpoint={view.index}>
+  data-complete={view.phase === 'complete'} data-checkpoint={view.index} data-checkpoint-scored={view.scored}>
   <div className={`rating-mode${demoActive || synthetic ? ' rating-synthetic' : ''}`}>{mode}</div>
   <div className="rpm-instrument">
    <RpmDial needle={motion.needle} arc={motion.arc}/>
@@ -113,12 +114,12 @@ export default function RatingReveal({
    </div>
   </div>
   <div className="rpm-verdict">
-   <small>{verdict ? 'OVERALL EDIT SCORE' : view.index >= 0 && view.index < 7 ? CATEGORY_LABELS[view.index] : 'EDIT DNA ENGINE'}</small>
+   <small>{verdict ? 'OVERALL EDIT SCORE' : view.index >= 0 && view.index < 7 ? CATEGORY_LABELS[view.index] : 'EDIT DNA ENGINE'}{view.phase === 'checkpoint' && !view.scored ? ' · EVIDENCE REVIEW' : ''}</small>
    <strong>{headline}</strong>
    {(demoActive || synthetic)
     ? <span>Synthetic scores for visual review.</span>
     : finished && actual === null && view.phase === 'complete'
-    ? <span>{hasScores ? 'Review technical proxies and their evidence below.' : 'Review the available observations and evidence limits below.'}</span>
+    ? <span>{hasScores ? hasObservations ? 'Review the experimental rubrics and evidence below.' : 'Review technical proxies and their evidence below.' : 'Review the available observations and evidence limits below.'}</span>
     : verdict && <span>{model.overall.status.replace(/_/g, ' ')} · {model.overall.provenance}</span>}
   </div>
   <p className="rating-accessible" aria-live="polite">
@@ -136,18 +137,22 @@ export default function RatingReveal({
    const observation = item.status === 'EVALUATED_SEMANTIC_EXPERIMENTAL';
    return <div className="rating-category" key={label} data-active={view.phase === 'checkpoint' && view.index === i}>
     <div className="rating-category-heading"><h4>{label}</h4>
-     {score !== null ? <span className="rating-score-chip">{score.toFixed(2)}/10</span>
+     {score !== null ? <span className="rating-score-chip" aria-hidden="true" ref={element => { motion.scores.current[i] = element; }}/>
       : observation ? <span className="rating-evidence-chip">Observation</span>
-      : finished && <span className="rating-unassessed">{item.status === 'CONFLICT' ? 'Conflict' : 'No score'}</span>}
+      : (finished || settled?.[i]) && <span className="rating-unassessed">{item.status === 'CONFLICT' ? 'Conflict' : 'No score'}</span>}
     </div>
     {score === null ? <div className="rating-track rating-track-neutral" aria-hidden="true"/>
      : <div className="rating-track" role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={10}
        aria-valuenow={score} aria-valuetext={`${score.toFixed(2)} out of 10`}>
        <div ref={element => { motion.bars.current[i] = element; }}/>
       </div>}
+    {item.status === 'EXPERIMENTAL_SEMANTIC_SCORE' && <p className="rating-explanation">
+     {i === 5 ? 'Experimental creative execution rubric. Comparative originality requires reference evidence.' : 'Experimental storytelling rubric.'}
+    </p>}
     {score === null && !!item.explanation && <p className="rating-explanation">{item.explanation}</p>}
     <details className="rating-dimension-details">
      <summary>Evidence details<span className="rating-accessible"> for {label}</span></summary>
+     {score !== null && <p className="rating-final-score">Reported score {score.toFixed(2)}/10</p>}
      {score !== null && <p>{item.explanation || 'Reported score: ' + score.toFixed(2) + '/10'}</p>}
      {score === null && !item.explanation && <p>Evidence for this dimension is pending or unavailable.</p>}
      <small>{item.status.replace(/_/g, ' ')}{item.provenance ? ` · ${item.provenance}` : ''}</small>
