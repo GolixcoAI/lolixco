@@ -9,6 +9,7 @@ name: Frontend CI
       - feat/mission5-recsys-integration
       - feat/mission7c-jjk-landscape-batch-01
       - feat/stage1-security-finalization
+      - 'codex/**'
   pull_request:
     branches:
       - main
@@ -93,6 +94,9 @@ jobs:
 
       - name: Run production build
         run: pnpm build
+
+      - name: Inspect public build for private endpoints and credentials
+        run: node scripts/check-release-build.mjs dist
 
       - name: Run recommendation tests
         run: python3 -m unittest discover -s server/recsys/tests -v
