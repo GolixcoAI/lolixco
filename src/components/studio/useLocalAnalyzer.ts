@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import type {AnalysisEvent} from './analysisProgress';
-import {phase9Presentation, phase9Section} from './presentationV7';
+import {phase9Presentation, phase9Section, record} from './presentationV7';
 
 class LocalRequestError extends Error {
  constructor(message: string, readonly status: number, readonly code?: string) {
@@ -8,7 +8,7 @@ class LocalRequestError extends Error {
  }
 }
 
-type ProviderStatus = 'connected' | 'not_configured' | 'rate_limited' | 'unsupported' | 'temporarily_unavailable';
+export type ProviderStatus = 'connected' | 'not_configured' | 'configured_disabled' | 'connecting' | 'authentication_failed' | 'quota_exceeded' | 'model_unavailable' | 'request_unsupported' | 'video_unavailable' | 'rate_limited' | 'unsupported' | 'temporarily_unavailable';
 type Provider = {status: ProviderStatus; message: string; model?: string};
 type StagedMedia = {id: string; name: string; audio_only: boolean};
 type Source = {type: 'file'; file: File} | {type: 'staged'; id: string} | {type: 'sample'; filename: string} | {type: 'youtube'; id: string};
@@ -37,9 +37,9 @@ type Reports = {v6: unknown; presentation: unknown};
 export const DEFAULT_MEDIA_LIMITS = {
  max_bytes: 100 * 1024 * 1024,
  max_seconds: 120,
- max_dimension: 1920,
- max_pixels: 1920 * 1080,
- max_fps: 60,
+ max_dimension: 8192,
+ max_pixels: 8192 * 4320,
+ max_fps: 240,
  extensions: ['.mp4', '.mov', '.m4v', '.mkv', '.webm', '.mp3', '.wav', '.flac', '.ogg', '.opus', '.m4a', '.aac'],
 };
 
@@ -57,8 +57,8 @@ const reportModes = {quality_mode: 'phase9'};
 
 function providerFailure(code?: string, message?: string): Provider | undefined {
  if (!message) return undefined;
- if (code === 'not_configured' || code === 'rate_limited' || code === 'unsupported' || code === 'temporarily_unavailable') {
-  return {status: code, message};
+ if (code && ['not_configured','configured_disabled','authentication_failed','quota_exceeded','model_unavailable','request_unsupported','rate_limited','unsupported','temporarily_unavailable'].includes(code)) {
+  return {status: code as ProviderStatus, message};
  }
 }
 
@@ -138,6 +138,7 @@ export function useLocalAnalyzer() {
  async function refresh() {
   if (!enabled) return;
   const token = ++healthGeneration.current;
+  setProvider({status:'connecting',message:'Checking Gemini configuration and model access.'});
   try {
    const health = await api<Health>('health');
    if (health.version !== '8.0.0') throw Error('Expected local analyzer v8.0.0.');
@@ -181,11 +182,11 @@ export function useLocalAnalyzer() {
     const next: AnalysisEvent[] = [];
     const localPhase9 = result.quality_mode === 'phase9' && !result.youtube_video_id;
     for (const event of result.events.slice(cursor)) {
-     if (!visibleEvents.includes(event.event_type)) continue;
+     if (!visibleEvents.includes(event.event_type) || event.section_id === 'personalized_owner_fit') continue;
      next.push({
       job_id: job,
       type: event.event_type as AnalysisEvent['type'],
-      section: localPhase9 && event.section_id ? phase9Section(event.payload) : event.payload,
+      section: localPhase9 && event.section_id && !('method_version' in event.payload && String(event.payload.method_version).startsWith('gemini_')) ? phase9Section(event.payload) : event.payload,
      });
     }
     cursor = result.events.length;
@@ -198,8 +199,19 @@ export function useLocalAnalyzer() {
      ]);
      if (!current()) return;
      setReports({v6, presentation});
+     const semanticStatus = record(record(record(presentation).context_evidence).semantic_provider_status);
+     const semanticFailure = providerFailure(
+      typeof semanticStatus.status === 'string' ? semanticStatus.status : undefined,
+      typeof semanticStatus.message === 'string' ? semanticStatus.message : undefined,
+     );
+     if (semanticFailure) setProvider(semanticFailure);
+     else if (semanticStatus.status === 'connected') setProvider(previous => ({
+      ...previous, status: 'connected',
+      message: typeof semanticStatus.message === 'string' ? semanticStatus.message : 'Gemini audiovisual review completed.',
+     }));
      const liveSections = result.events.filter(event => event.event_type === 'SECTION_COMPLETED').map(event => event.payload);
-     const report = localPhase9 ? phase9Presentation(presentation, v6, liveSections) : presentation;
+     const currentSchema = presentation && typeof presentation === 'object' && 'schema_version' in presentation && presentation.schema_version === '8.0.0-presentation';
+     const report = localPhase9 && !currentSchema ? phase9Presentation(presentation, v6, liveSections) : presentation;
      setEvents(old => [...old, {job_id: job, type: 'COMPLETE', report}]);
     } else {
      const type = result.status as 'FAILED' | 'CANCELLED';
@@ -254,8 +266,8 @@ export function useLocalAnalyzer() {
   setJobLocation('');
  }
 
- async function start(source: Source) {
-  if (!ready || pending.current || active.current || cleanupPending.current || source.type === 'youtube' && provider.status !== 'connected') return;
+ async function start(source: Source, semanticConsent = false) {
+  if (!ready || pending.current || active.current || cleanupPending.current || (source.type === 'youtube' || semanticConsent) && provider.status !== 'connected') return;
   pending.current = true;
   cancelPending.current = false;
   resetResult();
@@ -288,11 +300,12 @@ export function useLocalAnalyzer() {
     return;
    }
 
-   const sample = source.type === 'sample' ? {inbox_filename: source.filename, ...reportModes} : undefined;
+   const localModes = {...reportModes, semantic_consent: semanticConsent};
+   const sample = source.type === 'sample' ? {inbox_filename: source.filename, ...localModes} : undefined;
    const reusable = source.type === 'file' || source.type === 'sample' && input?.name === source.filename;
    const mediaId = source.type === 'staged' ? source.id : reusable ? input?.id : undefined;
    const path = source.type === 'youtube' ? 'youtube/start' : mediaId ? `media/${mediaId}/start` : 'jobs/start';
-   const payload = source.type === 'youtube' ? {video_id: source.id, consent: true} : mediaId ? reportModes : sample;
+   const payload = source.type === 'youtube' ? {video_id: source.id, consent: true} : mediaId ? localModes : sample;
    const result = await api<{job_id: string}>(path, {method: 'POST', body: JSON.stringify(payload)}).catch(failure => {
     if (!sample || !mediaId || !(failure instanceof LocalRequestError) || failure.status !== 404) throw failure;
     setStaged(null);
@@ -316,7 +329,7 @@ export function useLocalAnalyzer() {
    } else {
     setError(failure instanceof Error ? failure.message : 'Unable to start analysis.');
    }
-   if (source.type === 'youtube' && failure instanceof LocalRequestError) {
+   if ((source.type === 'youtube' || semanticConsent) && failure instanceof LocalRequestError) {
     const state = providerFailure(failure.code, failure.message);
     if (state) setProvider(state);
    }

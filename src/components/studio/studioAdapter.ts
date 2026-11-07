@@ -14,10 +14,10 @@ function collect(value:unknown,label:string,inherited:EvidenceStatus,provenance:
  if(direct===null||status==='NOT ASSESSED')return[{label,status,value:'Not yet assessed',provenance:origin}];
  if(text(direct))return[{label,status,value:text(direct),provenance:origin}];
  if(typeof value==='string'||typeof value==='number')return[{label,status,value:text(value),provenance:origin}];
- return Object.entries(field).filter(([k])=>!['status','provenance','owner_weights','evaluator'].includes(k)).flatMap(([k,v])=>collect(v,k.replace(/_/g,' '),status,origin,depth+1));
+ return Object.entries(field).filter(([k])=>!['status','provenance','owner_weights','owner_fit','personalized_owner_fit','evaluator'].includes(k)).flatMap(([k,v])=>collect(v,k.replace(/_/g,' '),status,origin,depth+1));
 }
 export function adaptStudioReport(input:unknown):StudioReport {
- const r=object(input);if(r.schema_version==='7.0.0-presentation'){
+ const r=object(input);if(['7.0.0-presentation','8.0.0-presentation'].includes(String(r.schema_version))){
   const v = parsePresentation(r);
   const music = object(v.context.music_recognition);
   const source = object(v.context.visual_recognition);
@@ -27,7 +27,7 @@ export function adaptStudioReport(input:unknown):StudioReport {
   const remote = object(v.context.remote_observation);
   const observations = object(v.context.media_observations);
   const mediaNotes = Array.isArray(v.context.media_notes)
-   ? v.context.media_notes.filter((note): note is string => typeof note === 'string') : [];
+   ? v.context.media_notes.filter((note): note is string => typeof note === 'string' && !/owner[ _-]*fit|personalized[ _-]*owner/i.test(note)) : [];
   if (text(reference.author_name)) mediaNotes.unshift('Publisher: ' + text(reference.author_name));
   const candidates = Array.isArray(source.candidates) ? source.candidates : source.matched_entity ? [source.matched_entity] : [];
   const trackName = [text(track.title), text(track.artist)].filter(Boolean).join(' · ') || text(music.matched_track);
@@ -74,7 +74,7 @@ export function adaptStudioReport(input:unknown):StudioReport {
   const cards = object(semantic.scorecard);
   const physical = object(r.section_c_physical_signals);
   const presentation = phase9Presentation({
-   schema_version:'7.0.0-presentation',
+   schema_version:'8.0.0-presentation',
    assessment_sections:V7_IDS.map(section_id => ({
     section_id,
     score_0_10:object(cards[aliases[section_id] || section_id]).score ?? null,
@@ -86,7 +86,7 @@ export function adaptStudioReport(input:unknown):StudioReport {
   return {...adapted, version:'6.0.0', markers:timelineMarkers(r)};
  }
  const evidence:Evidence[]=[];const sources:Evidence[]=[];
- for(const [key,label]of [['section_a_visual_recognition','Visual source'],['section_b_music_recognition','Music identification'],['section_c_physical_signals','Technical measurements'],['section_d_semantic_evaluation','Semantic interpretation'],['section_e_personalized_model','Owner-fit estimate']] ){
+ for(const [key,label]of [['section_a_visual_recognition','Visual source'],['section_b_music_recognition','Music identification'],['section_c_physical_signals','Technical measurements'],['section_d_semantic_evaluation','Semantic interpretation']] ){
  const section=object(r[key]);const status=evidenceStatus(section.status||section.provenance?.toString().toUpperCase());
  evidence.push(...collect(section,label,status,text(section.provenance)));
  if(key==='section_a_visual_recognition')for(const entity of (Array.isArray(section.candidates)?section.candidates:[section.matched_entity])){const e=object(entity);if(text(e.title||e.name))sources.push({label:text(e.type)||'Source candidate',status,value:text(e.title||e.name),provenance:text(section.provenance)});}

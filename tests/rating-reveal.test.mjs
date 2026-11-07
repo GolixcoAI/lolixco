@@ -10,11 +10,11 @@ const report = {
  section_e_personalized_model: {provenance:'test_fixture', overall_prediction:{predicted_score:5.17,status:'PERSONALIZED_ESTIMATE'}},
 };
 
-test('exact seven categories and supported 0–10 endpoints with two decimal presentation', () => {
+test('exact six categories and supported 0–10 endpoints with two decimal presentation', () => {
  const ratings = adaptRatings(report);
- assert.equal(CATEGORY_LABELS.length, 7);
+ assert.equal(CATEGORY_LABELS.length, 6);
  assert.deepEqual(ratings.categories.slice(0, 3).map(item => item.score), [6.9, 0, 10]);
- assert.equal(ratings.overall.score.toFixed(2), '5.17');
+ assert.equal(ratings.overall.score, null, 'historical personalized composites are excluded');
 });
 
 test('missing, conflict, unsupported, out-of-range and unprovenanced grades are withheld', () => {
@@ -55,16 +55,16 @@ test('score readouts and fills share one bounded hundredth through the entire ea
  assert.ok(beginning > end * 5, 'count-up slows as it approaches the actual score');
 });
 
-test('each reaction plan has seven distinct phrases and keeps the special verdict separate', () => {
+test('each reaction plan has six distinct phrases and keeps the special verdict separate', () => {
  assert.equal(new Set(REACTION_POOL).size, 29);
  assert.ok(REACTION_POOL.includes("YOU'RE COOKING!"));
  assert.ok(REACTION_POOL.includes('SHUT UP!'));
- const strong = sampleReactions(Array(7).fill(9), () => .99);
- const weak = sampleReactions(Array(7).fill(2), () => .99);
- const unknown = sampleReactions(Array(7).fill(null), () => 0);
+ const strong = sampleReactions(Array(6).fill(9), () => .99);
+ const weak = sampleReactions(Array(6).fill(2), () => .99);
+ const unknown = sampleReactions(Array(6).fill(null), () => 0);
  for (const plan of [strong, weak, unknown]) {
-  assert.equal(plan.length, 7);
-  assert.equal(new Set(plan).size, 7);
+  assert.equal(plan.length, 6);
+  assert.equal(new Set(plan).size, 6);
   assert.ok(plan.every(word => REACTION_POOL.includes(word)));
  }
  assert.ok(strong.includes('SHUT UP!'));
@@ -73,7 +73,7 @@ test('each reaction plan has seven distinct phrases and keeps the special verdic
  assert.ok(!weak.includes('COOKING!'));
  assert.ok(!weak.includes('CLEAN!') && !weak.includes('HARD!'));
  for (let index = 0; index < 20; index++) {
-  assert.ok(sampleReactions(Array(7).fill(0), () => index / 20).every(word => !['CLEAN!', 'HARD!', 'THAT HIT!', 'COOKING!', 'SHUT UP!'].includes(word)));
+  assert.ok(sampleReactions(Array(6).fill(0), () => index / 20).every(word => !['CLEAN!', 'HARD!', 'THAT HIT!', 'COOKING!', 'SHUT UP!'].includes(word)));
  }
  assert.ok(!REACTION_POOL.includes('FINAL VERDICT!'));
 });
@@ -84,7 +84,7 @@ test('subsequent reaction plans vary while the whole library remains reachable',
   seed = (seed * 1664525 + 1013904223) >>> 0;
   return seed / 4294967296;
  };
- const plans = Array.from({length: 100}, () => sampleReactions(Array(7).fill(5), random));
+ const plans = Array.from({length: 100}, () => sampleReactions(Array(6).fill(5), random));
  assert.equal(new Set(plans.map(plan => plan.join('|'))).size, 100);
  assert.deepEqual(new Set(plans.flat()), new Set(REACTION_POOL));
 });

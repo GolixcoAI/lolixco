@@ -114,7 +114,7 @@ export default function RatingReveal({
    </div>
   </div>
   <div className="rpm-verdict">
-   <small>{verdict ? 'OVERALL EDIT SCORE' : view.index >= 0 && view.index < 7 ? CATEGORY_LABELS[view.index] : 'EDIT DNA ENGINE'}{view.phase === 'checkpoint' && !view.scored ? ' · EVIDENCE REVIEW' : ''}</small>
+   <small>{verdict ? 'OVERALL EDIT SCORE' : view.index >= 0 && view.index < CATEGORY_LABELS.length ? CATEGORY_LABELS[view.index] : 'EDIT DNA ENGINE'}{view.phase === 'checkpoint' && !view.scored ? ' · EVIDENCE REVIEW' : ''}</small>
    <strong>{headline}</strong>
    {(demoActive || synthetic)
     ? <span>Synthetic scores for visual review.</span>
@@ -130,7 +130,7 @@ export default function RatingReveal({
    <button type="button" onClick={() => { setComicPreview(''); motion.replay(); }}
     disabled={!finished || processing || reduced || view.phase !== 'complete'}>Replay</button>
   </div>
-  <div className="rating-breakdown-heading">Assessment <span>7 dimensions</span></div>
+  <div className="rating-breakdown-heading">Assessment <span>6 dimensions</span></div>
   <div className="rating-categories">{CATEGORY_LABELS.map((label, i) => {
    const item = model.categories[i];
    const score = item.score;
@@ -147,7 +147,7 @@ export default function RatingReveal({
        <div ref={element => { motion.bars.current[i] = element; }}/>
       </div>}
     {item.status === 'EXPERIMENTAL_SEMANTIC_SCORE' && <p className="rating-explanation">
-     {i === 5 ? 'Experimental creative execution rubric. Comparative originality requires reference evidence.' : 'Experimental storytelling rubric.'}
+     Experimental audiovisual rubric. The evidence details show the reviewed scope and limitations.
     </p>}
     {score === null && !!item.explanation && <p className="rating-explanation">{item.explanation}</p>}
     <details className="rating-dimension-details">
@@ -170,7 +170,7 @@ export default function RatingReveal({
    <summary>Developer animation previews</summary>
    <button className="rating-demo-toggle" type="button" aria-pressed={demoActive} disabled={processing}
     onClick={() => { setComicPreview(''); setDemo(value => !value); }}>
-    {demoActive ? 'Exit synthetic fixture' : 'Play seven-score fixture'}
+    {demoActive ? 'Exit synthetic fixture' : 'Play six-score fixture'}
    </button>
    <label>Preview comic reaction
     <select value={comicPreview} disabled={processing} onChange={event => setComicPreview(event.target.value)}>

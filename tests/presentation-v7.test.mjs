@@ -1,131 +1,120 @@
-import test from'node:test';import assert from'node:assert/strict';import{V7_IDS,parsePresentation}from'../src/components/studio/presentationV7.ts';import{adaptStudioReport}from'../src/components/studio/studioAdapter.ts';import{applyAnalysisEvent,INITIAL_ANALYSIS,progressPresentation}from'../src/components/studio/analysisProgress.ts';
-const section=(id,score=null)=>({section_id:id,score_0_10:score,evidence_status:score===null?'NOT_YET_ASSESSED':'EVALUATED_SEMANTIC',method_version:'synthetic_test',timestamps:[1.25],creator_explanation:'Synthetic explanation'});
-const fixture=()=>({schema_version:'7.0.0-presentation',is_synthetic_fixture:true,assessment_sections:V7_IDS.map(id=>section(id,5.17)),overall_score_0_10:5.17,overall_score_status:'CALCULATED_SEMANTIC',overall_score_method:'synthetic_test',context_evidence:{music_recognition:{status:'CONFLICT'}}});
-test('Phase7 retains exact dimension order, status, explanation, timestamps and synthetic labeling',()=>{const f=fixture();f.assessment_sections.reverse();const r=adaptStudioReport(f);assert.equal(r.synthetic,true);assert.equal(r.ratings.categories.length,7);assert.equal(r.ratings.categories[0].explanation,'Synthetic explanation');assert.deepEqual(r.ratings.categories[0].timestamps,[1.25]);assert.equal(r.ratings.overall.score,5.17);assert.equal(r.music.status,'CONFLICT');assert.deepEqual(parsePresentation(f).assessment_sections.map(s=>s.section_id),[...V7_IDS]);});
-test('invalid and duplicate scores fail closed; unavailable overall remains null',()=>{const f=fixture();f.assessment_sections[1]=f.assessment_sections[0];assert.throws(()=>parsePresentation(f));const b=fixture();b.assessment_sections[0].score_0_10=92;assert.throws(()=>parsePresentation(b));const p=fixture();p.overall_score_0_10=null;p.overall_score_status='NOT_YET_ASSESSED';p.assessment_sections[6]=section('personalized_owner_fit');assert.equal(parsePresentation(p).ratings.overall.score,null);assert.equal(parsePresentation(p).ratings.categories[6].score,null);});
-test('actual progressive events reveal partial evidence without inventing completion or overall score',()=>{let s=applyAnalysisEvent(INITIAL_ANALYSIS,{job_id:'test',type:'QUEUED'});s=applyAnalysisEvent(s,{job_id:'test',type:'RUNNING'});s=applyAnalysisEvent(s,{job_id:'test',type:'SECTION_COMPLETED',section:section(V7_IDS[0],6.9)});const r=adaptStudioReport(progressPresentation(s));assert.equal(r.ratings.categories.filter(x=>x.score!==null).length,1);assert.equal(r.ratings.overall.score,null);s=applyAnalysisEvent(s,{job_id:'test',type:'SECTION_UNASSESSED',section:section(V7_IDS[1])});assert.equal(s.status,'SECTION_UNASSESSED');assert.throws(()=>applyAnalysisEvent(s,{job_id:'other',type:'RUNNING'}));s=applyAnalysisEvent(s,{job_id:'test',type:'COMPLETE',report:fixture()});assert.equal(s.status,'COMPLETE');assert.throws(()=>applyAnalysisEvent(s,{job_id:'test',type:'RUNNING'}));});
-test('failure events remain explicit and a newly queued job clears old findings',()=>{const running=applyAnalysisEvent(INITIAL_ANALYSIS,{job_id:'test',type:'RUNNING'});const failed=applyAnalysisEvent(running,{job_id:'test',type:'FAILED',message:'Supplied service failure'});assert.equal(failed.status,'FAILED');assert.equal(progressPresentation(failed),null);const fresh=applyAnalysisEvent(failed,{job_id:'next',type:'QUEUED'});assert.equal(fresh.jobId,'next');assert.deepEqual(fresh.sections,{});assert.equal(fresh.report,null);});
-test('cancelled service jobs are terminal and retain already observed findings',()=>{const s=applyAnalysisEvent(INITIAL_ANALYSIS,{job_id:'cancel',type:'SECTION_COMPLETED',section:section(V7_IDS[0],4.21)});const end=applyAnalysisEvent(s,{job_id:'cancel',type:'CANCELLED',message:'Service acknowledged cancellation'});assert.equal(end.status,'CANCELLED');assert.equal(adaptStudioReport(progressPresentation(end)).ratings.overall.score,null);assert.throws(()=>applyAnalysisEvent(end,{job_id:'cancel',type:'RUNNING'}));});
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {ASSESSMENT_IDS,parsePresentation,phase9Presentation} from '../src/components/studio/presentationV7.ts';
+import {adaptStudioReport} from '../src/components/studio/studioAdapter.ts';
+import {applyAnalysisEvent,INITIAL_ANALYSIS,progressPresentation} from '../src/components/studio/analysisProgress.ts';
 
-test('Phase 9 exposes experimental proxies while withholding artistic and composite grades', () => {
- const raw = fixture();
- raw.overall_score_status = 'CALCULATED_EXPERIMENTAL_V9';
- raw.assessment_sections.forEach((s, index) => {
-  s.evidence_status = index < 4 ? 'MEASURED_SIGNAL' : 'EVALUATED_SEMANTIC_EXPERIMENTAL';
-  s.creator_explanation = 'Unsupported significance claim';
- });
- raw.assessment_sections[0].evidence_refs = {
-  primary_grid_tight_percent: 95, observed_multi_sync_percent: 56.5, z_score_significance: 1.5,
- };
- raw.assessment_sections[0].best_synchronized_moments = [{timestamp_sec: 3.267}];
- const result = adaptStudioReport(raw);
- assert.equal(result.experimental, true);
- assert.deepEqual(result.ratings.categories.map(r => r.score), [5.17, 5.17, 5.17, 5.17, null, null, null]);
- assert.equal(result.ratings.categories[0].status, 'EXPERIMENTAL_PROXY');
- assert.deepEqual(result.ratings.categories[0].measurements, {observed_multi_sync_percent: 56.5});
- assert.deepEqual(result.ratings.categories[0].timestamps, [3.267, 1.25]);
- assert.doesNotMatch(result.ratings.categories[0].explanation, /Unsupported significance claim/);
- assert.equal(result.ratings.overall.score, null);
+const section = (id,score=null) => ({
+ section_id:id,score_0_10:score,evidence_status:score===null?'NOT_YET_ASSESSED':'EVALUATED_SEMANTIC',
+ method_version:'synthetic_test',timestamps:[1.25],creator_explanation:'Synthetic explanation',
+});
+const fixture = () => ({
+ schema_version:'8.0.0-presentation',is_synthetic_fixture:true,
+ assessment_sections:ASSESSMENT_IDS.map(id=>section(id,5.17)),
+ overall_score_0_10:5.17,overall_score_status:'CALCULATED_EXPERIMENTAL_SIX',overall_score_method:'synthetic_six_test',
+ context_evidence:{music_recognition:{status:'CONFLICT'}},
 });
 
-test('Phase 9 preserves entropy and circular-shift diagnostics as descriptive measurements', () => {
- const raw = fixture();
- raw.overall_score_status = 'CALCULATED_EXPERIMENTAL_V9';
- raw.assessment_sections[0].evidence_refs = {
-  observed_multi_sync_percent: 56.5,
-  circular_shift_control: {
-   diagnostic_label: 'spacing_preserving_circular_shift',
-   draw_count: 500,
-   ties_or_exceedances: 55,
-  },
- };
- raw.assessment_sections[5].evidence_refs = {
-  shot_duration_entropy_bits: 2.12,
-  max_possible_entropy_bits: 3.0,
-  descriptor: 'Clustered duration distribution with accent holds',
- };
- const result = adaptStudioReport(raw);
- assert.deepEqual(result.ratings.categories[0].measurements, {
-  observed_multi_sync_percent: 56.5,
-  circular_shift_control: {
-   diagnostic_label: 'spacing_preserving_circular_shift',
-   draw_count: 500,
-   ties_or_exceedances: 55,
-  },
- });
- assert.deepEqual(result.ratings.categories[5].measurements, {
-  shot_duration_entropy_bits: 2.12,
-  max_possible_entropy_bits: 3.0,
-  descriptor: 'Clustered duration distribution with accent holds',
- });
- const evidenceLabels = result.evidence.map(e => e.label);
- assert.ok(evidenceLabels.includes('diagnostic label'));
- assert.ok(evidenceLabels.includes('shot duration entropy bits'));
+test('current presentation retains six ordered assessments and genuine overall provenance',()=>{
+ const raw=fixture();raw.assessment_sections.reverse();
+ const report=adaptStudioReport(raw);
+ assert.equal(report.synthetic,true);
+ assert.equal(report.ratings.categories.length,6);
+ assert.equal(report.ratings.categories[0].explanation,'Synthetic explanation');
+ assert.deepEqual(report.ratings.categories[0].timestamps,[1.25]);
+ assert.equal(report.ratings.overall.score,5.17);
+ assert.equal(report.music.status,'CONFLICT');
+ assert.deepEqual(parsePresentation(raw).assessment_sections.map(item=>item.section_id),[...ASSESSMENT_IDS]);
 });
 
-test('remote evidence preserves qualitative findings and unscored limits with separate provenance', () => {
- const raw = fixture();
- raw.is_synthetic_fixture = false;
- raw.overall_score_0_10 = null;
- raw.overall_score_status = 'NOT_YET_ASSESSED';
- raw.assessment_sections = V7_IDS.map(id => section(id));
- Object.assign(raw.assessment_sections[4], {
-  evidence_status: 'EVALUATED_SEMANTIC_EXPERIMENTAL',
-  method_version: 'gemini_semantic_experimental',
-  creator_explanation: 'The repeated doorway frames the separation.',
-  limitations: ['This interpretation is experimental.'],
- });
- raw.context_evidence = {
-  remote_observation: {provider:'Gemini', model:'discovered-model', directly_observed:'Doorway and end card'},
-  visual_recognition: {status:'POSSIBLE_MATCH', provenance:'gemini_semantic_experimental',
-   candidates:[{title:'Example candidate',type:'Movie',evidence:'A distinctive sign is visible.'}]},
- };
- const report = adaptStudioReport(raw);
- assert.equal(report.experimental, true);
- assert.equal(report.ratings.categories[4].score, null);
- assert.equal(report.ratings.categories[4].explanation, 'The repeated doorway frames the separation.');
- assert.deepEqual(report.ratings.categories[4].limitations, ['This interpretation is experimental.']);
- assert.equal(report.remoteObservation.model, 'discovered-model');
- assert.equal(report.sources[0].label, 'Movie');
- assert.equal(report.ratings.overall.score, null);
- raw.assessment_sections[4].score_0_10 = 7;
- assert.throws(() => parsePresentation(raw));
+test('historical seven-section reports hide owner fit and withhold the former composite',()=>{
+ const historical=fixture();
+ historical.schema_version='7.0.0-presentation';
+ historical.assessment_sections.push(section('personalized_owner_fit',9.9));
+ historical.context_evidence.media_notes=['Owner fit used an old model.','Video was inspected.'];
+ const before=structuredClone(historical);
+ const report=adaptStudioReport(historical);
+ assert.equal(report.ratings.categories.length,6);
+ assert.equal(report.ratings.overall.score,null);
+ assert.deepEqual(report.mediaNotes,['Video was inspected.']);
+ assert.ok(!JSON.stringify(report).toLowerCase().includes('owner fit'));
+ assert.deepEqual(historical,before,'import preserves the underlying historical payload');
 });
 
-test('semantic rubric scores survive presentation and progressive events without an overall grade', () => {
- const raw = fixture();
- raw.overall_score_0_10 = null;
- raw.overall_score_status = 'NOT_YET_ASSESSED';
- raw.assessment_sections = V7_IDS.map(id => section(id));
- Object.assign(raw.assessment_sections[4], {
-  score_0_10: 7.5, evidence_status: 'EXPERIMENTAL_SEMANTIC_SCORE',
-  method_version: 'gemini_storytelling_rubric_v1',
-  evidence_refs: {provider_model:'fixture-model',assessment_scope:'Reviewed excerpt',supported_criteria:4},
- });
- assert.equal(parsePresentation(raw).ratings.categories[4].score, 7.5);
- let state = applyAnalysisEvent(INITIAL_ANALYSIS, {job_id:'semantic-fixture',type:'SECTION_COMPLETED',section:raw.assessment_sections[4]});
- assert.equal(adaptStudioReport(progressPresentation(state)).ratings.categories[4].score, 7.5);
- assert.equal(adaptStudioReport(progressPresentation(state)).ratings.overall.score, null);
- raw.assessment_sections[4].method_version = 'cadence_proxy';
- assert.throws(() => parsePresentation(raw));
+test('invalid, duplicate and unprovenanced overall ratings fail closed',()=>{
+ const duplicate=fixture();duplicate.assessment_sections[1]=duplicate.assessment_sections[0];
+ assert.throws(()=>parsePresentation(duplicate));
+ const invalid=fixture();invalid.assessment_sections[0].score_0_10=92;
+ assert.throws(()=>parsePresentation(invalid));
+ const partial=fixture();partial.assessment_sections[5]=section(ASSESSMENT_IDS[5]);
+ assert.throws(()=>parsePresentation(partial));
+ partial.overall_score_0_10=null;partial.overall_score_status='NOT_YET_ASSESSED';
+ assert.equal(parsePresentation(partial).ratings.overall.score,null);
+ const unprovenanced=fixture();delete unprovenanced.overall_score_method;
+ assert.throws(()=>parsePresentation(unprovenanced));
 });
 
-test('owner-fit validation survives the Phase9 normalizer only with method-matched feedback', async () => {
- const {phase9Presentation} = await import('../src/components/studio/presentationV7.ts');
- const raw = fixture();
- raw.experimental_phase9 = true;
- raw.overall_score_0_10 = null;
- raw.overall_score_status = 'NOT_YET_ASSESSED';
- raw.assessment_sections = V7_IDS.map(id => section(id));
- const owner = {
-  section_id:'personalized_owner_fit',score_0_10:6.42,evidence_status:'PERSONALIZED_ESTIMATE',
-  method_version:'studio_owner_preference_v1',creator_explanation:'Synthetic validation fixture',
-  evidence_refs:{compatible_reviews:14,validation:{validation:'leave_one_content_out',passes_baselines:true}},
- };
- const canonical = {section_e_personalized_model:{owner_fit:owner}};
- const result = parsePresentation(phase9Presentation(raw,canonical));
- assert.equal(result.ratings.categories[6].score, 6.42);
- assert.equal(result.ratings.overall.score, null);
- owner.evidence_refs.validation.passes_baselines = false;
- assert.throws(() => parsePresentation(phase9Presentation(raw,canonical)));
+test('progressive evidence retains supported scores and ignores historical owner checkpoints',()=>{
+ let state=applyAnalysisEvent(INITIAL_ANALYSIS,{job_id:'test',type:'QUEUED'});
+ state=applyAnalysisEvent(state,{job_id:'test',type:'RUNNING'});
+ state=applyAnalysisEvent(state,{job_id:'test',type:'SECTION_COMPLETED',section:section(ASSESSMENT_IDS[0],6.9)});
+ const report=adaptStudioReport(progressPresentation(state));
+ assert.equal(report.ratings.categories.filter(item=>item.score!==null).length,1);
+ assert.equal(report.ratings.overall.score,null);
+ const same=applyAnalysisEvent(state,{job_id:'test',type:'SECTION_UNASSESSED',section:section('personalized_owner_fit')});
+ assert.deepEqual(same,state);
+ assert.throws(()=>applyAnalysisEvent(state,{job_id:'other',type:'RUNNING'}));
+ state=applyAnalysisEvent(state,{job_id:'test',type:'COMPLETE',report:fixture()});
+ assert.throws(()=>applyAnalysisEvent(state,{job_id:'test',type:'RUNNING'}));
+});
+
+test('failure, cancellation and new job states cannot contaminate later media',()=>{
+ const observed=applyAnalysisEvent(INITIAL_ANALYSIS,{job_id:'old',type:'SECTION_COMPLETED',section:section(ASSESSMENT_IDS[0],4.21)});
+ const cancelled=applyAnalysisEvent(observed,{job_id:'old',type:'CANCELLED',message:'Cancelled'});
+ assert.equal(adaptStudioReport(progressPresentation(cancelled)).ratings.overall.score,null);
+ const next=applyAnalysisEvent(cancelled,{job_id:'new',type:'QUEUED'});
+ assert.deepEqual(next.sections,{});
+ assert.equal(next.report,null);
+ const failed=applyAnalysisEvent(next,{job_id:'new',type:'FAILED',message:'Service failed'});
+ assert.equal(failed.status,'FAILED');
+});
+
+test('legacy Phase9 proxy normalization preserves measurements while withholding artistic numbers',()=>{
+ const raw=fixture();raw.schema_version='7.0.0-presentation';
+ raw.assessment_sections.push(section('personalized_owner_fit',5.17));
+ raw.overall_score_status='CALCULATED_EXPERIMENTAL_V9';
+ raw.assessment_sections.forEach((item,index)=>{item.evidence_status=index<4?'MEASURED_SIGNAL':'EVALUATED_SEMANTIC_EXPERIMENTAL';});
+ raw.assessment_sections[0].evidence_refs={primary_grid_tight_percent:95,observed_multi_sync_percent:56.5,z_score_significance:1.5,
+  circular_shift_control:{diagnostic_label:'spacing_preserving_circular_shift',draw_count:500}};
+ raw.assessment_sections[5].evidence_refs={shot_duration_entropy_bits:2.12};
+ const result=adaptStudioReport(raw);
+ assert.deepEqual(result.ratings.categories.map(item=>item.score),[5.17,5.17,5.17,5.17,null,null]);
+ assert.deepEqual(result.ratings.categories[0].measurements,{observed_multi_sync_percent:56.5,
+  circular_shift_control:{diagnostic_label:'spacing_preserving_circular_shift',draw_count:500}});
+ assert.equal(result.ratings.categories[5].measurements.shot_duration_entropy_bits,2.12);
+ assert.equal(result.ratings.overall.score,null);
+});
+
+test('current semantic rubrics work in all six dimensions without invented waveform precision',()=>{
+ const methods=['gemini_audiovisual_rhythm_rubric_v1','gemini_transition_rubric_v1','gemini_pacing_rubric_v1',
+  'gemini_visual_craft_rubric_v1','gemini_storytelling_rubric_v1','gemini_creative_execution_rubric_v1'];
+ const raw=fixture();
+ raw.assessment_sections.forEach((item,index)=>Object.assign(item,{
+  evidence_status:'EXPERIMENTAL_SEMANTIC_SCORE',method_version:methods[index],
+  evidence_refs:{provider_model:'fixture-model',assessment_scope:'Reviewed excerpt',supported_criteria:4},
+ }));
+ const result=parsePresentation(raw);
+ assert.equal(result.experimental,true);
+ assert.equal(result.ratings.categories.filter(item=>item.score!==null).length,6);
+ let state=applyAnalysisEvent(INITIAL_ANALYSIS,{job_id:'semantic',type:'SECTION_COMPLETED',section:raw.assessment_sections[0]});
+ assert.equal(adaptStudioReport(progressPresentation(state)).ratings.categories[0].score,5.17);
+ raw.assessment_sections[0].method_version='unsupported';
+ assert.throws(()=>parsePresentation(raw));
+});
+
+test('current v8 hybrid scores and overall survive final report adaptation',()=>{
+ const raw=fixture();raw.experimental_phase9=true;
+ const result=parsePresentation(phase9Presentation(raw));
+ assert.equal(result.ratings.categories.length,6);
+ assert.equal(result.ratings.overall.score,5.17);
 });
