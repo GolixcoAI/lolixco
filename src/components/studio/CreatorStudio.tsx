@@ -19,11 +19,18 @@ const EMPTY_PREVIEW: Preview = {duration: 0, dimensions: '—'};
 const EMPTY_EVENTS: readonly AnalysisEvent[] = [];
 const tabs = ['Timeline', 'Scenes', 'Chapters', 'Markers'];
 const providerLabels = {
- connected: 'Connected',
+ connected: 'Available',
  not_configured: 'Not configured',
- rate_limited: 'Rate-limited',
- unsupported: 'Unsupported',
- temporarily_unavailable: 'Temporarily unavailable',
+ configured_disabled: 'Configured but disabled',
+ connecting: 'Connecting',
+ authentication_failed: 'Authentication failed',
+ quota_exceeded: 'Quota exceeded',
+ model_unavailable: 'Model unavailable',
+ request_unsupported: 'Request unsupported',
+ video_unavailable: 'Video unavailable',
+ rate_limited: 'Quota exceeded',
+ unsupported: 'Request unsupported',
+ temporarily_unavailable: 'Temporary provider error',
 };
 const clock = (value: number) => `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, '0')}`;
 const audioFile = /\.(mp3|wav|flac|ogg|opus|m4a|aac)$/i;
@@ -85,6 +92,7 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
  const [imported, setImported] = useState<{report: StudioReport; raw: unknown} | null>(null);
  const [loading, setLoading] = useState(false);
  const [consent, setConsent] = useState(false);
+ const [localCloudConsent, setLocalCloudConsent] = useState(false);
  const [previewOpen, setPreviewOpen] = useState(false);
  const [embedIssue, setEmbedIssue] = useState('');
  const [referenceTitle, setReferenceTitle] = useState('');
@@ -106,11 +114,10 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
  const youtubeId = media?.type === 'youtube' ? media.id : '';
  const title = media?.type === 'youtube' ? referenceTitle || report?.referenceTitle || media.title : media?.title;
  const {duration, dimensions} = preview;
- const {max_bytes, max_seconds, max_dimension, max_pixels, max_fps, extensions} = analyzer.mediaLimits;
+ const {max_bytes, max_seconds, extensions} = analyzer.mediaLimits;
  const canSeek = duration > 0 && media?.type !== 'youtube';
  const fileLimit = max_bytes / (1024 * 1024);
- const resolutionLimit = `${Math.floor(max_pixels / max_dimension)}p-equivalent`;
- const limitsText = `${fileLimit} MiB · ${max_seconds / 60} min · up to ${resolutionLimit} / ${max_fps} fps`;
+ const limitsText = `${fileLimit} MiB · ${max_seconds / 60} min · compatible video and audio codecs`;
  const fileIssue = media?.type === 'local' && (
   !media.file.size ? 'Choose a file with media content.'
   : media.file.size > max_bytes ? `Choose a file up to ${fileLimit} MiB.`
@@ -121,7 +128,8 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
  const invalidUrl = mode === 'youtube' && urlTouched && !!url.trim() && !youtubeReferenceId(url);
  const remoteReady = analyzer.provider.status === 'connected' && consent;
  const sourceLocked = analyzer.busy || analyzer.cleaning;
- const canStart = analyzer.ready && !!media && !sourceLocked && !fileIssue && (media.type !== 'youtube' || remoteReady);
+ const canStart = analyzer.ready && !!media && !sourceLocked && !fileIssue && (media.type !== 'youtube' || remoteReady)
+  && (!localCloudConsent || analyzer.provider.status === 'connected');
  const jobStatus = analyzer.snapshot?.status;
  const jobStage = analyzer.cancelling ? 'Cancelling analysis…'
   : analyzer.uploading ? 'Preparing media…'
@@ -173,6 +181,7 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
   setImported(null);
   setLoading(false);
   setConsent(false);
+  setLocalCloudConsent(false);
   setEmbedIssue('');
   setReferenceTitle('');
   return true;
@@ -248,12 +257,13 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
   setImported(null);
   setLoading(false);
   setError('');
-  if (media.type === 'local') void analyzer.start({type: 'file', file: media.file});
-  else if (media.type === 'sample') void analyzer.start({type: 'sample', filename: media.title});
+  if (media.type === 'local') void analyzer.start({type: 'file', file: media.file}, localCloudConsent);
+  else if (media.type === 'sample') void analyzer.start({type: 'sample', filename: media.title}, localCloudConsent);
   else {
    if (media.type === 'youtube') setConsent(false);
-   void analyzer.start({type: media.type, id: media.id});
+   void analyzer.start({type: media.type, id: media.id}, media.type === 'staged' && localCloudConsent);
   }
+  setLocalCloudConsent(false);
  }
 
  function exportReport() {
@@ -282,7 +292,7 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
   <header className="studio-banner">
    <div className="studio-kicker">LOLIXCO / CREATIVE WORKSPACE <span>01</span></div>
    <h1>CREATOR <em>STUDIO</em></h1>
-   <p>Analyze your edit, follow the evidence and explore seven assessment dimensions.</p>
+   <p>Analyze your edit, follow the evidence and explore six assessment dimensions.</p>
   </header>
 
   <section className="studio-intake" aria-labelledby="studio-intake-heading">
@@ -336,12 +346,20 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
     <div className="studio-start-details">
      {mode === 'youtube' ? <div id="studio-youtube-capability">
       {analyzer.provider.status === 'connected' ? <>
+       {!consent && <p className="studio-consent-required">Consent required for this public video.</p>}
        <p>Gemini can analyze audiovisual content from the first two minutes of an eligible public video. Playback and analysis are separate.</p>
        <label className="studio-consent"><input type="checkbox" checked={consent} disabled={!youtubeId || analyzer.busy} onChange={event => setConsent(event.target.checked)}/>
         <span>Send this public URL to Google Gemini. Analysis may use the configured API quota or incur charges.</span>
        </label>
       </> : <p>Public video AI analysis needs a connected Gemini provider. {analyzer.provider.message}</p>}
-     </div> : <p>{media ? 'The analyzer processes your file privately on this device.' : 'Choose a video or audio file to enable analysis.'}</p>}
+     </div> : <div>
+      <p>{media ? 'Local signal analysis runs privately on this device.' : 'Choose a video or audio file to enable analysis.'}</p>
+      {analyzer.provider.status === 'connected' && <label className="studio-consent">
+       <input type="checkbox" checked={localCloudConsent} disabled={!media || analyzer.busy} onChange={event => setLocalCloudConsent(event.target.checked)}/>
+       <span>Also send a temporary analysis copy of this file to Google Gemini for semantic review. This shares video and audio externally and may use API quota or incur charges. Google processes it under the configured API data terms.</span>
+      </label>}
+      {analyzer.provider.status !== 'connected' && media && <p>Optional Gemini review · {providerLabels[analyzer.provider.status]}. {analyzer.provider.message}</p>}
+     </div>}
      {!analyzer.ready && <p>{analyzer.enabled ? 'Start the local analyzer and refresh its connection.' : 'Live analysis is available in the localhost workspace.'}</p>}
     </div>
     <button className="studio-start" type="button" disabled={!canStart} onClick={startAnalysis}>
@@ -371,7 +389,7 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
       </label> : <p>No sample files are available in this workspace.</p>}
      </div>
     </details>}
-    {analyzer.enabled && (!analyzer.ready || mode === 'youtube') && <button type="button" onClick={() => void analyzer.refresh()}>Refresh connection</button>}
+    {analyzer.enabled && (!analyzer.ready || mode === 'youtube' || analyzer.provider.status !== 'connected') && <button type="button" onClick={() => void analyzer.refresh()}>Refresh connection</button>}
     {terminalReport && <button type="button" onClick={exportReport}><Download size={15} aria-hidden="true"/>Export report</button>}
    </div>
   </section>

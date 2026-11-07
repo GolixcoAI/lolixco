@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { CHECKPOINT_MS, FINISH_MS, checkpointValue, easeOut, sampleReactions, scoreAtCheckpoint, type Ratings } from './ratingModel';
+import { CHECKPOINT_MS, FINISH_MS, checkpointValue, easeOut, sampleReactions, scoreAtCheckpoint, CATEGORY_LABELS, type Ratings } from './ratingModel';
 
 type Step = { index: number; score: number | null; reaction: string };
 type View = {
@@ -11,13 +11,13 @@ type MotionInputs = {
  finished: boolean; reduced: boolean; completionReaction: string; settled?: readonly boolean[];
 };
 const REST: View = { index: -1, reaction: '', scored: false, phase: 'idle' };
-const FINISH = 7;
+const FINISH = CATEGORY_LABELS.length;
 
 function newRun(key: string) {
  return {
   key, skipped: false, scheduled: new Map<number, number | null>(), reactionsShown: new Set<number>(),
   queue: [] as Step[], current: null as Step | null, started: 0, from: 0, fromScore: 0, needle: 0,
-  scoreValues: Array<number>(7).fill(0), workingSince: 0, workingFrom: 0,
+  scoreValues: Array<number>(CATEGORY_LABELS.length).fill(0), workingSince: 0, workingFrom: 0,
  };
 }
 

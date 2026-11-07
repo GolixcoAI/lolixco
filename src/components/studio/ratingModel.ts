@@ -1,5 +1,5 @@
-export const CATEGORY_KEYS = ['beat_synchronization','transitions','pacing','visual_quality','storytelling_emotion','originality_creativity','owner_fit'] as const;
-export const CATEGORY_LABELS = ['Beat synchronization','Cuts & transitions','Pacing','Visual measurements','Storytelling interpretation','Originality / creative execution','Personalized owner fit'];
+export const CATEGORY_KEYS = ['beat_synchronization','transitions','pacing','visual_quality','storytelling_emotion','originality_creativity'] as const;
+export const CATEGORY_LABELS = ['Beat Synchronization / Audiovisual Rhythm','Cuts & Transitions','Pacing','Visual Craftsmanship','Storytelling & Coherence','Creative Execution & Impact'];
 export type Rating = {score:number|null;status:string;provenance:string;explanation?:string;limitations?:string[];timestamps?:number[];measurements?:Record<string,unknown>};
 export type Ratings = {categories:Rating[];overall:Rating};
 const obj=(v:unknown):Record<string,unknown>=>v&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
@@ -11,9 +11,9 @@ function rating(value: unknown, parent: Record<string, unknown>, key = ''): Rati
   : method || (typeof parent.provenance === 'string' ? parent.provenance : '');
  const candidate = field.score ?? field.score_0_10 ?? field.predicted_score;
  const measurements = obj(field.metric_details || field.evidence_refs);
- const semanticMethod = key === 'storytelling_emotion' ? 'gemini_storytelling_rubric_v1'
-  : key === 'originality_creativity' ? 'gemini_creative_execution_rubric_v1' : '';
- const semantic = status === 'EXPERIMENTAL_SEMANTIC_SCORE' && !!semanticMethod && method === semanticMethod
+ const semanticMethods = ['gemini_audiovisual_rhythm_rubric_v1','gemini_transition_rubric_v1','gemini_pacing_rubric_v1','gemini_visual_craft_rubric_v1','gemini_storytelling_rubric_v1','gemini_creative_execution_rubric_v1'];
+ const semanticMethod = semanticMethods[CATEGORY_KEYS.indexOf(key as typeof CATEGORY_KEYS[number])];
+ const semantic = status === 'EXPERIMENTAL_SEMANTIC_SCORE' && !!semanticMethod && (method === semanticMethod || method === 'gemini_six_dimension_rubric_v1')
   && typeof measurements.supported_criteria === 'number' && measurements.supported_criteria >= 3
   && typeof measurements.provider_model === 'string' && !!measurements.provider_model;
  const supported = ['EVALUATED_SEMANTIC', 'PERSONALIZED_ESTIMATE', 'MEASURED_SIGNAL'].includes(status) || semantic;
@@ -30,16 +30,22 @@ function rating(value: unknown, parent: Record<string, unknown>, key = ''): Rati
 export function adaptRatings(input: unknown): Ratings {
  const raw = obj(input);
  const semantic = obj(raw.section_d_semantic_evaluation);
- const personal = obj(raw.section_e_personalized_model);
  const physical = obj(raw.section_c_physical_signals);
- const cards = {...obj(physical.scorecard), ...obj(semantic.scorecard), ...obj(personal.scorecard)};
+ const cards = {...obj(physical.scorecard), ...obj(semantic.scorecard)};
  return {
-  categories: CATEGORY_KEYS.map(key => rating(key === 'owner_fit' ? personal.owner_fit : cards[key] ?? semantic[key], key === 'owner_fit' ? personal : semantic, key)),
-  overall: rating(personal.overall_prediction ?? semantic.overall_prediction, personal.overall_prediction ? personal : semantic),
+  categories: CATEGORY_KEYS.map(key => rating(cards[key] ?? semantic[key], semantic, key)),
+  overall: {score:null,status:'NOT_YET_ASSESSED',provenance:''},
  };
 }
 export const EMPTY_RATINGS:Ratings={categories:CATEGORY_KEYS.map(()=>({score:null,status:'NOT_YET_ASSESSED',provenance:''})),overall:{score:null,status:'NOT_YET_ASSESSED',provenance:''}};
-export const DEMO_RATINGS:Ratings={categories:[6.9,5.17,7.17,4.79,3.14,8.12,5.42].map(score=>({score,status:'DEMO',provenance:'Synthetic visual-review fixture'})),overall:{score:5.17,status:'DEMO',provenance:'Synthetic visual-review fixture'}};
+const DEMO_SCORES = [6.9,5.17,7.17,4.79,3.14,8.12];
+export const DEMO_RATINGS: Ratings = {
+ categories: DEMO_SCORES.map(score => ({score,status:'DEMO',provenance:'Synthetic visual-review fixture'})),
+ overall: {
+  score: Math.round(DEMO_SCORES.reduce((sum, score) => sum + score, 0) / DEMO_SCORES.length * 100) / 100,
+  status:'DEMO',provenance:'Equal-weight mean of six synthetic scores',
+ },
+};
 export const easeOut=(n:number)=>1-Math.pow(1-Math.max(0,Math.min(1,n)),3);
 export const CHECKPOINT_MS = 620;
 export const FINISH_MS = 850;
