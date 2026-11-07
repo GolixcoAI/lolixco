@@ -59,12 +59,12 @@ function EvidenceMeasurements({ measurements }: { measurements: Rating['measurem
 type RatingRevealProps = {
  ratings?: Ratings; synthetic?: boolean; experimental?: boolean; developmentPreview?: boolean;
  receivedResultId?: string; inputIdentity?: string; settled?: readonly boolean[]; localResult?: boolean; processing?: boolean; analysisComplete?: boolean;
- onSeek?: (time: number) => void;
+ evidenceWatchUrl?: string; onSeek?: (time: number) => void;
 };
 
 export default function RatingReveal({
  ratings, synthetic = false, experimental = false, developmentPreview = false, receivedResultId, inputIdentity, settled,
- localResult = false, processing = false, analysisComplete = false, onSeek,
+ localResult = false, processing = false, analysisComplete = false, onSeek, evidenceWatchUrl,
 }: RatingRevealProps) {
  const [demo, setDemo] = useState(false);
  const [comicPreview, setComicPreview] = useState('');
@@ -159,9 +159,9 @@ export default function RatingReveal({
      {item.limitations?.filter(limit => limit !== item.explanation).map(limit => <p key={limit}>{limit}</p>)}
      <EvidenceMeasurements measurements={item.measurements}/>
      {!!item.timestamps?.length && <div className="rating-timestamps">
-      {item.timestamps.map(time => <button key={time} disabled={!onSeek} onClick={() => onSeek?.(time)}>
-       Reference {time.toFixed(2)}s
-      </button>)}
+      {item.timestamps.map(time => !onSeek && evidenceWatchUrl
+       ? <a key={time} href={`${evidenceWatchUrl}&t=${Math.floor(time)}s`} target="_blank" rel="noopener noreferrer">Watch at {time.toFixed(2)}s</a>
+       : <button key={time} disabled={!onSeek} onClick={() => onSeek?.(time)}>Reference {time.toFixed(2)}s</button>)}
      </div>}
     </details>
    </div>;

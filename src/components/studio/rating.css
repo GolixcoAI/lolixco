@@ -107,3 +107,5 @@
 @media (prefers-reduced-motion: reduce) {
  .rating-track > div[data-settled="true"]::after { animation: none; opacity: .4; }
 }
+
+.rating-timestamps a { display: inline-flex; align-items: center; min-height: 36px; color: #ffe36a; padding: 4px 6px; }

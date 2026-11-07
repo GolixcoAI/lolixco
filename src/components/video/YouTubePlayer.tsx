@@ -68,6 +68,7 @@ export interface YouTubePlayerProps {
   registerWithCoordinator?: boolean;
   playbackScope?: string;
   playbackAllowed?: boolean;
+  onReady?: () => void;
   onEnded?: () => void;
   onPlay?: () => void;
   onPause?: () => void;
@@ -142,6 +143,7 @@ export const YouTubePlayer = forwardRef<
     registerWithCoordinator = true,
     playbackScope,
     playbackAllowed = true,
+    onReady,
     onEnded,
     onPlay,
     onPause,
@@ -173,6 +175,7 @@ export const YouTubePlayer = forwardRef<
   const [isReady, setIsReady] = useState(false);
 
   // Keep callback props in stable refs to avoid recreating player when handlers change (FIX G)
+  const onReadyRef = useRef(onReady);
   const onEndedRef = useRef(onEnded);
   const onPlayRef = useRef(onPlay);
   const onPauseRef = useRef(onPause);
@@ -180,6 +183,7 @@ export const YouTubePlayer = forwardRef<
   const onAutoplayBlockedRef = useRef(onAutoplayBlocked);
 
   useEffect(() => {
+    onReadyRef.current = onReady;
     onEndedRef.current = onEnded;
     onPlayRef.current = onPlay;
     onPauseRef.current = onPause;
@@ -393,6 +397,7 @@ export const YouTubePlayer = forwardRef<
                 if (!current()) return;
                 window.clearTimeout(startupTimer);
                 setIsReady(true);
+                onReadyRef.current?.();
                 try {
                   propsRef.current.muted
                     ? instance!.mute()
