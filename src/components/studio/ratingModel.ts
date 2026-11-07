@@ -8,11 +8,11 @@ export function adaptRatings(input:unknown):Ratings{const r=obj(input);const d=o
 export const EMPTY_RATINGS:Ratings={categories:CATEGORY_KEYS.map(()=>({score:null,status:'NOT_YET_ASSESSED',provenance:''})),overall:{score:null,status:'NOT_YET_ASSESSED',provenance:''}};
 export const DEMO_RATINGS:Ratings={categories:[6.9,5.17,7.17,4.79,3.14,8.12,5.42].map(score=>({score,status:'DEMO',provenance:'Synthetic visual-review fixture'})),overall:{score:5.17,status:'DEMO',provenance:'Synthetic visual-review fixture'}};
 export const easeOut=(n:number)=>1-Math.pow(1-Math.max(0,Math.min(1,n)),3);
-export const CHECKPOINT_MS = 500;
+export const CHECKPOINT_MS = 620;
 export const FINISH_MS = 850;
 
 export function checkpointValue(from: number, to: number, elapsed: number) {
- return from + (to - from) * easeOut(elapsed / (CHECKPOINT_MS * 0.72));
+ return from + (to - from) * easeOut(elapsed / (CHECKPOINT_MS * 0.9));
 }
 
 export const REACTION_POOL = [
@@ -22,15 +22,26 @@ export const REACTION_POOL = [
  'RESET!', 'COOKING!', 'COOKED!', "YOU'RE COOKING!", 'SHUT UP!',
 ] as const;
 
-const NEUTRAL_REACTIONS = ['IN FOCUS!', 'TAKE NOTE!', 'HOLD UP!', 'CHECK THIS!', 'STEADY!', 'SOLID!', 'SHARP!', 'TOUGH!', 'NICE!'];
-const WEAK_REACTIONS = ['OOF!', 'BRUH!', 'RESET!', 'COOKED!'];
+const WEAK_REACTIONS = new Set(['OOF!', 'BRUH!', 'RESET!', 'COOKED!']);
+const STRONG_REACTIONS = new Set(['COOKING!', "YOU'RE COOKING!", 'FIREEE!', 'TOO CLEAN!', 'SHUT UP!']);
 
-export function pickReaction(score: number, used: Set<string>, random = Math.random): string {
- const pool = score >= 6 ? REACTION_POOL.filter(word => !WEAK_REACTIONS.includes(word))
-  : score < 4 ? [...NEUTRAL_REACTIONS, ...WEAK_REACTIONS] : NEUTRAL_REACTIONS;
- const available = pool.filter(word => !used.has(word));
- const choices = available.length ? available : pool;
- const word = choices[Math.min(choices.length - 1, Math.floor(random() * choices.length))];
- used.add(word);
- return word;
+export function scoreAtCheckpoint(target: number, elapsed: number, from = 0) {
+ const value = checkpointValue(from, target, elapsed);
+ const hundredths = Math.round(Math.max(0, Math.min(10, value)) * 100);
+ return hundredths / 100;
+}
+
+export function sampleReactions(scores: readonly (number | null)[], random = Math.random): string[] {
+ const remaining = [...REACTION_POOL] as string[];
+ return scores.map(score => {
+  const eligible = remaining.filter(word => score === null
+   ? !WEAK_REACTIONS.has(word)
+   : score >= 6 ? !WEAK_REACTIONS.has(word)
+   : score < 4 ? !STRONG_REACTIONS.has(word) : true);
+  const pool = eligible.length ? eligible : remaining;
+  const index = Math.min(pool.length - 1, Math.floor(Math.max(0, random()) * pool.length));
+  const word = pool[index];
+  remaining.splice(remaining.indexOf(word), 1);
+  return word;
+ });
 }
