@@ -39,6 +39,7 @@ VALID_EVIDENCE_STATUSES = {
     "MEASURED_SIGNAL",
     "EVALUATED_SEMANTIC",
     "EVALUATED_SEMANTIC_EXPERIMENTAL",
+    "EXPERIMENTAL_SEMANTIC_SCORE",
     "PERSONALIZED_ESTIMATE",
     "CALCULATED_PERSONALIZED",
     "NOT_YET_ASSESSED",
@@ -86,6 +87,8 @@ class EditDNAPresentationAdapter:
           - If fewer than 4 dimensions have evaluated scores, returns (None, 'NOT_YET_ASSESSED', None).
           - If all dimensions are assessed, calculates owner-weighted score.
         """
+        if any(section.get("evidence_status") == "EXPERIMENTAL_SEMANTIC_SCORE" for section in sections):
+            return None, "NOT_YET_ASSESSED", "Scoped experimental rubric scores do not establish a calibrated overall grade."
         scored_sections = [s for s in sections if s.get("score_0_10") is not None]
         sec_map = {s["section_id"]: s for s in sections}
 
@@ -641,6 +644,15 @@ class EditDNAPresentationAdapter:
             "creator_explanation": fit_expl,
         }
 
+        # Scoped semantic rubric cards preserve their evidence through canonical export.
+        for section, card in ((dim5, story_card), (dim6, orig_card)):
+            if card.get("status") == "EXPERIMENTAL_SEMANTIC_SCORE":
+                section.update(
+                    method_version=card.get("method_version"),
+                    limitations=card.get("limitations", []),
+                    timestamps=card.get("timestamps", []),
+                    evidence_refs=card.get("metric_details", {}),
+                )
         sections = [dim1, dim2, dim3, dim4, dim5, dim6, dim7]
 
         # Calculate overall score eligibility
@@ -737,6 +749,19 @@ class EditDNAPresentationAdapter:
             if score is not None:
                 assert isinstance(score, (int, float)), f"Section '{expected_id}' score must be numeric"
                 assert 0.00 <= score <= 10.00, f"Section '{expected_id}' score {score} out of bounds"
+
+            if sec.get("evidence_status") == "EXPERIMENTAL_SEMANTIC_SCORE":
+                rubric_methods = {
+                    "storytelling_interpretation": "gemini_storytelling_rubric_v1",
+                    "originality_creativity": "gemini_creative_execution_rubric_v1",
+                }
+                assert sec.get("method_version") == rubric_methods.get(expected_id) and expected_id in rubric_methods, "Unsupported semantic rubric dimension or method"
+                assert type(score) in (int, float) and math.isfinite(score), "Semantic rubric score must be finite"
+                assert isinstance(sec.get("timestamps"), list) and len(sec["timestamps"]) >= 2, "Semantic rubric needs timestamp references"
+                refs = sec.get("evidence_refs", {})
+                assert isinstance(refs.get("assessment_scope"), str) and refs.get("assessment_scope"), "Semantic rubric needs an assessment scope"
+                assert refs.get("supported_criteria", 0) >= 3, "Semantic rubric needs supported criteria"
+                assert oscore is None, "Experimental semantic rubric cannot supply an overall grade"
 
             # Method version and limitations
             assert "method_version" in sec and isinstance(sec["method_version"], str), (

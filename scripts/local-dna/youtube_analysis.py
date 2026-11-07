@@ -4,13 +4,14 @@ import os
 from edit_dna_schema_v6 import EditDNASchemaV6
 from gemini_provider import FALLBACK_GEMINI_MODELS, PRIMARY_GEMINI_MODEL, GeminiVideoProvider, ProviderError, VIDEO_ID
 from presentation_adapter import EditDNAPresentationAdapter
+from semantic_rubric import RUBRIC_FIELDS, RUBRIC_PROMPT, RUBRICS, evaluate_rubric
 
 
 MAX_REMOTE_SECONDS = 120
 METHOD = "gemini_semantic_experimental"
 EXPERIMENTAL = "EVALUATED_SEMANTIC_EXPERIMENTAL"
 UNASSESSED = "NOT_YET_ASSESSED"
-SETUP = "Set LOLIXCO_GEMINI_YOUTUBE=1 and GEMINI_API_KEY in the local analyzer environment, then restart it."
+SETUP = "Edit scripts/local-dna/.env.local to add GEMINI_API_KEY and set LOLIXCO_GEMINI_YOUTUBE=1, then restart pnpm studio."
 configured_model = os.getenv("LOLIXCO_GEMINI_MODEL", PRIMARY_GEMINI_MODEL)
 supported_models = (PRIMARY_GEMINI_MODEL, *FALLBACK_GEMINI_MODELS)
 provider = GeminiVideoProvider(api_key=os.getenv("GEMINI_API_KEY", ""), model=configured_model, mode="gemini_semantic")
@@ -22,11 +23,12 @@ PROMPT = (
     "Use a concrete visual or audible cue and an approximate timestamp where possible. Leave uncertain fields null. "
     "Describe observed transitions, macro pacing, visible image characteristics, a plausible narrative reading, and "
     "one effective or weak editorial choice with its effect. A simple or single-shot edit can be deliberate. "
-    "Keep each observation to one or two sentences. Do not grade, infer precise timing, assert novelty, "
+    "Keep each observation to one short sentence. Do not infer precise timing, assert novelty, "
     "diagnose manipulation from appearance, or infer someone's taste. "
     "Give possible source or character names only with a specific cue. Treat these as hypotheses. "
     "Give a music title only if distinctive audible evidence supports a candidate. Treat it as unconfirmed. "
-    "Keep direct observations separate from interpretations and uncertainty."
+    "Keep direct observations separate from interpretations and uncertainty. "
+    + RUBRIC_PROMPT
 )
 
 SOURCE_TYPES = ("Anime", "Movie", "Series", "Game", "Character", "Other source")
@@ -42,6 +44,7 @@ TEXT_FIELDS = (
 )
 OBSERVATION_FIELDS = {
     "stream_reviewable": {"type": "boolean"},
+    **RUBRIC_FIELDS,
     **dict.fromkeys(TEXT_FIELDS, TEXT_OR_NULL),
     "source_candidates": {
         "type": "array", "maxItems": 6,
@@ -56,7 +59,7 @@ SECTION_INPUTS = (
     ("transitions", "cuts", "Frame-accurate cut times and transition counts require local decoding."),
     ("pacing", "pacing", "This observation describes broad pacing. Shot lengths and cadence were unmeasured."),
     ("visual_quality", "visuals", "Pixel quality, sharpness, resolution and frame rate were unmeasured."),
-    ("storytelling_emotion", "storytelling", "A model interpretation of the sampled sequence. No calibrated narrative rating is available."),
+    ("storytelling_emotion", "storytelling", "A model interpretation of the sampled sequence. A rating requires sufficient timestamped rubric evidence."),
     ("originality_creativity", "creative_execution", "The model can discuss execution. Originality needs a comparative reference collection."),
     ("personalized_owner_fit", None, "Owner fit requires an independently validated preference model."),
 )
@@ -150,6 +153,7 @@ def _build_reports(video_id, result):
         remote["model_version"] = model_version
     notes = [
         "Gemini was asked to review up to the first two minutes of the public video.",
+        "Semantic scores are experimental rubric judgments of the reviewed interval. Comparative originality and overall quality remain unassessed.",
         "The provider sampled audiovisual content. Studio did not decode local frames or audio for this review.",
         "Source candidates are unverified model hypotheses. Track candidates require an acoustic fingerprint.",
     ]
@@ -163,6 +167,14 @@ def _build_reports(video_id, result):
             "limitations": [limitation],
             "method_version": METHOD,
         }
+
+    for key in RUBRICS:
+        assessment = evaluate_rubric(key, observation, result["model"])
+        previous = scorecard[key]
+        if assessment["score"] is None and previous["status"] == EXPERIMENTAL:
+            assessment["status"] = EXPERIMENTAL
+            assessment["notes"] = previous["notes"] + " " + assessment["notes"]
+        scorecard[key] = assessment
 
     raw = EditDNASchemaV6.create_report(
         video_id,
@@ -205,8 +217,10 @@ def _build_reports(video_id, result):
     for section, card in zip(presentation["assessment_sections"], scorecard.values(), strict=True):
         section.update({
             "evidence_status": card["status"],
-            "evidence_refs": {},
-            "method_version": METHOD,
+            "score_0_10": card["score"],
+            "evidence_refs": card.get("metric_details", {}),
+            "timestamps": card.get("timestamps", []),
+            "method_version": card["method_version"],
             "creator_explanation": card["notes"],
             "limitations": card["limitations"],
         })

@@ -21,7 +21,7 @@ def main(video_id):
         return 1
     emit("stage", stage="Preparing results", progress=90)
     for section in presentation["assessment_sections"]:
-        observed = section.get("evidence_status") == "EVALUATED_SEMANTIC_EXPERIMENTAL"
+        observed = section.get("evidence_status") in ("EVALUATED_SEMANTIC_EXPERIMENTAL", "EXPERIMENTAL_SEMANTIC_SCORE")
         emit(
             "event", event_type="SECTION_COMPLETED" if observed else "SECTION_UNASSESSED",
             section_id=section["section_id"], payload=section, duration_ms=0, stage="Preparing results", progress=92,
