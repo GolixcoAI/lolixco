@@ -120,7 +120,7 @@ export default function RatingReveal({
     ? <span>Synthetic scores for visual review.</span>
     : finished && actual === null && view.phase === 'complete'
     ? <span>{hasScores ? hasObservations ? 'Review the experimental rubrics and evidence below.' : 'Review technical proxies and their evidence below.' : 'Review the available observations and evidence limits below.'}</span>
-    : verdict && <span>{model.overall.status.replace(/_/g, ' ')} · {model.overall.provenance}</span>}
+    : verdict && <span>Experimental mean of six supported assessments.</span>}
   </div>
   <p className="rating-accessible" aria-live="polite">
    {view.phase === 'complete' ? verdict ? `Overall score ${actual.toFixed(2)} out of ten` : 'Review complete. Overall score unavailable.' : ''}

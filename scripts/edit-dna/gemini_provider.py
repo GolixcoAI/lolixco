@@ -302,7 +302,8 @@ class GeminiVideoProvider:
             raise ProviderError("temporarily_unavailable", "Gemini did not return a usable input token count.")
         return {"model": model, "input_tokens": total}
 
-    def analyze_inline_video(self, data, mime_type, prompt, schema=None, timeout_seconds=65, *, max_output_tokens=6000):
+    def analyze_inline_video(self, data, mime_type, prompt, schema=None, timeout_seconds=65, *, max_output_tokens=6000,
+                             preferred_model=None):
         """Analyze already-consented inline bytes without creating a provider Files API object."""
         if not self.is_available:
             return self._failed(ProviderError("not_configured", "Set GEMINI_API_KEY in the analyzer environment."))
@@ -313,7 +314,11 @@ class GeminiVideoProvider:
         started = time.monotonic()
         try:
             limit = self._output_limit(max_output_tokens)
+            if preferred_model is not None and not self._video_model(preferred_model):
+                raise ProviderError("request_unsupported", "Select a supported Gemini Flash video-understanding model.")
             models = self.discover_models(min(5, timeout_seconds))
+            if preferred_model in models:
+                models = (preferred_model, *(model for model in models if model != preferred_model))
             video = {"inlineData": {"mimeType": mime_type, "data": base64.b64encode(data).decode("ascii")}}
             result = self._generate_part(models, video, prompt, schema, started + timeout_seconds, "consented_inline_video", limit)
         except ProviderError as error:

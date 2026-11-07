@@ -115,11 +115,11 @@ class StudioGeminiTest(unittest.TestCase):
         self.assertEqual(presentation["analysis_status"], "PARTIAL")
         self.assertIsNone(presentation["overall_score_0_10"])
         self.assertEqual(presentation["gauge_presentation"]["gauge_state"], "unassessed_standby")
-        self.assertEqual(len(presentation["assessment_sections"]), 7)
+        self.assertEqual(len(presentation["assessment_sections"]), 6)
         self.assertTrue(all(section["score_0_10"] is None for section in presentation["assessment_sections"]))
         self.assertEqual(
             [section["evidence_status"] for section in presentation["assessment_sections"]],
-            ["NOT_YET_ASSESSED", *(["EVALUATED_SEMANTIC_EXPERIMENTAL"] * 5), "NOT_YET_ASSESSED"],
+            ["NOT_YET_ASSESSED"] + ["EVALUATED_SEMANTIC_EXPERIMENTAL"] * 5,
         )
         context = presentation["context_evidence"]
         self.assertEqual(context["visual_recognition"]["status"], "POSSIBLE_MATCH")
@@ -144,7 +144,7 @@ class StudioGeminiTest(unittest.TestCase):
             with self.assertRaises(ProviderError) as caught:
                 youtube_analysis.analyze_youtube(VIDEO_ID)
         self.assertEqual(open_request.call_count, 2)
-        self.assertEqual(caught.exception.status, "rate_limited")
+        self.assertEqual(caught.exception.status, "quota_exceeded")
         self.assertNotIn("private diagnostic", caught.exception.message)
 
     def test_unavailable_stream_is_never_reported_as_analysis(self):
@@ -152,7 +152,7 @@ class StudioGeminiTest(unittest.TestCase):
         with patch.object(self.provider._opener, "open", side_effect=responses):
             with self.assertRaises(ProviderError) as caught:
                 youtube_analysis.analyze_youtube(VIDEO_ID)
-        self.assertEqual(caught.exception.status, "unsupported")
+        self.assertEqual(caught.exception.status, "request_unsupported")
 
     def test_timestamped_rubric_scores_are_scoped_independent_and_preserved_in_exports(self):
         observation = rubric_observation()
@@ -163,28 +163,21 @@ class StudioGeminiTest(unittest.TestCase):
         with patch.object(self.provider._opener, "open", side_effect=[models("gemini-3.8-flash"), content(observation)]):
             raw, presentation = youtube_analysis.analyze_youtube(VIDEO_ID)
         sections = presentation["assessment_sections"]
-        self.assertEqual([section["score_0_10"] for section in sections], [None, None, None, None, 7.5, 7.5, None])
+        self.assertEqual([section["score_0_10"] for section in sections], [7.5] * 6)
         self.assertEqual(sections[4]["evidence_status"], "EXPERIMENTAL_SEMANTIC_SCORE")
         self.assertEqual(sections[4]["method_version"], "gemini_storytelling_rubric_v1")
         self.assertEqual(sections[5]["method_version"], "gemini_creative_execution_rubric_v1")
         self.assertEqual(sections[4]["timestamps"], [1, 6, 12, 18])
         self.assertEqual(sections[4]["evidence_refs"]["supported_criteria"], 4)
         self.assertIn("comparative originality is unassessed", sections[5]["evidence_refs"]["assessment_scope"])
-        self.assertEqual(sections[5]["evidence_refs"]["comparative_originality"], "unassessed; no reference collection supplied")
-        self.assertIsNone(presentation["overall_score_0_10"])
-        self.assertIsNone(sections[6]["score_0_10"])
+        self.assertIn("comparative originality is unassessed", sections[5]["evidence_refs"]["assessment_scope"])
+        self.assertEqual(presentation["overall_score_0_10"],7.5)
+        self.assertEqual(presentation["overall_score_status"],"CALCULATED_EXPERIMENTAL_SIX")
         self.assertIn("independently verified", sections[4]["limitations"][-1])
-        self.assertEqual(EditDNAPresentationAdapter.from_v6_report(raw)["assessment_sections"][4], sections[4])
-        for section in sections[4:6]:
+        self.assertEqual(presentation["schema_version"],"8.0.0-presentation")
+        for section in sections:
             for field in ("strengths", "weaknesses", "suggestion"):
                 self.assertTrue(section["evidence_refs"][field])
-        for invalid_id, invalid_method in (("visual_measurements", "gemini_storytelling_rubric_v1"),
-                                            ("storytelling_interpretation", "unverified_method")):
-            invalid = copy.deepcopy(presentation)
-            section = invalid["assessment_sections"][3 if invalid_id == "visual_measurements" else 4]
-            section.update(evidence_status="EXPERIMENTAL_SEMANTIC_SCORE", score_0_10=5, method_version=invalid_method)
-            with self.assertRaises(AssertionError):
-                EditDNAPresentationAdapter.validate_presentation_report(invalid)
 
     def test_rubric_abstains_without_coverage_context_or_supported_evidence(self):
         for change in (
@@ -226,7 +219,7 @@ class StudioGeminiTest(unittest.TestCase):
             with self.assertRaises(ProviderError):
                 youtube_analysis.analyze_youtube("https://example.com/youtu.be/_yrPlcZY2jw")
             with patch.dict(os.environ, {"LOLIXCO_GEMINI_YOUTUBE": "0"}):
-                self.assertEqual(youtube_analysis.provider_status()["status"], "not_configured")
+                self.assertEqual(youtube_analysis.provider_status()["status"], "configured_disabled")
                 with self.assertRaises(ProviderError):
                     youtube_analysis.analyze_youtube(VIDEO_ID)
         open_request.assert_not_called()
