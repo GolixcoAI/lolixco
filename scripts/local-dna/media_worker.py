@@ -7,13 +7,13 @@ import resource
 import subprocess
 import sys
 import time
-from fractions import Fraction
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
-from staged_media import FORMATS, MAX_FPS, MAX_SECONDS
-from owner_fit import assess_owner_fit, content_hash
+from staged_media import FORMATS, MAX_SECONDS, MediaValidationError, fraction
+from media_preparation import prepare_analysis
+from presentation_v8 import to_six_report
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "edit-dna"))
@@ -58,11 +58,16 @@ def inspect(path, meta):
         "has_audio_stream": bool(meta["audio"]),
     }
     notes = []
+    for kind in ("video", "audio"):
+        count = meta.get(f"{kind}_stream_count", 0)
+        if count > 1:
+            facts[f"source_{kind}_stream_count"] = count
+            notes.append(f"The file contains {count} {kind} streams. The first {kind} stream was analyzed.")
     if meta["video"]:
         video = meta["video"]
         facts.update({key: video[key] for key in ("width", "height")})
         facts["video_codec"] = video["codec_name"]
-        facts["average_fps"] = round(float(Fraction(video["avg_frame_rate"])), 3)
+        facts["average_fps"] = round(max(0, fraction(video.get("avg_frame_rate"))) or max(0, fraction(video.get("r_frame_rate"))), 6)
         data = decode_samples(path, ["-map", "0:V:0", "-an", "-t", str(MAX_SECONDS), "-vf",
                          "fps=2,scale=64:36,format=gray", "-frames:v", "240", "-f", "rawvideo"], 25)
         if not data:
@@ -76,25 +81,15 @@ def inspect(path, meta):
         facts["sampled_black_frame_percent"] = round(float(100 * np.mean(black)), 2)
         facts["uniform_black_samples"] = bool(np.all(frames <= 2))
         facts["limited_visual_change"] = bool(len(frames) >= 3 and np.max(np.mean(np.abs(np.diff(frames, axis=0)), axis=(1, 2))) < 1.5)
-        packets = subprocess.check_output([
-            "ffprobe", "-v", "error", "-max_alloc", "67108864", "-protocol_whitelist", "file,pipe",
-            "-format_whitelist", FORMATS, "-select_streams", "V:0", "-read_intervals", f"0%+{MAX_SECONDS}",
-            "-show_entries", "packet=pts_time", "-of", "json", str(path),
-        ], stderr=subprocess.DEVNULL, timeout=12)
-        pts = sorted({float(p["pts_time"]) for p in json.loads(packets).get("packets", []) if "pts_time" in p})
-        deltas = np.diff(pts)
-        facts["variable_frame_timing"] = bool(len(deltas) >= 3 and np.ptp(deltas) > .004)
         if np.any(black):
             notes.append(f"Near-black frames appeared in {facts['sampled_black_frame_percent']:g}% of video samples.")
         elif facts["limited_visual_change"]:
             notes.append("The twice-per-second samples show limited visual change.")
-        if facts["variable_frame_timing"]:
-            notes.append("Variable frame timing was detected. Frame-index-based cut timing and rhythm ratings were withheld.")
     else:
         notes.append("No video stream detected.")
     if meta["audio"]:
         emit("stage", stage="Inspecting audio activity", progress=12)
-        data = decode_samples(path, ["-map", "0:a:0", "-vn", "-t", str(MAX_SECONDS), "-ar", "11025",
+        data = decode_samples(path, ["-map", "0:a:0", "-vn", "-t", str(MAX_SECONDS), "-ar", "11025", "-ac", "1",
                          "-f", "f32le"], 20)
         audio = np.frombuffer(data, dtype="<f4")
         if not len(audio) or not np.isfinite(audio).all():
@@ -103,7 +98,7 @@ def inspect(path, meta):
         rms = math.sqrt(float(np.mean(np.square(audio, dtype=np.float64))))
         facts.update(audio_codec=meta["audio"]["codec_name"], audio_peak=round(peak, 6),
                      audio_rms_dbfs=round(20 * math.log10(max(rms, 1e-8)), 2), audio_activity=rms >= .001)
-        window_samples = 2756 * meta["audio"]["channels"]
+        window_samples = 2756
         windows = audio[:len(audio) // window_samples * window_samples].reshape(-1, window_samples)
         if len(windows):
             quiet = np.sqrt(np.mean(np.square(windows, dtype=np.float64), axis=1)) < .001
@@ -117,13 +112,15 @@ def inspect(path, meta):
         if video_start is not None and audio_start is not None:
             facts["audio_video_start_offset_ms"] = round((audio_start - video_start) * 1000, 1)
             if abs(facts["audio_video_start_offset_ms"]) > 25:
-                notes.append("Audio and video stream start timestamps differ. Synchronization rating was withheld.")
+                notes.append("The original audio and video streams have different start timestamps. Their relative offset was preserved in analysis.")
         else:
-            notes.append("Comparable audio and video start timestamps were unavailable. Synchronization rating was withheld.")
+            notes.append("The source omits comparable stream start timestamps. The normalized decoder timeline was used for analysis.")
     return facts, notes
 
 
 def timing_limitation(facts):
+    if facts.get("timestamp_normalized"):
+        return None
     if facts.get("variable_frame_timing"):
         return "Variable frame timing requires a timestamp-aware cut detector."
     if facts["has_audio_stream"] and facts["has_video_stream"]:
@@ -146,7 +143,7 @@ class StreamJob(research.AnalysisJob):
         emit("stage", stage=stage, progress=progress)
 
     def add_event(self, event_type, section_id=None, payload=None, duration_ms=0.0):
-        if event_type in ("COMPLETE", "FAILED", "CANCELLED"):
+        if event_type in ("COMPLETE", "FAILED", "CANCELLED") or section_id == "personalized_owner_fit":
             return
         emit("event", event_type=event_type, section_id=section_id, payload=payload or {},
              duration_ms=duration_ms, stage=self.current_stage, progress=self.progress_percent)
@@ -167,7 +164,7 @@ class WorkerQualityEngine(research.Phase9QualityEngine):
         return result
 
     def evaluate_cuts_and_transitions(self, correlations, flashes, cuts, duration, num_cuts):
-        if self.facts.get("variable_frame_timing"):
+        if self.facts.get("variable_frame_timing") and not self.facts.get("timestamp_normalized"):
             return withhold({"metrics": {}}, "Variable frame timing requires a timestamp-aware cut detector.")
         if not num_cuts:
             return withhold({"metrics": {"cut_transitions_count": 0}}, "The detector found no eligible hard cuts for comparing shot boundaries.")
@@ -181,7 +178,7 @@ class WorkerQualityEngine(research.Phase9QualityEngine):
 
     def evaluate_pacing(self, shot_durations, audio_y, sr, duration):
         reason = timing_limitation(self.facts)
-        if self.facts.get("variable_frame_timing"):
+        if self.facts.get("variable_frame_timing") and not self.facts.get("timestamp_normalized"):
             return withhold({"metrics": {}}, reason)
         result = super().evaluate_pacing(shot_durations, audio_y, sr, duration)
         metrics = result["metrics"]
@@ -202,16 +199,21 @@ class WorkerQualityEngine(research.Phase9QualityEngine):
         return result
 
     def evaluate_visual_quality(self, sharpness, contrast, width, height, fps):
-        # Apply the same resolution tier to portrait and landscape footage.
-        result = super().evaluate_visual_quality(sharpness, contrast, max(width, height), min(width, height), fps)
-        result["metrics"]["resolution"] = f"{width}x{height}"
+        source_width, source_height = self.facts.get("width", width), self.facts.get("height", height)
+        source_fps = self.facts.get("average_fps") or fps
+        result = super().evaluate_visual_quality(sharpness, contrast, max(source_width, source_height), min(source_width, source_height), source_fps)
+        result["metrics"].update(
+            resolution=f"{source_width}x{source_height}", analysis_resolution=f"{width}x{height}",
+            analysis_fps=fps, source_fps=source_fps,
+        )
         if self.facts.get("uniform_black_samples") and sharpness and not any(sharpness):
             result["score_0_10"] = 0.0
             result["editorial_explanation"] = "Decoded samples are uniformly black. The visual signal proxy is 0.00."
         elif result["score_0_10"] is not None:
             result["editorial_explanation"] = (
-                f"Visual signal proxy from {width}×{height} at {fps:.1f} fps, sampled edge sharpness and contrast. "
-                "Intentional softness, grain, or low contrast can affect the proxy."
+                f"Visual signal proxy from source format {source_width}×{source_height} at {source_fps:.2f} fps "
+                f"and edge sharpness/contrast sampled at {width}×{height}. "
+                "Downsampling, intentional softness, grain, or low contrast can affect these measurements."
             )
         return result
 
@@ -222,7 +224,7 @@ class WorkerQualityEngine(research.Phase9QualityEngine):
         )
 
     def evaluate_originality(self, shot_durations, semantic_overrides=None):
-        if len(shot_durations) < 6 or self.facts.get("variable_frame_timing"):
+        if len(shot_durations) < 6:
             return withhold(
                 {"missing_evidence": ["A comparative reference collection of edits"]},
                 "Originality requires comparing creative choices against a reference collection.",
@@ -251,13 +253,19 @@ def bounded_engine_command(args, **kwargs):
 
 
 def main(path, job_id, mode, out):
-    resource.setrlimit(resource.RLIMIT_CPU, (85, 90))
+    resource.setrlimit(resource.RLIMIT_CPU, (145, 150))
     resource.setrlimit(resource.RLIMIT_AS, (4 * 1024**3, 4 * 1024**3))
     resource.setrlimit(resource.RLIMIT_FSIZE, (128 * 1024 * 1024, 128 * 1024 * 1024))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     manifest = json.loads((path.parent / "manifest.json").read_text())
     emit("stage", stage="Inspecting streams", progress=4)
-    facts, notes = inspect(path, manifest)
+    emit("stage", stage="Preparing analysis rendition", progress=6)
+    analysis_path, preparation = prepare_analysis(path, out, manifest)
+    facts, notes = inspect(analysis_path, manifest)
+    facts.update(preparation)
+    if preparation["variable_frame_timing"]:
+        notes.append("Variable source timestamps were normalized onto a measured 60 fps analysis grid. Cut/onset timing retains the source timeline within the stated sampling resolution.")
+    notes.append(f"Video signals use a private rendition up to {preparation['analysis_long_edge_limit']} pixels on its long edge. Original bytes are retained.")
     research.PRIVATE_JOBS_DIR = str(out)
     WorkerQualityEngine.facts = facts
     research.Phase9QualityEngine = WorkerQualityEngine
@@ -271,17 +279,17 @@ def main(path, job_id, mode, out):
         "duration_sec": manifest["duration"],
         "fps": facts.get("average_fps", 0.0),
         "is_audio_silent": facts["has_audio_stream"] and not facts["audio_activity"],
-        "decode_frame_limit": MAX_FPS * MAX_SECONDS,
+        "decode_frame_limit": 60 * MAX_SECONDS + 2,
         "decode_seconds_limit": MAX_SECONDS,
     }
-    job = StreamJob(job_id, str(path), quality_mode=mode)
+    job = StreamJob(job_id, str(analysis_path), quality_mode=mode)
     job.media_filename = manifest["name"]
     research.AnalysisEngine._execute_local_job(job, {"capabilities": capabilities}, time.time())
     job.update_stage("Preparing results", 95)
     v6 = job.v6_report
     signals = v6["section_c_physical_signals"]
     signals.update(duration_seconds=facts["duration_seconds"], media_observations=facts, media_notes=notes)
-    if facts["has_video_stream"] and not facts.get("variable_frame_timing"):
+    if facts["has_video_stream"]:
         signals["cuts_per_second"] = round(signals["cut_transitions_count"] / manifest["duration"], 2)
     else:
         for key in ("shots_count", "cut_transitions_count", "cuts_per_second", "shot_duration_mean_sec", "shot_duration_std_dev_sec"):
@@ -300,30 +308,19 @@ def main(path, job_id, mode, out):
         audit_note="Local track identification requires a registered fingerprint index. Acoustic measurements are available separately.",
     )
     v6["section_d_semantic_evaluation"]["explanation"] = (
-        "Local technical proxies describe measured signals. Semantic quality and owner fit require separate evidence."
+        "Local technical proxies describe measured signals. Semantic artistic assessments require additional audiovisual evidence."
     )
     v6["section_e_personalized_model"].pop("empirical_evaluation", None)
     v6["section_e_personalized_model"].pop("owner_preference_weights", None)
     v6["section_f_boundaries_and_unknowns"]["unverified_elements"] = [
         "Local source and soundtrack identities are unverified. No reference index was searched.",
-        "Storytelling, originality and owner fit require additional independent evidence.",
+        "Storytelling and creative execution require additional semantic evidence.",
     ]
     presentation = research.EditDNAPresentationAdapter.from_v6_report(v6)
     presentation["context_evidence"]["media_observations"] = facts
     presentation["context_evidence"]["media_notes"] = notes
-    presentation["context_evidence"]["local_input_sha256"] = content_hash(path)
-    owner_fit = assess_owner_fit(presentation)
-    presentation["assessment_sections"][-1].update(owner_fit)
-    v6["section_e_personalized_model"].update(
-        provenance=owner_fit["method_version"], status=owner_fit["evidence_status"],
-        predicted_score=owner_fit["score_0_10"], explanation=owner_fit["creator_explanation"],
-        owner_fit={**owner_fit, "score": owner_fit["score_0_10"], "status": owner_fit["evidence_status"],
-                   "provenance": owner_fit["method_version"]},
-    )
-    job.add_event(
-        "SECTION_COMPLETED" if owner_fit["score_0_10"] is not None else "SECTION_UNASSESSED",
-        "personalized_owner_fit", owner_fit,
-    )
+    presentation["context_evidence"]["analysis_preparation"] = preparation
+    presentation = to_six_report(presentation)
     result = json_values({"v6": v6, "presentation": presentation})
     (out / "result.json").write_text(json.dumps(result, allow_nan=False))
 
@@ -332,5 +329,6 @@ if __name__ == "__main__":
     try:
         main(Path(sys.argv[1]), sys.argv[2], sys.argv[3], Path(sys.argv[4]))
     except (ValueError, subprocess.SubprocessError, OSError, RuntimeError) as error:
-        emit("error", message=str(error) if isinstance(error, ValueError) else "The media could not be decoded or analyzed within local limits.")
+        emit("error", code=error.code if isinstance(error, MediaValidationError) else "media_analysis_failed",
+             message=str(error) if isinstance(error, ValueError) else "The media could not be decoded or analyzed within local limits.")
         sys.exit(1)
