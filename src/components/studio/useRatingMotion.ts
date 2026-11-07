@@ -55,11 +55,12 @@ export function useRatingMotion(inputs: MotionInputs) {
  }
 
  function paintScore(index: number, value: number, complete = false) {
-  const displayed = Math.round(Math.max(0, Math.min(10, value)) * 100) / 100;
+  const hundredths = Math.round(Math.max(0, Math.min(10, value)) * 100);
+  const displayed = hundredths / 100;
   run.current.scoreValues[index] = displayed;
   const bar = bars.current[index];
   if (bar) {
-   bar.style.setProperty('--rating-fill', String(displayed / 10));
+   bar.style.setProperty('--rating-fill', (hundredths / 1000).toFixed(3));
    bar.dataset.scoreValue = displayed.toFixed(2);
    bar.dataset.settled = String(complete);
   }
