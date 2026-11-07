@@ -9,6 +9,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from studio_service_import import isolate_research_service
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts/local-dna"))
 import staged_jobs
@@ -227,6 +229,7 @@ class DispatchConsentTests(unittest.TestCase):
         import importlib.util
         cls.temporary = tempfile.TemporaryDirectory(prefix="studio-dispatch-test-")
         cls.addClassCleanup(cls.temporary.cleanup)
+        isolate_research_service(cls)
         with patch.dict(os.environ, {"LOLIXCO_DNA_STATE_PARENT": cls.temporary.name, "GEMINI_API_KEY": "", "LOLIXCO_GEMINI_YOUTUBE": "0"}):
             spec = importlib.util.spec_from_file_location("studio_consent_service", ROOT / "scripts/local-dna/serve.py")
             cls.service = importlib.util.module_from_spec(spec)

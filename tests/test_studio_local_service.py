@@ -14,6 +14,8 @@ from urllib.parse import quote
 
 from fastapi.testclient import TestClient
 
+from studio_service_import import isolate_research_service
+
 LOCAL_DNA = Path(__file__).resolve().parents[1] / "scripts" / "local-dna"
 sys.path.insert(0, str(LOCAL_DNA))
 
@@ -30,6 +32,7 @@ class StudioLocalServiceTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory(prefix="studio-api-test-")
         cls.addClassCleanup(cls.temporary.cleanup)
+        isolate_research_service(cls)
         cls.root = Path(cls.temporary.name)
         environment = patch.dict(os.environ, {"LOLIXCO_DNA_STATE_PARENT": str(cls.root), "LOLIXCO_GEMINI_YOUTUBE": "0", "GEMINI_API_KEY": ""})
         environment.start()
