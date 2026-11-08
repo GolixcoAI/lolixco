@@ -308,7 +308,7 @@ test("App Navigation: visiting Shorts when catalog has 0 shorts displays honest 
   const { container, root, historyState, cleanup } = setupMountedDom("http://localhost:3000/");
 
   await act(async () => {
-    root.render(React.createElement(App));
+    root.render(React.createElement(App, {initialEdits: edits}));
   });
 
   // Click Shorts in Sidebar
@@ -325,8 +325,8 @@ test("App Navigation: visiting Shorts when catalog has 0 shorts displays honest 
   // H1 heading displays honest empty state
   assert.equal(
     findHeading1(container),
-    "Curated Shorts are coming soon",
-    "Empty state must show honest 'Curated Shorts are coming soon' heading"
+    "No Shorts to watch yet",
+    "Empty state must show honest 'No Shorts to watch yet' heading"
   );
 
   // Return to browsing button exists and restores Home
@@ -349,11 +349,11 @@ test("App Navigation: direct URL ?view=shorts restores Shorts empty state direct
   );
 
   await act(async () => {
-    root.render(React.createElement(App));
+    root.render(React.createElement(App, {initialEdits: edits}));
   });
 
   assert.equal(historyState.search, "?view=shorts");
-  assert.equal(findHeading1(container), "Curated Shorts are coming soon");
+  assert.equal(findHeading1(container), "No Shorts to watch yet");
 
   await cleanup();
 });
@@ -364,11 +364,11 @@ test("App Navigation: invalid or missing short ID in URL safely recovers without
   );
 
   await act(async () => {
-    root.render(React.createElement(App));
+    root.render(React.createElement(App, {initialEdits: edits}));
   });
 
   // Does not crash, shows honest empty state since 99999 is invalid and catalog has 0 shorts
-  assert.equal(findHeading1(container), "Curated Shorts are coming soon");
+  assert.equal(findHeading1(container), "No Shorts to watch yet");
 
   await cleanup();
 });
@@ -418,6 +418,19 @@ test("FIX A: Closing ShortsViewer uses replaceState to prevent Back from reopeni
   assert.equal(historyState.search, "");
   assert.equal(historyState.replaceCount, 1, "Must use replaceState on viewer close");
   assert.equal(historyState.pushCount, 0, "Must NOT use pushState on viewer close");
+});
+
+test("Studio URL normalization retains the local report ID on refresh", () => {
+  const { historyState, cleanup } = setupMountedDom("http://127.0.0.1:5173/?view=studio&analysisJob=job_123_abcdef");
+  try {
+    assert.equal(parseUrlParams().view, "Creator Studio");
+    syncUrl("All", "", "", "Creator Studio", null, false);
+    assert.equal(historyState.search, "?view=studio&analysisJob=job_123_abcdef");
+    syncUrl("All", "", "", "Home", null, true);
+    assert.equal(historyState.search, "");
+  } finally {
+    cleanup();
+  }
 });
 
 // ---------------------------------------------------------------------------

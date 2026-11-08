@@ -1,0 +1,10 @@
+{
+  "secret_name": "lolixco/production/ai/providers",
+  "secret_retrieval": "passed",
+  "gemini_model_discovery": "passed",
+  "youtube_metadata": "passed",
+  "inference": "not_run",
+  "operator_secret_read": "denied",
+  "verification_compute_cleanup": "passed",
+  "verified_date": "2026-11-08"
+}

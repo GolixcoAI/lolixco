@@ -1,0 +1,17 @@
+{
+  "comparisons": [
+    {
+      "comparison_id": "cmp_1793608793498",
+      "candidate_a": "bench_01_clean_hard_cuts",
+      "candidate_b": "bench_02_offset_sync_cuts",
+      "winner": "A",
+      "chosen_asset": "bench_01_clean_hard_cuts",
+      "margin": "significant",
+      "rationale": "A is far superior due to tight beat sync",
+      "timestamp": "2026-11-02T08:39:53Z",
+      "candidate_a_canonical": "bench_01_clean_hard_cuts",
+      "candidate_b_canonical": "bench_02_offset_sync_cuts",
+      "scope": "synthetic"
+    }
+  ]
+}

@@ -380,11 +380,11 @@ test("Sidebar contains no account-dependent Following or Library links", () => {
   assert.equal(html.includes("Following"), false);
   assert.equal(html.includes("Library"), false);
 
-  // Retains honest placeholders
+  // Keep the product navigation concise, with support in place of Settings.
   assert.ok(html.includes("Creator Studio"));
   assert.ok(html.includes("Immersion"));
-  assert.ok(html.includes("Settings"));
-  assert.ok(html.includes("Help"));
+  assert.equal(html.includes("Settings"), false);
+  assert.ok(html.includes("Help &amp; Support"));
 });
 
 // ---------------------------------------------------------------------------
@@ -778,7 +778,7 @@ test("Mounted Interaction: Direct fandom URL normalization and parameter protect
     setupMountedDom("http://localhost:3000/?fandom=valorant");
 
   await act(async () => {
-    r1.render(React.createElement(App));
+    r1.render(React.createElement(App, {initialEdits: edits}));
   });
 
   assert.equal(
@@ -802,7 +802,7 @@ test("Mounted Interaction: Direct fandom URL normalization and parameter protect
     setupMountedDom("http://localhost:3000/?fandom=unknownxyz");
 
   await act(async () => {
-    r2.render(React.createElement(App));
+    r2.render(React.createElement(App, {initialEdits: edits}));
   });
 
   assert.equal(h2.search, "", "Unknown fandom param must be cleanly rejected");
@@ -813,7 +813,7 @@ test("Mounted Interaction: Direct fandom URL normalization and parameter protect
     setupMountedDom("http://localhost:3000/?category=All&fandom=valorant");
 
   await act(async () => {
-    r3.render(React.createElement(App));
+    r3.render(React.createElement(App, {initialEdits: edits}));
   });
 
   assert.equal(
@@ -952,7 +952,7 @@ test("Mounted Interaction: Full browser history navigation Home → Explore → 
     setupMountedDom("http://localhost:3000/");
 
   await act(async () => {
-    root.render(React.createElement(App));
+    root.render(React.createElement(App, {initialEdits: edits}));
   });
 
   assert.equal(historyState.search, "", "Initial search should be empty");
@@ -1020,7 +1020,7 @@ test("Mounted Interaction: Search typing updates query without browser history p
     setupMountedDom("http://localhost:3000/");
 
   await act(async () => {
-    root.render(React.createElement(App));
+    root.render(React.createElement(App, {initialEdits: edits}));
   });
 
   const pushCountBefore = historyState.pushCount;

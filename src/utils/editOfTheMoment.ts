@@ -23,10 +23,10 @@ export function selectEditOfTheMoment(
   const landscape = catalog.filter((e) => e.format === "video" || !e.format);
   const pool = [
     ...new Map(
-      landscape
+      catalog
         .filter(
           (e) =>
-            e.format === "video" &&
+            (e.format === "video" || e.format === "short") &&
             (e.sourceType === "youtube_embed" ||
               e.sourceType === "licensed_local_media"),
         )

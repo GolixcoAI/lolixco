@@ -9,6 +9,7 @@ name: Frontend CI
       - feat/mission5-recsys-integration
       - feat/mission7c-jjk-landscape-batch-01
       - feat/stage1-security-finalization
+      - 'codex/**'
   pull_request:
     branches:
       - main
@@ -44,7 +45,17 @@ jobs:
           python-version: '3.12'
 
       - name: Install Python API dependencies
-        run: pip install -r server/recsys/requirements.txt "jsonschema[format-nongpl]"
+        run: pip install -r server/recsys/requirements.txt -r scripts/aws/requirements.txt "jsonschema[format-nongpl]"
+
+      - name: Install offline analyzer dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg libsndfile1
+          python3 -m venv .venv
+          .venv/bin/pip install -r scripts/local-dna/requirements.txt
+
+      - name: Test AWS provider migration with synthetic credentials
+        run: python3 -m unittest discover -s tests -p test_aws_provider_secrets.py -v
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -93,6 +104,9 @@ jobs:
 
       - name: Run production build
         run: pnpm build
+
+      - name: Inspect public build for private endpoints and credentials
+        run: node scripts/check-release-build.mjs dist
 
       - name: Run recommendation tests
         run: python3 -m unittest discover -s server/recsys/tests -v

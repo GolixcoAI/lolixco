@@ -2,17 +2,17 @@ import { mediaAssets, assetUrl } from "../../data/media-assets.js";
 
 export function BrandLogo({ onHome }: { onHome: () => void }) {
   return (
-    <a
+    <span className="brand-lockup"><a
       className="brand"
       href="#main"
       onClick={onHome}
-      aria-label="Lolixco home"
+      aria-label="Lolixco home, beta"
     >
       <img
         src={assetUrl(mediaAssets.wordmark, import.meta.env?.BASE_URL ?? "/")}
         alt="Lolixco"
       />
-    </a>
+    </a><span className="brand-beta" aria-hidden="true">BETA</span></span>
   );
 }
 
@@ -20,7 +20,7 @@ export function BrandIcon() {
   return (
     <img
       className="brand-icon"
-      src={assetUrl(mediaAssets.icon, import.meta.env?.BASE_URL ?? "/")}
+      src="/brand/official/icon.svg"
       alt="Lolixco"
     />
   );
