@@ -1,0 +1,122 @@
+{
+  "$schema": "https://lolixco.com/schemas/edit-dna-offline.v1.json",
+  "analyzer": "Lolixco Edit DNA Offline Pipeline v2.0",
+  "target_file": "bench_01_clean_hard_cuts.mp4",
+  "absolute_path": "/home/rohan/Lolixco/test-assets/benchmarks/bench_01_clean_hard_cuts.mp4",
+  "execution_telemetry": {
+    "runtime_seconds": 3.317,
+    "peak_ram_mb": 289.79
+  },
+  "technical_metadata": {
+    "duration_seconds": 6.0,
+    "dimensions": {
+      "width": 640,
+      "height": 360,
+      "aspect_ratio": "640:360"
+    },
+    "fps": 30.0,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "has_audio": true,
+    "bitrate_kbps": 44,
+    "file_size_bytes": 33273
+  },
+  "editing_pacing": {
+    "total_shots": 6,
+    "total_cuts": 5,
+    "average_shot_length_seconds": 1.0,
+    "cut_density_cps": 0.83,
+    "pacing_variance": 0.0,
+    "pacing_dynamic": "balanced_action_pace",
+    "detected_cut_timestamps": [
+      1.0,
+      2.0,
+      3.0,
+      4.0,
+      5.0
+    ],
+    "shot_lengths_seconds": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "visual_characteristics": {
+    "mean_luminance": 114.67,
+    "mean_contrast": 0.0,
+    "flash_strobe_warnings_count": 1,
+    "potential_flash_strobe_warnings": [
+      {
+        "timestamp": 3.0,
+        "frame": 90,
+        "luminance_spike": 149.0,
+        "note": "Sharp luminance spike detected (possible single-frame strobe/flash)"
+      }
+    ]
+  },
+  "audio_intelligence": {
+    "has_audio": true,
+    "status": "analyzed",
+    "estimated_bpm": 117.5,
+    "bpm_uncertainty_percent": 2.33,
+    "detected_beats_count": 11,
+    "detected_beat_timestamps": [
+      0.534,
+      1.045,
+      1.533,
+      2.043,
+      2.531,
+      3.042,
+      3.529,
+      4.04,
+      4.528,
+      5.039,
+      5.526
+    ],
+    "engineering": {
+      "integrated_lufs": -30.6,
+      "true_peak_dbtp": -16.5,
+      "loudness_range_lra": 0.4,
+      "max_volume_db": -16.5,
+      "clipping_detected": false
+    }
+  },
+  "synchronization": {
+    "status": "measured",
+    "beat_sync_index": 6.5,
+    "tight_cuts_count": 0,
+    "acceptable_cuts_count": 5,
+    "off_beat_cuts_count": 0,
+    "mean_sync_delta_ms": 41.8,
+    "per_cut_deltas": [
+      {
+        "cut_time": 1.0,
+        "nearest_beat_delta_ms": 45.0,
+        "classification": "acceptable"
+      },
+      {
+        "cut_time": 2.0,
+        "nearest_beat_delta_ms": 43.0,
+        "classification": "acceptable"
+      },
+      {
+        "cut_time": 3.0,
+        "nearest_beat_delta_ms": 42.0,
+        "classification": "acceptable"
+      },
+      {
+        "cut_time": 4.0,
+        "nearest_beat_delta_ms": 40.0,
+        "classification": "acceptable"
+      },
+      {
+        "cut_time": 5.0,
+        "nearest_beat_delta_ms": 39.0,
+        "classification": "acceptable"
+      }
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 dist/
 *.local
 
@@ -44,6 +44,7 @@ build/Release
 
 # Dependency directories
 node_modules/
+.venv/
 jspm_packages/
 
 # Snowpack dependency directory (https://snowpack.dev/)
@@ -171,3 +172,12 @@ public/media/staging/
 content/audit/
 content/youtube-audit.json
 
+# Lolixco Edit DNA — Private Owner Ratings, Comparisons, Model Checkpoints & Local Backups
+data/edit-dna/owner_ratings.json
+data/edit-dna/owner_comparisons.json
+data/edit-dna/model_history.json
+data/edit-dna/backups/
+data/edit-dna/owner_evaluations/
+
+
+/dist-public/

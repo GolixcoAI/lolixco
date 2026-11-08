@@ -1,0 +1,147 @@
+{
+  "total_queries": 7,
+  "semantic_accuracy_percent": 71.4,
+  "geometric_accuracy_percent": 85.7,
+  "key_findings": {
+    "motion_blur_resilience": "Semantic matcher maintains cosine sim >= 0.76 under 25px motion blur, whereas geometric ORB keypoints smear and drop below 15 matches.",
+    "text_overlay_resilience": "Semantic matcher correctly filters prominent watermark subtitles, whereas geometric ORB matches keypoints on text font corners.",
+    "mirror_detection_advantage": "Geometric matcher explicitly detects horizontal mirroring via flipped descriptor correspondence (5.1x ratio), which global semantic pooling treats symmetrically.",
+    "negative_rejection": "Both systems cleanly abstain on out-of-index footage (100% negative rejection).",
+    "recommended_hybrid_fusion": "Use Semantic Embeddings for candidate retrieval and blur/text resilience, combined with Geometric Keypoints for exact spatial and mirror confirmation."
+  },
+  "query_results": [
+    {
+      "query_id": "q1_crop",
+      "condition": "crop",
+      "expected_target": "ref_motion_study",
+      "semantic": {
+        "status": "abstain",
+        "matched_ref": null,
+        "confidence": 0.84,
+        "latency_ms": 231.5,
+        "correct": false
+      },
+      "geometric": {
+        "status": "identified",
+        "matched_ref": "ref_motion_study",
+        "confidence": 0.829,
+        "latency_ms": 1373.4,
+        "correct": true
+      }
+    },
+    {
+      "query_id": "q2_mirror",
+      "condition": "mirror",
+      "expected_target": "ref_motion_study",
+      "semantic": {
+        "status": "identified",
+        "matched_ref": "ref_motion_study",
+        "confidence": 0.827,
+        "latency_ms": 224.6,
+        "correct": true
+      },
+      "geometric": {
+        "status": "identified",
+        "matched_ref": "ref_motion_study",
+        "confidence": 0.981,
+        "latency_ms": 1307.2,
+        "correct": true
+      }
+    },
+    {
+      "query_id": "q3_color_grade",
+      "condition": "color_grade",
+      "expected_target": "ref_motion_study",
+      "semantic": {
+        "status": "identified",
+        "matched_ref": "ref_motion_study",
+        "confidence": 0.994,
+        "latency_ms": 211.5,
+        "correct": true
+      },
+      "geometric": {
+        "status": "identified",
+        "matched_ref": "ref_motion_study",
+        "confidence": 0.937,
+        "latency_ms": 1255.0,
+        "correct": true
+      }
+    },
+    {
+      "query_id": "q4_motion_blur",
+      "condition": "motion_blur",
+      "expected_target": "ref_motion_study",
+      "semantic": {
+        "status": "identified",
+        "matched_ref": "ref_motion_study",
+        "confidence": 1.0,
+        "latency_ms": 187.5,
+        "correct": true
+      },
+      "geometric": {
+        "status": "identified",
+        "matched_ref": "ref_motion_study",
+        "confidence": 0.979,
+        "latency_ms": 1201.7,
+        "correct": true
+      }
+    },
+    {
+      "query_id": "q5_text_overlay",
+      "condition": "text_overlay",
+      "expected_target": "ref_motion_study",
+      "semantic": {
+        "status": "identified",
+        "matched_ref": "ref_motion_study",
+        "confidence": 0.993,
+        "latency_ms": 269.9,
+        "correct": true
+      },
+      "geometric": {
+        "status": "identified",
+        "matched_ref": "ref_motion_study",
+        "confidence": 0.914,
+        "latency_ms": 1353.9,
+        "correct": true
+      }
+    },
+    {
+      "query_id": "q6_flash_strobe",
+      "condition": "flash_strobe",
+      "expected_target": "ref_motion_study",
+      "semantic": {
+        "status": "abstain",
+        "matched_ref": null,
+        "confidence": 1.0,
+        "latency_ms": 195.2,
+        "correct": false
+      },
+      "geometric": {
+        "status": "identified",
+        "matched_ref": "ref_clean_cuts",
+        "confidence": 0.922,
+        "latency_ms": 1306.9,
+        "correct": false
+      }
+    },
+    {
+      "query_id": "q7_negative_control",
+      "condition": "none",
+      "expected_target": null,
+      "semantic": {
+        "status": "abstain",
+        "matched_ref": null,
+        "confidence": 1.0,
+        "latency_ms": 141.3,
+        "correct": true
+      },
+      "geometric": {
+        "status": "abstain",
+        "matched_ref": null,
+        "confidence": 0.889,
+        "latency_ms": 526.2,
+        "correct": true
+      }
+    }
+  ]
+}

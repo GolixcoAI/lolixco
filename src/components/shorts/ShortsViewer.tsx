@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import type { Edit } from "../../data/edits";
 import { getFandomById } from "../../data/fandoms";
+import LoadingRing from "../ui/LoadingRing";
+import { useMediaWaitTimeout } from "../../hooks/useMediaWaitTimeout";
 import YouTubePlayer, {
   type YouTubePlayerHandle,
 } from "../video/YouTubePlayer";
@@ -71,6 +73,12 @@ export function ShortsViewer({
 
   const currentShort = shorts[currentIndex];
   const isYouTube = currentShort?.sourceType === "youtube_embed";
+  useMediaWaitTimeout(isWaiting && !isYouTube, `${currentShort?.id}:${currentShort?.source}`, () => {
+    playback.pause();
+    setIsWaiting(false);
+    setHasError(true);
+    setIsPlaying(false);
+  });
 
   const playback = useNativePlayback(
     videoRef,
@@ -184,6 +192,7 @@ export function ShortsViewer({
       e.stopPropagation();
       setHasError(false);
       setBlocked(false);
+      setIsWaiting(true);
       videoRef.current?.load();
       void playback.play();
     },
@@ -380,15 +389,19 @@ export function ShortsViewer({
               onEnded={handleNext}
               playsInline
               muted={isMuted}
+              preload="metadata"
+              onLoadStart={() => setIsWaiting(true)}
               onPause={() => setIsPlaying(false)}
               onWaiting={() => setIsWaiting(true)}
-              onPlaying={() => setIsWaiting(false)}
+              onCanPlay={() => { setIsWaiting(false); setHasError(false); }}
+              onPlaying={() => { setIsWaiting(false); setHasError(false); }}
               onTimeUpdate={() => {
                 if (videoRef.current) {
                   setCurrentTime(videoRef.current.currentTime);
                 }
               }}
               onLoadedMetadata={() => {
+                setIsWaiting(false);
                 if (videoRef.current) {
                   setDuration(videoRef.current.duration);
                 }
@@ -414,11 +427,12 @@ export function ShortsViewer({
               </button>
             </div>
           )}
+          {isWaiting && !hasError && !isYouTube && <div className="media-loading"><LoadingRing label="Loading video"/></div>}
           {hasError && !isYouTube && (
-            <div className="shorts-error-state" role="alert">
+            <div className="shorts-error-state product-state" role="alert">
               <Film size={40} className="error-icon" aria-hidden="true" />
-              <h3>Video unavailable</h3>
-              <p>Could not load the video for {currentShort.title}.</p>
+              <h3>This Short couldn't play</h3>
+              <p>Try again, or use the arrows to choose another Short.</p>
               <button type="button" className="retry-btn" onClick={handleRetry}>
                 <RotateCcw size={16} /> Retry
               </button>
@@ -426,7 +440,7 @@ export function ShortsViewer({
           )}
 
           {/* Pause overlay watermark - only for native video */}
-          {!isYouTube && !isPlaying && !hasError && (
+          {!isYouTube && !isPlaying && !hasError && !isWaiting && (
             <div className="shorts-pause-badge" aria-hidden="true">
               <Play size={44} />
             </div>

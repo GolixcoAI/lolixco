@@ -1,0 +1,6 @@
+export type TimelineMarker={time:number;kind:'cut'|'beat'|'reference';label:string};
+const object=(v:unknown):Record<string,unknown>=>v&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
+export function timelineMarkers(input:unknown):TimelineMarker[]{const r=object(input);const out:TimelineMarker[]=[];const add=(values:unknown,kind:TimelineMarker['kind'],label:string)=>{if(Array.isArray(values))for(const time of values)if(typeof time==='number'&&Number.isFinite(time)&&time>=0)out.push({time,kind,label})};
+ if(r.schema_version==='6.0.0'){const p=object(r.section_c_physical_signals);add(p.cut_timestamps??object(p.video_signals).cut_timestamps,'cut','Cut');const a=object(p.audio_signals);add(a.beat_timestamps??a.beat_times??p.beat_timestamps,'beat','Beat');}
+ if(['7.0.0-presentation','8.0.0-presentation'].includes(String(r.schema_version))&&Array.isArray(r.assessment_sections))for(const raw of r.assessment_sections){const s=object(raw);if(s.section_id==='personalized_owner_fit')continue;const refs=object(s.evidence_refs);add(refs.cut_timestamps,'cut','Cut');add(refs.beat_timestamps??refs.beat_times,'beat','Beat');add(s.timestamps,'reference',String(s.section_id||'Evidence').replace(/_/g,' ')+' reference');}
+ return[...new Map(out.map(m=>[`${m.kind}:${m.time}`,m])).values()].sort((a,b)=>a.time-b.time);}

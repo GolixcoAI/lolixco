@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Film } from "lucide-react";
+import PosterImage from "../ui/PosterImage";
 import type { Edit } from "../../data/edits";
 import { publicSource } from "../../utils/publicSource";
 import { getFandomById } from "../../data/fandoms";
@@ -17,8 +16,6 @@ export function ShortsCard({
   onTagClick,
   compact = false,
 }: ShortsCardProps) {
-  const [failedPoster, setFailedPoster] = useState<string | null>(null);
-
   const source = publicSource(short);
   const fandomTitle = short.fandomIds?.[0]
     ? getFandomById(short.fandomIds[0])?.title
@@ -36,26 +33,7 @@ export function ShortsCard({
         aria-label={`Watch short: ${short.title}`}
       >
         <div className="shorts-thumbnail">
-          {!short.poster || failedPoster === short.poster ? (
-            <span
-              className="thumbnail-fallback portrait"
-              role="img"
-              aria-label={`Thumbnail unavailable for ${short.title}`}
-            >
-              <Film aria-hidden="true" size={24} />
-              <span>Unavailable</span>
-            </span>
-          ) : (
-            <img
-              loading="lazy"
-              src={short.poster}
-              alt=""
-              onError={() => setFailedPoster(short.poster)}
-            />
-          )}
-
-
-
+          <PosterImage src={short.poster} title={short.title} portrait/>
           {short.duration && (
             <span className="shorts-duration">{short.duration}</span>
           )}

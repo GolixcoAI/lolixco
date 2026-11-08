@@ -1,7 +1,12 @@
+import {PUBLIC_PAGES, PUBLIC_ORIGIN, pageForView} from "./config/publicPages";
+import PublicInfo from "./components/help/PublicInfo";
 import { discoveryCatalog } from "./utils/discoveryCatalog";
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import Header from "./components/layout/Header";
 import Sidebar from "./components/layout/Sidebar";
+import ConnectionNotice from "./components/layout/ConnectionNotice";
+import { LoadingRing } from "./components/ui/LoadingRing";
+import { ProductState } from "./components/ui/ProductState";
 import Dialog from "./components/ui/Dialog";
 import {
   CategoryBar,
@@ -11,7 +16,8 @@ import {
 } from "./components/home/Feed";
 import ImmersionBanner from "./components/home/ImmersionBanner";
 import VideoPlayer from "./components/video/VideoPlayer";
-import { edits, type Edit } from "./data/edits";
+import type { Edit } from "./data/edits";
+import { previewCatalog as edits } from "./preview-catalog";
 import {
   normalizeCategoryCase,
   isFandomCompatibleWithCategory,
@@ -31,6 +37,19 @@ import { selectEditOfTheMoment } from "./utils/editOfTheMoment";
 import { useDiscoveryFeed } from "./hooks/useDiscoveryFeed";
 import { useRecommendations } from "./hooks/useRecommendations";
 import { Clapperboard } from "lucide-react";
+
+const CreatorStudio = lazy(() => import("./components/studio/CreatorStudio"));
+const HelpSupport = lazy(() => import("./components/help/HelpSupport"));
+
+export function resolveAppView(pathname: string, rawView: string, base = "/"): string {
+  const views: Record<string, string> = Object.assign(Object.fromEntries(PUBLIC_PAGES.filter(p=>p.path!=="/").map(p=>[p.path.slice(1).toLowerCase(),p.view])), { home: "Home", studio: "Creator Studio", explore: "Explore", shorts: "Shorts", help: "Help & Support" });
+  const basePath = base.endsWith("/") ? base : base + "/";
+  const path = pathname || "/";
+  if (!path.startsWith(basePath)) return "Not Found";
+  const relative = path.slice(basePath.length).replace(/\/$/, "");
+  if (relative && relative !== "index.html" && !views[relative.toLowerCase()]) return "Not Found";
+  return rawView ? views[rawView.toLowerCase()] ?? "Not Found" : views[relative.toLowerCase()] ?? "Home";
+}
 
 /**
  * Validates and safely parses short ID from URL query parameters.
@@ -95,12 +114,7 @@ export function parseUrlParams(catalog: Edit[] = edits): {
     normCat = "All";
   }
 
-  let normView = "Home";
-  if (rawView.toLowerCase() === "explore") {
-    normView = "Explore";
-  } else if (rawView.toLowerCase() === "shorts") {
-    normView = "Shorts";
-  }
+  const normView = resolveAppView(window.location.pathname || "/", rawView, import.meta.env?.BASE_URL ?? "/");
 
   const shortId = parseAndValidateShortId(rawShort, catalog);
 
@@ -125,7 +139,16 @@ export function syncUrl(
   if (typeof window === "undefined") return;
 
   const params = new URLSearchParams();
-  if (view && view.toLowerCase() === "explore") {
+  if (view === "Creator Studio") {
+    params.set("view", "studio");
+    const analysisJob = new URLSearchParams(window.location.search).get("analysisJob");
+    if (analysisJob && /^job_\d+_[a-f0-9]{6}$/.test(analysisJob)) {
+      params.set("analysisJob", analysisJob);
+    }
+    if (new URLSearchParams(window.location.search).get("privacy") === "processing") params.set("privacy", "processing");
+  } else if (view === "Help & Support") {
+    params.set("view", "help");
+  } else if (view && view.toLowerCase() === "explore") {
     params.set("view", "explore");
   } else if (view && view.toLowerCase() === "shorts") {
     params.set("view", "shorts");
@@ -143,6 +166,11 @@ export function syncUrl(
     params.set("q", q.trim());
   }
 
+  const basePath = import.meta.env?.BASE_URL ?? "/";
+  const cleanEntry = PUBLIC_PAGES.some(p=>p.path!=="/" && window.location.pathname.replace(/\/$/,"")===p.path);
+  const page=pageForView(view);
+  const targetPath = page && (cleanEntry || ["Immersion","Privacy Policy","Copyright & Rights","Terms of Use","Public Beta"].includes(view)) ? page.path : basePath;
+  if(targetPath!==basePath)params.delete("view");
   const newSearch = params.toString() ? `?${params.toString()}` : "";
   const currentSearch = window.location.search;
 
@@ -164,7 +192,7 @@ export function syncUrl(
     nextState = Object.keys(existingState).length > 0 ? existingState : null;
   }
 
-  if (newSearch === currentSearch) {
+  if (newSearch === currentSearch && window.location.pathname === targetPath) {
     if (!usePush && stateUpdate !== undefined && window.history?.replaceState) {
       window.history.replaceState(
         nextState,
@@ -175,7 +203,7 @@ export function syncUrl(
     return;
   }
 
-  const targetUrl = window.location.pathname + newSearch + window.location.hash;
+  const targetUrl = targetPath + newSearch + window.location.hash;
   if (usePush) {
     window.history.pushState(nextState, "", targetUrl);
   } else {
@@ -227,7 +255,7 @@ export default function App({
   const [fandom, setFandom] = useState(initialParams.fandom);
   const [selection, setSelection] = useState<{ catalog: Edit[]; id: number } | null>(null);
   const selected = selection?.catalog === initialEdits
-    ? initialEdits.find((e) => e.id === selection.id && isVideo(e)) ?? initialLandscapeVideo
+    ? initialEdits.find((e) => e.id === selection.id) ?? initialLandscapeVideo
     : initialLandscapeVideo;
   const setSelected = (edit: Edit) => setSelection({ catalog: initialEdits, id: edit.id });
   useEffect(() => { shuffleOffset.current = 0; }, [initialEdits]);
@@ -243,8 +271,23 @@ export default function App({
     return null;
   });
   const activeShort = initialEdits.find((e) => e.id === shortSelection?.id && isShort(e)) ?? null;
-  const [modal, setModal] = useState("");
   const [immersionOpen, setImmersionOpen] = useState(false);
+  const initialNavigation = useRef(true);
+
+  useEffect(() => {
+    const title = query && ["Home", "Explore", "Shorts"].includes(active) ? `Search: ${query}` : active === "Not Found" ? "Page not found" : active === "Home" ? "Discover great edits" : active;
+    const page=pageForView(active);
+    document.title = query ? `${title} | Lolixco` : page?.title ?? `${title} | Lolixco`;
+    const meta=document.querySelector?.('meta[name="description"]'); if(meta&&page)meta.setAttribute('content',page.description);
+    const canonical=document.querySelector?.('link[rel="canonical"]');if(canonical&&page)canonical.setAttribute('href',PUBLIC_ORIGIN+page.path);
+    const robots=document.querySelector?.('meta[name="robots"]');if(robots&&(query||new URLSearchParams(window.location.search).has('analysisJob')||active==='Not Found'))robots.setAttribute('content','noindex,follow');
+  }, [active, query]);
+
+  useEffect(() => {
+    if (initialNavigation.current) { initialNavigation.current = false; return; }
+    const frame = requestAnimationFrame(() => document.getElementById?.("main")?.focus?.());
+    return () => cancelAnimationFrame(frame);
+  }, [active]);
 
   // Active viewer session identifier and monotonic session counter.
   // Restore existing application-owned viewer session on refresh if URL has a valid Short
@@ -287,6 +330,7 @@ export default function App({
   // Normalize initial URL if it contains direct fandom without category or invalid short IDs
   useEffect(() => {
     const current = parseUrlParams(initialEdits);
+    if (current.view === "Not Found") return;
     syncUrl(
       current.category,
       current.fandom,
@@ -384,7 +428,7 @@ export default function App({
 
       // On dedicated Shorts page with 0 shorts, searching navigates to Explore
       const nextView =
-        active === "Shorts" && catalogShorts.length === 0 && newQuery.trim()
+        (["Creator Studio", "Help & Support", "Not Found"].includes(active) && newQuery.trim()) || active === "Shorts" && catalogShorts.length === 0 && newQuery.trim()
           ? "Explore"
           : active;
       if (nextView !== active) {
@@ -537,9 +581,12 @@ export default function App({
   }
 
   const handleShuffleFeatured = useCallback(() => {
-    const nextFeatured = selectEditOfTheMoment(initialEdits, new Date(), ++shuffleOffset.current);
-    if (nextFeatured) setSelection({ catalog: initialEdits, id: nextFeatured.id });
-  }, [initialEdits]);
+    let nextFeatured = selectEditOfTheMoment(initialEdits, new Date(), ++shuffleOffset.current);
+    if (nextFeatured?.id === selected?.id && initialEdits.length > 1) nextFeatured = selectEditOfTheMoment(initialEdits, new Date(), ++shuffleOffset.current);
+    if (nextFeatured) {
+      setActiveShort(null); setSelection({ catalog: initialEdits, id: nextFeatured.id });
+    }
+  }, [initialEdits, selected?.id]);
 
   function navigate(name: string) {
     setDrawer(false);
@@ -579,10 +626,17 @@ export default function App({
         viewerSessionIdRef.current = null;
         syncUrl("All", "", "", "Shorts", null, true, null);
       }
+    } else if (name === "Creator Studio") {
+      setActive("Creator Studio"); setActiveShort(null); setQuery(""); setCategory("All"); setFandom("");
+      syncUrl("All", "", "", "Creator Studio", null, true);
+    } else if (name === "Help & Support") {
+      setActive("Help & Support"); setActiveShort(null); setQuery(""); setCategory("All"); setFandom("");
+      viewerSessionIdRef.current = null;
+      syncUrl("All", "", "", "Help & Support", null, true);
     } else if (name === "Immersion") {
       setImmersionOpen(true);
     } else {
-      setModal(name);
+      navigate("Home");
     }
   }
 
@@ -593,7 +647,7 @@ export default function App({
     fandom
   );
 
-  const isUpNextEnabled = selected !== null && isVideo(selected);
+  const isUpNextEnabled = ["Home", "Explore", "Shorts"].includes(active) && selected !== null && isVideo(selected);
 
   const { edits: upNextEdits } = useRecommendations(
     {
@@ -608,7 +662,7 @@ export default function App({
   const { edits: homeRecommendedEdits } = useRecommendations({
     surface: "home",
     limit: 50,
-  }, true, initialEdits);
+  }, ["Home", "Explore", "Shorts"].includes(active), initialEdits);
 
   const homeSections = useMemo(
     () =>
@@ -659,19 +713,6 @@ export default function App({
     searchShorts,
   ]);
 
-  const messages: Record<string, string> = {
-    Immersion:
-      "Immersion Mode is planned. Adaptive ambience, continuous playback, and personal playback queue are not implemented in this homepage preview.",
-    Shorts:
-      "Curated Shorts is planned as a dedicated portrait-video experience with a vertical player. This preview currently supports standard landscape edits.",
-    "Creator Studio":
-      "Creator Studio is planned for temporary in-browser AI video analysis. No uploads, login, or public analytics are active in this demo.",
-    Settings:
-      "This preview follows your device's reduced-motion and reduced-data preferences. Player controls and A–B loop settings are available inside the video.",
-    Help:
-      "Browse and watch freely without creating an account. Select a card to play. Focus the player and use K or Space to play/pause, M to mute, F for fullscreen, and arrow keys to seek. Use A–B Loop to isolate and repeat any segment.",
-  };
-
   return (
     <div className={`app ${expanded ? "expanded" : "collapsed"}`}>
       <a className="skip-link" href="#main">
@@ -682,7 +723,7 @@ export default function App({
         toggle={() => (mobile ? setDrawer(!drawer) : setExpanded(!expanded))}
         query={query}
         setQuery={handleQueryChange}
-        open={setModal}
+        open={navigate}
         onHome={() => navigate("Home")}
       />
       {!mobile && (
@@ -697,14 +738,20 @@ export default function App({
           </div>
         </Dialog>
       )}
-      <main id="main">
-        <CategoryBar
+      <main id="main" tabIndex={-1} aria-label={active === "Not Found" ? "Page not found" : active}>
+        <ConnectionNotice />
+        {["Home", "Explore", "Shorts"].includes(active) && <CategoryBar
           category={category}
           onSelectCategory={handleCategoryChange}
           fandomId={fandom}
           onSelectFandom={handleFandomChange}
-        />
-        {active === "Shorts" ? (
+        />}
+        {active === "Not Found" ? <section className="route-state">
+          <span className="page-eyebrow">404</span><h1>We couldn't find that page</h1>
+          <p>The link may have changed. Find your next edit on Home.</p>
+          <button type="button" className="primary" onClick={() => navigate("Home")}>Explore edits</button>
+        </section> : ["Immersion","Privacy Policy","Copyright & Rights","Terms of Use","Public Beta"].includes(active) ? <PublicInfo view={active} onImmersion={()=>setImmersionOpen(true)}/> : active === "Help & Support" ? <Suspense fallback={<div className="page-loading"><LoadingRing label="Opening Help & Support" /></div>}><HelpSupport /></Suspense>
+          : active === "Creator Studio" ? <Suspense fallback={<div className="page-loading"><LoadingRing label="Opening Creator Studio" /></div>}><CreatorStudio /></Suspense> : active === "Shorts" ? (
           catalogShorts.length === 0 ? (
             <div
               className="shorts-empty-state"
@@ -718,11 +765,9 @@ export default function App({
                   aria-hidden="true"
                 />
               </div>
-              <h1>Curated Shorts are coming soon</h1>
+              <h1>No Shorts to watch yet</h1>
               <p>
-                We are currently curating genuine vertical edits across our
-                fandoms. In the meantime, explore our cinematic landscape
-                edits.
+                Explore other edits while we add more to this collection.
               </p>
               <button
                 type="button"
@@ -769,12 +814,13 @@ export default function App({
           )
         ) : !browsing ? (
           <>
-            {selected && isVideo(selected) && (
+            {initialEdits.length === 0 && <ProductState title="New edits are on the way" description="Try another category, or bring your own edit to Creator Studio." action={{label:"Open Creator Studio",onClick:()=>navigate("Creator Studio")}} />}
+            {selected && (
               <div className="featured-row">
                 <div className="featured-player-stage">
                 <VideoPlayer
                   edit={selected}
-                  isOverlayActive={!!activeShort || immersionOpen || !!modal || (mobile && drawer)}
+                  isOverlayActive={!!activeShort || immersionOpen || (mobile && drawer)}
                   onShuffle={handleShuffleFeatured}
                 />
                 </div>
@@ -881,9 +927,7 @@ export default function App({
                       {getFandomById(fandom)?.title || fandom}
                     </h2>
                     <p>
-                      The catalog does not yet include edits for this
-                      fandom. You can browse other {category} edits or clear
-                      the fandom filter.
+                      Try another fandom or browse all {category} edits.
                     </p>
                     <button type="button" onClick={handleClearFandom}>
                       Clear fandom filter
@@ -893,8 +937,7 @@ export default function App({
                   <>
                     <h2>No multifandom edits yet</h2>
                     <p>
-                      Multifandom crossover edits are planned for our curated
-                      library.
+                      Try another category or browse all available edits.
                     </p>
                     <button type="button" onClick={handleClearFilters}>
                       Browse all edits
@@ -914,27 +957,10 @@ export default function App({
           </>
         )}
         <footer>
-          LOCAL FRONTEND PREVIEW{" "}
-          <span>
-            Account-free discovery. Demos use original artwork and silent test footage.
-            No personal data or platform statistics.
-          </span>
+          <span className="footer-copy">Great edits. Fresh perspectives.</span>
+          <div className="footer-links"><a href="/shorts">Shorts</a><a href="/creator-studio">Creator Studio</a><a href="/immersion">Immersion</a><a href="/help">Help & Support</a><a href="/rights">Copyright & Rights</a><a href="/terms">Terms of Use</a><a href="/privacy">Privacy Policy</a><a href="/beta">Public Beta</a></div>
         </footer>
       </main>
-      {modal && (
-        <Dialog title={modal} onClose={() => setModal("")}>
-          <p>
-            {messages[modal] || "This feature is planned for a future release."}
-          </p>
-          <button
-            type="button"
-            className="primary"
-            onClick={() => setModal("")}
-          >
-            Back to browsing
-          </button>
-        </Dialog>
-      )}
       {activeShort && !immersionOpen && (
         <ShortsViewer
           shorts={eligibleShorts}
