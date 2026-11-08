@@ -28,5 +28,7 @@ test("demo-only and empty builds retain the original catalog; Shorts-only real d
   assert.deepEqual(discoveryCatalog([]), []);
   const onlyShorts = discoveryCatalog([...edits, ...shorts]);
   assert.deepEqual(onlyShorts, shorts);
-  assert.equal(selectEditOfTheMoment(onlyShorts, new Date("2026-11-02")), null);
+  const rotation = onlyShorts.map((_, offset) => selectEditOfTheMoment(onlyShorts, new Date("2026-11-02"), offset));
+  assert.deepEqual(new Set(rotation), new Set(shorts));
+  assert.ok(rotation.every(edit => edit.sourceType !== "local_demo"));
 });
