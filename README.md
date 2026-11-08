@@ -12,6 +12,8 @@ The analyzer needs FFmpeg, FFprobe, and a Python environment with OpenCV, FastAP
 
 For a fresh Python setup, create `.venv` with `python3 -m venv .venv`, then install `scripts/local-dna/requirements.txt` with `.venv/bin/pip`. Run `LOLIXCO_DNA_PYTHON="$PWD/.venv/bin/python" pnpm studio`. The isolated regression suite also finds this repository environment, so CI and local checks use the same dependencies.
 
+Six historical owner-calibration checks run locally when the private ratings/media fixtures are present and report explicit skips in a clean CI checkout. Git privacy checks and portable analyzer/service regressions run in CI using repository or temporary synthetic fixtures. Private owner archives are not CI inputs.
+
 Choose **Upload Video** or **Paste YouTube Link**, then select **Analyze Edit**. The first external review asks how the edit may be processed.
 Studio accepts up to 100 MiB and 120 seconds per input. FFmpeg prepares a private analysis copy capped at 640px and 60fps, preserving the original file and source timing. Common MP4, MOV, MKV, WebM and audio inputs are supported when the installed FFmpeg can decode them. Browser preview may be unavailable for codecs such as HEVC while backend analysis remains available. Temporary files expire after an hour. Reports can be exported and deleted in Studio.
 

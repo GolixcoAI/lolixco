@@ -12,6 +12,11 @@ const pythonBin = [
   resolve(homedir(), ".venvs/lolixco-antigravity/bin/python3"),
   "/usr/bin/python3",
 ].find(existsSync);
+const ownerRatingsAvailable = ["owner_ratings.json", "owner_comparisons.json"]
+  .every((name) => existsSync(resolve(homedir(), ".lolixco-edit-dna", name)));
+const ownerRatings = { skip: ownerRatingsAvailable ? false : "Requires the owner's private ratings mirror; never uploaded to CI." };
+const ownerMediaPath = resolve(homedir(), "lolixco-owner-media/inbox/Best Dhurandhar edit.mp4");
+const ownerVideo = { skip: existsSync(ownerMediaPath) ? false : "Requires the owner's private media archive; never uploaded to CI." };
 
 import {
   classifySyncDelta,
@@ -457,7 +462,7 @@ print("EDITORIAL_ANNOTATOR_PASS")
   assert.ok(stdout.includes("EDITORIAL_ANNOTATOR_PASS"));
 });
 
-test("Lolixco Edit DNA — Phase 3: Personalized preference model trains on 11 real reviews without collapsing", () => {
+test("Lolixco Edit DNA — Phase 3: Personalized preference model trains on 11 real reviews without collapsing", ownerRatings, () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 
   const testScript = `
@@ -511,7 +516,19 @@ print("PREFERENCE_LEARNER_PASS")
   assert.ok(stdout.includes("PREFERENCE_LEARNER_PASS"));
 });
 
-test("Lolixco Edit DNA — Phase 4: Privacy audit guarantees zero private ratings or notes are tracked or leaked", () => {
+test("Git privacy checks run without access to the owner's private mirror", () => {
+  const stdout = execFileSync(pythonBin, ["-c", `
+import sys
+sys.path.insert(0, "scripts/edit-dna")
+from verify_privacy import check_git_tracked_status, check_git_staged_status
+assert check_git_tracked_status()[0]
+assert check_git_staged_status()[0]
+print("GIT_PRIVATE_DATA_BOUNDARY_VERIFIED")
+`], { encoding: "utf8", timeout: 10000 });
+  assert.ok(stdout.includes("GIT_PRIVATE_DATA_BOUNDARY_VERIFIED"));
+});
+
+test("Lolixco Edit DNA — Phase 4: Privacy audit guarantees zero private ratings or notes are tracked or leaked", ownerRatings, () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 
   const stdout = execFileSync(
@@ -523,7 +540,7 @@ test("Lolixco Edit DNA — Phase 4: Privacy audit guarantees zero private rating
   assert.ok(stdout.includes("AUDIT RESULT: PASSED"));
 });
 
-test("Lolixco Edit DNA — Phase 4: Honest model validation audits weight sensitivity & empirical coverage", () => {
+test("Lolixco Edit DNA — Phase 4: Honest model validation audits weight sensitivity & empirical coverage", ownerRatings, () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 
   const stdout = execFileSync(
@@ -764,7 +781,7 @@ print("PHASE6_CUT_RHYTHM_RECONCILIATION_VERIFIED")
   assert.ok(stdout.includes("PHASE6_CUT_RHYTHM_RECONCILIATION_VERIFIED"));
 });
 
-test("Lolixco Edit DNA — Phase 6: Honest evaluation framework computes LOOCV errors without false calibration claims", () => {
+test("Lolixco Edit DNA — Phase 6: Honest evaluation framework computes LOOCV errors without false calibration claims", ownerRatings, () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 
   const stdout = execFileSync(
@@ -1052,11 +1069,17 @@ test("Lolixco Edit DNA — Phase 8: Local analysis service health and inbox disc
       "-c",
       `
 import sys
+import shutil
+import tempfile
+from pathlib import Path
 sys.path.insert(0, "scripts/edit-dna")
 from fastapi.testclient import TestClient
-from local_service import app
+import local_service
 
-client = TestClient(app)
+inbox = tempfile.TemporaryDirectory()
+local_service.AUTHORIZED_INBOX = inbox.name
+shutil.copyfile("test-assets/benchmarks/bench_03_fast_phonk_montage.mp4", Path(inbox.name) / "synthetic-inbox.mp4")
+client = TestClient(local_service.app)
 
 # 1. Health check
 res_h = client.get("/api/v8/health")
@@ -1072,7 +1095,8 @@ assert res_inbox.status_code == 200
 data_inbox = res_inbox.json()
 assert "files" in data_inbox
 filenames = [f["filename"] for f in data_inbox["files"]]
-assert any("dhurandhar" in fn.lower() for fn in filenames), "Expected Dhurandhar in inbox files"
+assert filenames == ["synthetic-inbox.mp4"]
+inbox.cleanup()
 
 print("PHASE8_SERVICE_HEALTH_AND_INBOX_VERIFIED")
       `,
@@ -1645,7 +1669,7 @@ print("PHASE9_DISCRIMINATION_VERIFIED")
   assert.ok(stdout.includes("PHASE9_DISCRIMINATION_VERIFIED"));
 });
 
-test("Lolixco Edit DNA — Phase 9: Local service execution in quality_mode='phase9' delivers 7-dimension scoring", () => {
+test("Lolixco Edit DNA — Phase 9: Local service execution in quality_mode='phase9' delivers 7-dimension scoring", ownerVideo, () => {
 
   const stdout = execFileSync(
     pythonBin,
@@ -1659,7 +1683,7 @@ from local_service import AnalysisEngine, AnalysisJob, AnalysisJobStatus
 from edit_dna_schema_v6 import EditDNASchemaV6
 from presentation_adapter import EditDNAPresentationAdapter
 
-owner_media = "/home/rohan/lolixco-owner-media/inbox/Best Dhurandhar edit.mp4"
+owner_media = ${JSON.stringify(ownerMediaPath)}
 assert os.path.isfile(owner_media)
 
 job = AnalysisJob("test_phase9_service_job", owner_media, quality_mode="phase9")
@@ -1777,7 +1801,7 @@ print("TIMING_SILENCE_AND_SHORT_CLIPS_REJECTED")
   assert.ok(stdout.includes("TIMING_SILENCE_AND_SHORT_CLIPS_REJECTED"));
 });
 
-test("Lolixco Edit DNA — Phase 9: Service statistical controls match reference null distributions and diagnostic label", () => {
+test("Lolixco Edit DNA — Phase 9: Service statistical controls match reference null distributions and diagnostic label", ownerVideo, () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 
   const stdout = execFileSync(
@@ -1790,7 +1814,7 @@ import numpy as np
 sys.path.insert(0, "scripts/edit-dna")
 from local_service import AnalysisEngine, AnalysisJob
 
-owner_media = "/home/rohan/lolixco-owner-media/inbox/Best Dhurandhar edit.mp4"
+owner_media = ${JSON.stringify(ownerMediaPath)}
 job = AnalysisJob("test_stat_controls", owner_media, quality_mode="phase9")
 AnalysisEngine.execute_job(job)
 
@@ -2061,9 +2085,9 @@ import subprocess
 sys.path.insert(0, ${JSON.stringify(resolve(projectRoot, "scripts/edit-dna"))})
 from media_inspector import MediaInspector
 
-# Case A: Normal audiovisual edit (Dhurandhar MP4)
-dhurandhar_path = "/home/rohan/lolixco-owner-media/inbox/Best Dhurandhar edit.mp4"
-insp_a = MediaInspector.inspect(dhurandhar_path)
+# Case A: Normal audiovisual synthetic benchmark
+normal_media_path = "test-assets/benchmarks/bench_03_fast_phonk_montage.mp4"
+insp_a = MediaInspector.inspect(normal_media_path)
 assert insp_a["is_supported"] is True
 assert insp_a["classification_tag"] == "NORMAL_AUDIOVISUAL"
 assert insp_a["capabilities"]["has_video_stream"] is True
