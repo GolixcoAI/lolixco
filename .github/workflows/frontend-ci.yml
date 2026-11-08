@@ -55,7 +55,9 @@ jobs:
           .venv/bin/pip install -r scripts/local-dna/requirements.txt
 
       - name: Test AWS provider migration with synthetic credentials
-        run: python3 -m unittest discover -s tests -p test_aws_provider_secrets.py -v
+        run: |
+          python3 -m unittest discover -s tests -p test_aws_provider_secrets.py -v
+          python3 -m unittest discover -s tests -p test_private_source_boundary.py -v
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
