@@ -178,3 +178,5 @@ data/edit-dna/model_history.json
 data/edit-dna/backups/
 data/edit-dna/owner_evaluations/
 
+
+/dist-public/

@@ -1,0 +1,47 @@
+[
+  {
+    "name": "icon.svg",
+    "bytes": 133311,
+    "sha256": "7f23219ae8a5910689d70f4cdcf72f53411ae64a64787aab73367d4f14fd19d2"
+  },
+  {
+    "name": "icon.png",
+    "bytes": 755969,
+    "sha256": "b06707e792e581438ed66cee77f99b0e00d57794cb6958a8e4ff49bccd1b51c8"
+  },
+  {
+    "name": "og-image.png",
+    "bytes": 776531,
+    "sha256": "00edd9e646eca93a9cbd25a31a3cc5f54f1136456200fc71b2e9803a7d48756a"
+  },
+  {
+    "name": "favicon.ico",
+    "bytes": 15406,
+    "sha256": "8d6e8a86732a2653ddafe1fa4f6267934d1056176cbbbfcefbe7fb1fd07f4c13"
+  },
+  {
+    "name": "favicon-16x16.png",
+    "bytes": 674,
+    "sha256": "3eeb084a4e76df7253854c6c771101c6c15f532d6e5b2c8a39a059305daa0737"
+  },
+  {
+    "name": "favicon-32x32.png",
+    "bytes": 1784,
+    "sha256": "5fff952d18b4145892e068c17a0d2eb8ba22a5873aaaa37beb74e818f85068d4"
+  },
+  {
+    "name": "apple-touch-icon.png",
+    "bytes": 33455,
+    "sha256": "87271122b5f4eec026602d8fc217ef093314c5245313a021a2448633743db290"
+  },
+  {
+    "name": "android-chrome-192x192.png",
+    "bytes": 36952,
+    "sha256": "3f7bd61b610d04a36143ff856f110bb600fef44e22fa14e9c3c6c15a37f11a5d"
+  },
+  {
+    "name": "android-chrome-512x512.png",
+    "bytes": 255431,
+    "sha256": "a7cd89b1398ad922c598abf27544261f0c157e8b7509703603b94fd0a5395fa8"
+  }
+]

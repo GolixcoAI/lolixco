@@ -1,0 +1,19 @@
+# Lolixco
+
+> Curated edit discovery and experimental editing feedback under the Golixco brand.
+
+AI assessments may be inaccurate, incomplete or overly generous. Public processing availability depends on the configured service. Uploads and reports are not public discovery content.
+
+## Public pages
+- [Home](https://lol.golixco.com/): Discover curated edits across anime, movies, series and gaming. Watch Shorts and explore your own editing choices in Creator Studio.
+- [Shorts](https://lol.golixco.com/shorts): Discover short-form edits across your favorite worlds. Watch curated Shorts and open their original YouTube sources.
+- [Creator Studio](https://lol.golixco.com/creator-studio): Upload an edit or paste a public YouTube link for six experimental editing assessments, evidence and practical feedback.
+- [Explore](https://lol.golixco.com/explore): Explore curated video edits by category, fandom, creator and tag on Lolixco.
+- [Immersion](https://lol.golixco.com/immersion): Watch available curated edits in a focused viewing experience with Lolixco Immersion.
+- [Help & Support](https://lol.golixco.com/help): Get help with Lolixco discovery, Shorts, Creator Studio, upload limits, experimental scores and processing privacy.
+- [Privacy Policy](https://lol.golixco.com/privacy): Learn how Lolixco handles processing choices, uploads, reports, third-party media and experimental AI feedback.
+- [Copyright & Rights](https://lol.golixco.com/rights): Understand ownership, embedded third-party content, distribution permissions and rights enquiries on Lolixco.
+- [Terms of Use](https://lol.golixco.com/terms): Read the public-beta terms for using Lolixco discovery and experimental edit feedback.
+- [Public Beta](https://lol.golixco.com/beta): Learn what Lolixco BETA means, how experimental assessments work and which release limitations remain.
+
+Email support and rights routing are not yet verified. Consult Help and the Rights policy for current contact status.

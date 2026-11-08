@@ -66,3 +66,6 @@ main > footer .footer-copy { color: #969faa; line-height: 1.6; }
 @media (prefers-reduced-motion: reduce) {
   .help-action, .help-topics a { transition: none; }
 }
+.seo-entry {max-width:900px;margin:90px auto;padding:24px;line-height:1.8;}
+.seo-entry nav {display:flex;gap:16px;flex-wrap:wrap;}
+.seo-entry a {color:#e6d96d;}

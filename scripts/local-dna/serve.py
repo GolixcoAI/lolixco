@@ -97,11 +97,12 @@ async def local_guard(request: Request, call_next):
         or origin is not None and origin not in LOCAL_ORIGINS
         or not secrets.compare_digest(request.headers.get("x-lolixco-local-capability", ""), capability)
     ):
-        return JSONResponse({"detail": "Local development bridge required."}, status_code=403)
+        return JSONResponse({"detail": "Local development bridge required."}, status_code=403, headers={"X-Robots-Tag": "noindex, nofollow", "Cache-Control": "no-store"})
     job_path = request.url.path.removeprefix("/api/v8/jobs/").split("/", 1)[0]
     if request.url.path.startswith("/api/v8/jobs/") and job_path != "start" and not JOB_ID.fullmatch(job_path):
         return JSONResponse({"detail": "This analysis route is unavailable."}, status_code=404)
     response = await call_next(request)
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Cache-Control"] = "no-store"
     return response
