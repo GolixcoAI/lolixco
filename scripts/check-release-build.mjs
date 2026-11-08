@@ -6,6 +6,7 @@ const checks = [
  ['loopback_url', /(?:https?:)?\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?=[:/"'\s]|$)/i],
  ['private_workstation_path', /\/home\/rohan\/|\/mnt\/[a-z]\/Users\/|[A-Z]:\\Users\\/],
  ['google_api_key', /AIza[A-Za-z0-9_-]{30,}/],
+ ['google_authorization_key', /\bAQ\.[A-Za-z0-9._~+/=-]{40,}/],
  ['aws_access_key', /(?:AKIA|ASIA)[A-Z0-9]{16}/],
  ['provider_secret_assignment', /(?:GEMINI_API_KEY|GOOGLE_API_KEY|YOUTUBE_API_KEY)\s*[=:]\s*["'][A-Za-z0-9_-]{20,}["']/],
 ];

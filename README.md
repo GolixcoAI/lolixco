@@ -31,4 +31,12 @@ Studio defaults to the discovered `gemini-3.1-flash-lite` model for public revie
 
 The public frontend defaults analysis off until `VITE_ANALYSIS_ENABLED=true` is deliberately set for an approved same-origin service. This flag is not authentication or multi-user isolation. The loopback development worker must not be exposed publicly. Developer sample and animation controls require a development build plus `?studioTools=1`.
 
-See [product acceptance](docs/product/STAGE16_ACCEPTANCE.md) and [release blockers and rollback](docs/infra/STAGE16_RELEASE_READINESS.md). Support delivery and the production domain remain unconfirmed; no public deployment is authorized.
+See [product acceptance](docs/product/STAGE16_ACCEPTANCE.md) and [release blockers and rollback](docs/infra/STAGE16_RELEASE_READINESS.md). The Stage 18 owner instructions authorize controlled release engineering and the prepared media's publication. Final domain cutover and PR merge still require owner approval; the Stage 16 document records the earlier readiness assessment.
+
+## AWS provider credentials
+
+The owner-run [SDK migration](scripts/aws/migrate_provider_secrets.py) reads the existing ignored backend `.env.local` directly, validates only `GEMINI_API_KEY` and `YOUTUBE_API_KEY`, and creates or updates the encrypted `lolixco/production/ai/providers` secret. Repeated runs with unchanged keys do not create a new credential version. The original file is read without rewriting it or changing its permissions.
+
+Only `LolixcoProductionAIBackend` can retrieve the secret. The migration operator, frontend, CI and unrelated Copilot roles are denied secret reads. Production startup uses the nonsecret `LOLIXCO_PROVIDER_SECRET_ARN` setting and the task's AWS identity; it fails closed if managed configuration cannot load. Set `LOLIXCO_DEPLOYMENT=production` to require this behavior even when the ARN is accidentally omitted. Never put either provider key in a `VITE_` variable or an infrastructure template.
+
+See the [migration, verification and rotation runbook](docs/infra/STAGE18_PROVIDER_SECRETS.md) for commands, exact IAM requirements and current verification evidence. Cloud authentication checks verify managed-secret retrieval, Gemini model discovery and official YouTube metadata access without AI generation. They do not establish a deployed, public multi-user analysis service.

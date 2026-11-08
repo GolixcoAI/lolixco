@@ -1,0 +1,11 @@
+.git
+node_modules
+dist*
+**/.env
+**/.env.*
+**/*.local
+**/__pycache__
+**/*.pyc
+content/audit
+content/staging
+content/*.private.json

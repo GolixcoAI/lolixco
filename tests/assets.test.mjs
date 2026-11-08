@@ -7,7 +7,9 @@ import { assetPaths, assetUrl } from "../src/data/media-assets.js";
 import { checkAssets } from "../scripts/check-assets.mjs";
 
 test("all referenced local assets exist and have valid format signatures", () => {
-  assert.equal(checkAssets().length, 20);
+  const checked = new Set(checkAssets().map((asset) => asset.path));
+  for (const asset of assetPaths) assert.ok(checked.has(asset));
+  assert.ok(checked.has("brand/official/icon.svg"));
   assert.equal(new Set(assetPaths).size, assetPaths.length);
 });
 
