@@ -14,9 +14,23 @@ LOLIXCO_GEMINI_YOUTUBE=0
 """
 
 
+def requires_aws_configuration(environment):
+    return bool(
+        environment.get("LOLIXCO_PROVIDER_SECRET_ARN")
+        or environment.get("LOLIXCO_DEPLOYMENT") == "production"
+        or environment.get("AWS_EXECUTION_ENV", "").startswith(("AWS_ECS", "AWS_Lambda"))
+        or environment.get("ECS_CONTAINER_METADATA_URI_V4")
+        or environment.get("ECS_CONTAINER_METADATA_URI")
+    )
+
+
 def load_configuration(path=CONFIG_PATH, environment=None):
     """Existing process variables take precedence. Values are never logged or expanded."""
     environment = os.environ if environment is None else environment
+    secret_arn = environment.get("LOLIXCO_PROVIDER_SECRET_ARN", "")
+    if requires_aws_configuration(environment):
+        from aws_provider_secrets import load_aws_configuration
+        return load_aws_configuration(secret_arn, environment)
     path = Path(path)
     try:
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

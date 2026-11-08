@@ -16,8 +16,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-if __name__ == "__main__":
-    from configuration import load_configuration
+from configuration import load_configuration, requires_aws_configuration
+
+if __name__ == "__main__" or requires_aws_configuration(os.environ):
     load_configuration()
 
 sys.dont_write_bytecode = True

@@ -16,6 +16,8 @@ test('production build inspection rejects local endpoints and secret values with
   const result=inspectReleaseBuild(root);
   assert.deepEqual(result.violations.map(item=>item.code),['loopback_url','google_api_key']);
   assert.ok(!JSON.stringify(result).includes('SYNTHETIC_SECRET'));
+  writeFileSync(join(root,'assets','authorization.js'),'const key="AQ.'+'X'.repeat(100)+'";');
+  assert.ok(inspectReleaseBuild(root).violations.some(item=>item.code==='google_authorization_key'));
   symlinkSync(join(root,'index.html'),join(root,'unexpected.html'));
   assert.ok(inspectReleaseBuild(root).violations.some(item=>item.code==='unexpected_symlink'));
  } finally {rmSync(root,{recursive:true,force:true});}

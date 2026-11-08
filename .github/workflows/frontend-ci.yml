@@ -45,7 +45,10 @@ jobs:
           python-version: '3.12'
 
       - name: Install Python API dependencies
-        run: pip install -r server/recsys/requirements.txt "jsonschema[format-nongpl]"
+        run: pip install -r server/recsys/requirements.txt -r scripts/aws/requirements.txt "jsonschema[format-nongpl]"
+
+      - name: Test AWS provider migration with synthetic credentials
+        run: python3 -m unittest discover -s tests -p test_aws_provider_secrets.py -v
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
