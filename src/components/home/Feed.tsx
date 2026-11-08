@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Film } from "lucide-react";
+import PosterImage from "../ui/PosterImage";
 import type { Edit } from "../../data/edits";
 import { publicSource } from "../../utils/publicSource";
 
@@ -20,8 +19,6 @@ export function VideoCard({
   onTagClick,
   compact = false,
 }: VideoCardProps) {
-  const [failedPoster, setFailedPoster] = useState<string | null>(null);
-
   const source = publicSource(edit);
 
   const handleClick = () => {
@@ -44,23 +41,7 @@ export function VideoCard({
         aria-label={`Watch ${edit.title}`}
       >
         <div className="thumbnail">
-          {!edit.poster || failedPoster === edit.poster ? (
-            <span
-              className="thumbnail-fallback"
-              role="img"
-              aria-label={`Thumbnail unavailable for ${edit.title}`}
-            >
-              <Film aria-hidden="true" />
-              <span>Thumbnail unavailable</span>
-            </span>
-          ) : (
-            <img
-              loading="lazy"
-              src={edit.poster}
-              alt=""
-              onError={() => setFailedPoster(edit.poster)}
-            />
-          )}
+          <PosterImage src={edit.poster} title={edit.title}/>
           {edit.format === "short" && (
             <span className="shorts-badge">Short</span>
           )}

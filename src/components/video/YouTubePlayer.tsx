@@ -8,6 +8,7 @@ import {
   useImperativeHandle,
 } from "react";
 import { ExternalLink, AlertTriangle, Play } from "lucide-react";
+import LoadingRing from "../ui/LoadingRing";
 import {
   playbackCoordinator,
   type PlaybackLease,
@@ -80,6 +81,7 @@ export interface YouTubePlayerProps {
 
 // One shared API request; unmounted players unsubscribe while it is loading.
 let isApiLoading = false;
+let cancelApiLoad: (() => void) | undefined;
 const readyCallbacks = new Set<{ ready: () => void; failed: () => void }>();
 export function loadYouTubeIframeApi(callback: () => void, failed = () => {}) {
   if (typeof window === "undefined") return () => {};
@@ -93,8 +95,15 @@ export function loadYouTubeIframeApi(callback: () => void, failed = () => {}) {
     isApiLoading = true;
     const previousHandler = window.onYouTubeIframeAPIReady;
     const script = document.createElement("script");
+    let finished = false;
+    const timer = window.setTimeout(() => { script.remove?.(); finish(false); }, 18000);
     const finish = (success: boolean) => {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timer);
       isApiLoading = false;
+      cancelApiLoad = undefined;
+      if (window.onYouTubeIframeAPIReady === handleReady) window.onYouTubeIframeAPIReady = previousHandler;
       const callbacks = [...readyCallbacks];
       readyCallbacks.clear();
       for (const cb of callbacks) {
@@ -105,7 +114,7 @@ export function loadYouTubeIframeApi(callback: () => void, failed = () => {}) {
         }
       }
     };
-    window.onYouTubeIframeAPIReady = () => {
+    const handleReady = () => {
       try {
         previousHandler?.();
       } catch {
@@ -114,16 +123,19 @@ export function loadYouTubeIframeApi(callback: () => void, failed = () => {}) {
         finish(true);
       }
     };
+    window.onYouTubeIframeAPIReady = handleReady;
     script.src = "https://www.youtube.com/iframe_api";
     script.async = true;
     script.onerror = () => {
-      script.remove();
+      script.remove?.();
       finish(false);
     };
+    cancelApiLoad = () => { script.remove?.(); finish(false); };
     document.head.appendChild(script);
   }
   return () => {
     readyCallbacks.delete(subscription);
+    if (!readyCallbacks.size) cancelApiLoad?.();
   };
 }
 
@@ -171,8 +183,10 @@ export const YouTubePlayer = forwardRef<
 
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [failureCode, setFailureCode] = useState<number | null>(null);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
 
   // Keep callback props in stable refs to avoid recreating player when handlers change (FIX G)
   const onReadyRef = useRef(onReady);
@@ -264,6 +278,7 @@ export const YouTubePlayer = forwardRef<
     let pendingStart = false;
     let destroyed = false;
     let startupTimer: number | undefined;
+    let bufferingTimer: number | undefined;
     if (autoStart.current.videoId !== videoId)
       autoStart.current = { videoId, allowed: true };
     const destroy = () => {
@@ -277,8 +292,10 @@ export const YouTubePlayer = forwardRef<
     };
     setHasError(false);
     setErrorMessage("");
+    setFailureCode(null);
     setAutoplayBlocked(false);
     setIsReady(false);
+    setIsBuffering(false);
     const pause = () => {
       if (disposed) {
         try {
@@ -330,22 +347,21 @@ export const YouTubePlayer = forwardRef<
     const failed = (code: number, message: string) => {
       if (disposed) return;
       window.clearTimeout(startupTimer);
+      window.clearTimeout(bufferingTimer);
+      setIsBuffering(false);
       pendingStart = false;
       pause();
       setHasError(true);
       setErrorMessage(message);
+      setFailureCode(code);
       onErrorRef.current?.(code, message);
-      if (iframeReferrerPolicy) {
-        disposed = true;
-        destroy();
-        containerRef.current?.replaceChildren();
-      }
+      disposed = true;
+      destroy();
+      containerRef.current?.replaceChildren();
     };
-    if (iframeReferrerPolicy) {
-      startupTimer = window.setTimeout(() => {
-        failed(0, "YouTube did not load the player. Open the video on YouTube or retry.");
-      }, 10000);
-    }
+    startupTimer = window.setTimeout(() => {
+      failed(0, "This video is taking longer to load. Try again or watch it on YouTube.");
+    }, 18000);
     const play = () => {
       if (!allowed() || !instance) return;
       pendingStart = true;
@@ -361,7 +377,7 @@ export const YouTubePlayer = forwardRef<
         if (disposed || !containerRef.current) return;
         if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
           queueMicrotask(() =>
-            failed(2, "Invalid YouTube video ID parameter."),
+            failed(2, "This YouTube link isn't valid. Try another video."),
           );
           return;
         }
@@ -410,6 +426,10 @@ export const YouTubePlayer = forwardRef<
               },
               onStateChange: (event: { data: number }) => {
                 if (!current()) return;
+                window.clearTimeout(bufferingTimer);
+                setIsBuffering(event.data === 3);
+                if (event.data === 3) bufferingTimer = window.setTimeout(() =>
+                  failed(0, "Playback stopped loading. Check your connection and retry, or watch on YouTube."), 20000);
                 if (event.data === 1) {
                   pendingStart = false;
                   if (!allowed() || (lease && !lease.playing())) {
@@ -430,14 +450,14 @@ export const YouTubePlayer = forwardRef<
                 const code = event.data;
                 const message =
                   code === 100
-                    ? "This video has been removed or marked private by its creator."
+                    ? "This edit isn't available. It may have been removed or made private."
                     : code === 101 || code === 150
-                      ? "The creator of this video does not allow embedded playback outside YouTube."
+                      ? "This video can't play here. You can watch it on YouTube."
                       : code === 153
-                        ? "YouTube could not verify this embedded player's referrer."
+                        ? "YouTube couldn't start playback here. Try again or watch it on YouTube."
                         : code === 2
-                          ? "Invalid YouTube video ID parameter."
-                          : "YouTube could not play this video in the embedded player.";
+                          ? "This YouTube link isn't valid. Try another video."
+                          : "We couldn't play this video. Try again or watch it on YouTube.";
                 failed(code, message);
               },
               onAutoplayBlocked: blocked,
@@ -445,7 +465,7 @@ export const YouTubePlayer = forwardRef<
           });
           playerRef.current = instance;
         } catch {
-          failed(0, "Failed to initialize YouTube embedded player.");
+          failed(0, "We couldn't open this video. Try again or watch it on YouTube.");
         }
       },
       () =>
@@ -461,6 +481,7 @@ export const YouTubePlayer = forwardRef<
     return () => {
       disposed = true;
       window.clearTimeout(startupTimer);
+      window.clearTimeout(bufferingTimer);
       cancelReady();
       document.removeEventListener("visibilitychange", hidden);
       pendingStart = false;
@@ -548,6 +569,8 @@ export const YouTubePlayer = forwardRef<
         }}
       />
 
+      {(!isReady || isBuffering) && !hasError && <div className={`media-loading${isReady ? " media-loading--buffering" : ""}`}><LoadingRing label={isReady ? "Buffering video" : "Loading video"}/></div>}
+
       {/* Autoplay Blocked Overlay */}
       {autoplayBlocked && !hasError && (
         <div
@@ -632,7 +655,7 @@ export const YouTubePlayer = forwardRef<
           >
             {errorMessage}
           </p>
-          <button
+          {![2, 100, 101, 150].includes(failureCode ?? 0) && <button
             type="button"
             className="primary watch"
             onClick={() => {
@@ -641,8 +664,8 @@ export const YouTubePlayer = forwardRef<
             }}
           >
             Retry playback
-          </button>
-          <a
+          </button>}
+          {failureCode !== 2 && <a
             href={watchUrl}
             target="_blank"
             rel="noopener noreferrer"
@@ -655,7 +678,7 @@ export const YouTubePlayer = forwardRef<
             }}
           >
             Watch on YouTube <ExternalLink size={16} />
-          </a>
+          </a>}
         </div>
       )}
     </div>

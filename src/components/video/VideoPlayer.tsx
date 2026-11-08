@@ -17,6 +17,9 @@ import {
 import type { Edit } from "../../data/edits";
 import { validLoop, loopSeek } from "../../data/logic.js";
 import { YouTubePlayer } from "./YouTubePlayer";
+import LoadingRing from "../ui/LoadingRing";
+import ProductState from "../ui/ProductState";
+import { useMediaWaitTimeout } from "../../hooks/useMediaWaitTimeout";
 import {
   allowsAutoplay,
   useNativePlayback,
@@ -75,6 +78,11 @@ function VideoPlayerSession({
   const overlayActiveRef = useRef(!!isOverlayActive);
   overlayActiveRef.current = !!isOverlayActive;
   const isYouTube = edit.sourceType === "youtube_embed";
+  useMediaWaitTimeout(waiting && !isYouTube, `${edit.id}:${edit.source}`, () => {
+    playback.pause();
+    setWaiting(false);
+    setError("This video is taking longer to load. Check your connection and try again, or choose another edit.");
+  });
   const playback = useNativePlayback(video, `${edit.id}:${edit.source}`, {
     enabled: !isYouTube,
     allowed: !isOverlayActive,
@@ -250,8 +258,10 @@ function VideoPlayerSession({
         muted={muted}
         playsInline
         preload="metadata"
+        onLoadStart={() => setWaiting(true)}
         onLoadedMetadata={() => {
           setError("");
+          setWaiting(false);
           const v = video.current!;
           setDuration(v.duration);
           if (v.videoWidth > 0 && v.videoHeight > 0) {
@@ -282,9 +292,12 @@ function VideoPlayerSession({
           } else setPlaying(false);
         }}
         onWaiting={() => setWaiting(true)}
-        onPlaying={() => setWaiting(false)}
+        onCanPlay={() => { setWaiting(false); setError(""); }}
+        onPlaying={() => { setWaiting(false); setError(""); }}
         onError={() => {
-          setError("Video unavailable. Retry to load this clip.");
+          setError(video.current?.error?.code === 4
+            ? "This video format can't play in this browser. Try another edit."
+            : "We couldn't load this edit. It may be unavailable, or the connection was interrupted. Try again or choose another edit.");
           setWaiting(false);
         }}
       />
@@ -327,22 +340,9 @@ function VideoPlayerSession({
           {playing ? "Pause" : "Watch Now"}
         </button>
       </div>
-      {(error || waiting) && (
-        <div role="status" className="player-status">
-          {error || "Buffering…"}
-          {error && (
-            <button
-              onClick={() => {
-                setError("");
-                setWaiting(true);
-                video.current!.load();
-              }}
-            >
-              Retry video
-            </button>
-          )}
-        </div>
-      )}
+      {waiting && !error && <div className="media-loading media-loading--buffering"><LoadingRing label={duration ? "Buffering video" : "Loading video"}/></div>}
+      {error && <div className="media-failure"><ProductState kind="error" title="This edit couldn't play" description={error}
+        action={{ label: "Retry video", onClick: () => { setError(""); setWaiting(true); video.current!.load(); } }}/></div>}
       <div className="player-bottom">
         {notice && (
           <p role="status" className="player-notice">

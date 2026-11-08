@@ -236,9 +236,10 @@ test("STAGE4 component: late API readiness after unmount never creates a player"
     ),
   );
   assert.equal(document.head.childNodes.length, 1);
+  const lateReady = window.onYouTubeIframeAPIReady;
   await env.cleanup();
   const yt = installYT();
-  window.onYouTubeIframeAPIReady();
+  lateReady();
   assert.equal(yt.length, 0);
 });
 

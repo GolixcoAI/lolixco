@@ -1,3 +1,5 @@
+@import "../components/ui/feedback.css";
+
 :root {
   font-family: Inter, Arial, sans-serif;
   color: #f8f9fa;
@@ -725,10 +727,10 @@ main {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.04) 50%,
+    rgba(235, 230, 173, 0.065) 50%,
     transparent 100%
   );
-  animation: skeleton-shimmer 1.4s infinite linear;
+  animation: skeleton-shimmer 2.2s infinite ease-in-out;
 }
 @keyframes skeleton-shimmer {
   0% { transform: translateX(-100%); }
@@ -754,10 +756,10 @@ main {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.03) 50%,
+    rgba(235, 230, 173, 0.045) 50%,
     transparent 100%
   );
-  animation: skeleton-shimmer 1.4s infinite linear;
+  animation: skeleton-shimmer 2.2s infinite ease-in-out;
 }
 .skeleton-title {
   height: 16px;
@@ -2221,3 +2223,9 @@ dialog .fine-print {
 @media (prefers-reduced-motion: reduce) {
   .hero-info { transition: none; }
 }
+
+.immersion-playback-notice { flex-basis: 100%; margin: 0 0 8px; font-size: .8rem; line-height: 1.45; color: #c4cbd6; }
+.youtube-error-fallback { gap: .6rem; }
+.youtube-error-fallback .primary { min-height: 44px; }
+.shorts-error-state.product-state { border: 0; border-radius: 0; }
+.shorts-error-state.product-state p { color: #b7c0cc; }
