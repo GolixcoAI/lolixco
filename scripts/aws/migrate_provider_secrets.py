@@ -56,7 +56,10 @@ def read_local_keys(path, check_git=True):
     return validate_keys(values)
 
 
-def backend_trust(account, region):
+def backend_trust(account, region, service="ecs"):
+    if service == "lambda":
+        return {"Version": "2012-10-17", "Statement": [{"Effect": "Allow",
+            "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}]}
     return {"Version": "2012-10-17", "Statement": [{
         "Effect": "Allow", "Principal": {"Service": "ecs-tasks.amazonaws.com"},
         "Action": "sts:AssumeRole", "Condition": {
@@ -66,8 +69,8 @@ def backend_trust(account, region):
     }]}
 
 
-def ensure_backend_role(iam, account, region):
-    trust = backend_trust(account, region)
+def ensure_backend_role(iam, account, region, service="ecs"):
+    trust = backend_trust(account, region, service)
     try:
         role = iam.get_role(RoleName=ROLE_NAME)["Role"]
     except iam.exceptions.NoSuchEntityException:
@@ -167,6 +170,7 @@ def main(argv=None):
     parser.add_argument("--profile")
     parser.add_argument("--region", required=True)
     parser.add_argument("--account", required=True)
+    parser.add_argument("--backend-service", choices=("ecs", "lambda"), default="ecs")
     parser.add_argument("--validate-only", action="store_true")
     args = parser.parse_args(argv)
     try:
@@ -180,7 +184,7 @@ def main(argv=None):
         if identity["Account"] != args.account:
             raise SecretConfigurationError("AWS account differs from the requested deployment account.")
         iam = aws_client(session, "iam", args.region)
-        role = ensure_backend_role(iam, args.account, args.region)
+        role = ensure_backend_role(iam, args.account, args.region, args.backend_service)
         result = migrate_values(aws_client(session, "secretsmanager", args.region), iam, role, values)
         print(json.dumps(result))
         return 0

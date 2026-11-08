@@ -958,7 +958,7 @@ export default function App({
         )}
         <footer>
           <span className="footer-copy">Great edits. Fresh perspectives.</span>
-          <div className="footer-links"><a href="/shorts">Shorts</a><a href="/creator-studio">Creator Studio</a><a href="/immersion">Immersion</a><a href="/help">Help & Support</a><a href="/rights">Copyright & Rights</a><a href="/terms">Terms of Use</a><a href="/privacy">Privacy Policy</a><a href="/beta">Public Beta</a></div>
+          <div className="footer-links"><a href="/shorts">Shorts</a><a href="/creator-studio">Creator Studio</a><a href="/immersion">Immersion</a><a href="/help">Help & Support</a><a href="/rights">Copyright & Rights</a><a href="/terms">Terms of Use</a><a href="/privacy">Privacy Policy</a><a href="/beta">Public Beta</a><a href="mailto:hello@golixco.com">Contact</a></div>
         </footer>
       </main>
       {activeShort && !immersionOpen && (

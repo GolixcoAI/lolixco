@@ -48,12 +48,18 @@ class GeminiVideoProvider:
         self._opener = urllib.request.build_opener(NoRedirect())
         self._discovery_lock = threading.Lock()
         self._discovery = None
+        self._generation_requests = 0
 
     @property
     def is_available(self):
         return bool(self.api_key) and self.mode != "local_only"
 
     def _request(self, path, timeout, payload=None):
+        if payload is not None and ":generateContent" in path:
+            cap = os.environ.get("LOLIXCO_GEMINI_MAX_GENERATIONS")
+            if cap and self._generation_requests >= int(cap):
+                raise ProviderError("quota_exceeded", "The bounded Gemini request allowance for this job was reached.")
+            self._generation_requests += 1
         headers = {"x-goog-api-key": self.api_key, "Accept": "application/json"}
         body = None
         if payload is not None:

@@ -115,6 +115,8 @@ def run_analysis(job, report_root, work_root, staging_root):
                 PYTHONDONTWRITEBYTECODE="1", OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1",
                 NUMBA_NUM_THREADS="2", TMPDIR=workspace, LOLIXCO_DNA_STATE_PARENT=workspace,
             )
+            if "LOLIXCO_GEMINI_MAX_GENERATIONS" in os.environ:
+                environment["LOLIXCO_GEMINI_MAX_GENERATIONS"] = os.environ["LOLIXCO_GEMINI_MAX_GENERATIONS"]
             if is_remote:
                 # The opt-in worker receives only the dedicated server setting and credential.
                 environment.update({

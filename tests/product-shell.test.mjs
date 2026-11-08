@@ -41,13 +41,13 @@ test('product navigation has beta branding, real support and no Settings placeho
  assert.ok(header.includes('aria-label="Help &amp; Support"'));
 });
 
-test('Help states exact limits, incomplete-score policy and provider terms without an unverified mailto', () => {
+test('Help states exact limits, incomplete-score policy and provider terms with owner-verified support contact', () => {
  const html=renderToStaticMarkup(React.createElement(HelpSupport));
  assert.ok(html.includes('100 MiB (104,857,600 bytes)'));
  assert.ok(html.includes('Missing scores are not zeroes'));
  assert.ok(html.includes('https://ai.google.dev/gemini-api/terms'));
  assert.ok(html.includes('?view=studio&amp;privacy=processing'));
- assert.equal(SUPPORT_CONTACT.active,false);
- assert.ok(!html.includes('mailto:'));
+ assert.ok(!("active" in SUPPORT_CONTACT));
+ assert.ok(html.includes('href="mailto:support@golixco.com"'));
  assert.equal((html.match(/<dt>/g)||[]).length,6);
 });

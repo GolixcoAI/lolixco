@@ -31,6 +31,7 @@ type Snapshot = {
 };
 type Health = {
  version: string;
+ direct_upload?: boolean;
  media_limits?: typeof DEFAULT_MEDIA_LIMITS;
  provider?: Provider;
 };
@@ -93,6 +94,25 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
  }
 }
 
+async function uploadPrivateFile(file: File, signal: AbortSignal) {
+ const media = await api<{id: string; name: string; video: boolean; upload: {url: string; fields: Record<string, string>}}>('media/presign', {
+  method: 'POST', body: JSON.stringify({name: file.name, size: file.size}), signal,
+ });
+ const form = new FormData();
+ for (const [name, value] of Object.entries(media.upload.fields)) form.append(name, value);
+ form.append('file', file);
+ const controller = new AbortController();
+ const abort = () => controller.abort();
+ signal.addEventListener('abort', abort, {once:true});
+ if (signal.aborted) abort();
+ const timer = setTimeout(abort, 150_000);
+ try {
+  const result = await fetch(media.upload.url, {method:'POST', body:form, credentials:'omit', signal:controller.signal});
+  if (!result.ok) throw new LocalRequestError('The private upload did not finish. Please try again.', result.status);
+  return media;
+ } finally {clearTimeout(timer); signal.removeEventListener('abort', abort);}
+}
+
 function setJobLocation(job: string) {
  const url = new URL(location.href);
  if (job) url.searchParams.set('analysisJob', job);
@@ -136,7 +156,7 @@ export function useLocalAnalyzer() {
  const [error, setError] = useState('');
  const [job, setJob] = useState(() => {
   const id = new URLSearchParams(location.search).get('analysisJob') || '';
-  return enabled && /^job_\d+_[a-f0-9]{6}$/.test(id) ? id : '';
+  return enabled && /^job_\d+_[a-f0-9]{6,32}$/.test(id) ? id : '';
  });
  const [starting, setStarting] = useState(false);
  const [uploading, setUploading] = useState(false);
@@ -155,6 +175,7 @@ export function useLocalAnalyzer() {
  const uploadController = useRef<AbortController | null>(null);
  const mounted = useRef(true);
  const lifecycle = useRef(0);
+ const directUpload = useRef(false);
 
  async function refresh() {
   if (!enabled) return;
@@ -165,6 +186,7 @@ export function useLocalAnalyzer() {
    const health = await api<Health>('health');
    if (health.version !== '8.0.0') throw Error('Analysis is temporarily unavailable.');
    if (healthGeneration.current !== token) return;
+   directUpload.current = health.direct_upload === true;
    setReady(true);
    setProvider(health.provider ?? unconfigured);
    setMediaLimits(health.media_limits ?? DEFAULT_MEDIA_LIMITS);
@@ -286,7 +308,7 @@ export function useLocalAnalyzer() {
   };
   const poll = async () => {
    await update();
-   if (current() && active.current === job && failures < 3) timer = setTimeout(poll, failures ? 1500 : 900);
+   if (current() && active.current === job && failures < 3) timer = setTimeout(poll, failures ? 4000 : directUpload.current ? 3000 : 900);
   };
   stream.onmessage = () => {void update();};
   stream.onerror = () => stream.close();
@@ -327,7 +349,7 @@ export function useLocalAnalyzer() {
     setUploading(true);
     uploadController.current = new AbortController();
     try {
-     const uploaded = await api<{id: string; name: string; video: unknown}>('media', {
+     const uploaded = directUpload.current ? await uploadPrivateFile(source.file, uploadController.current.signal) : await api<{id: string; name: string; video: unknown}>('media', {
       method: 'POST',
       body: source.file,
       headers: {'Content-Type': 'application/octet-stream', 'X-Media-Name': encodeURIComponent(source.file.name)},
@@ -490,6 +512,6 @@ export function useLocalAnalyzer() {
  return {
   busy, cancel, cancelling, checking, cleaning, clear, connectionLost, deleteReport, deleteStaged, dismissResult, enabled, error, events, files,
   inspectYoutube, liveJobId: startedHere.current ? job : undefined, mediaLimits, provider,
-  ready, refresh, reports, retryConnection, snapshot, staged: staged || snapshot?.staged_media, start, startCancelled, uploading,
+  ready, refresh, reports, retryConnection, snapshot, staged: staged || snapshot?.staged_media, start, startCancelled, uploading, cloud: directUpload.current,
  };
 }

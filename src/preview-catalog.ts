@@ -1,5 +1,7 @@
-import type { Edit } from "./data/edits";
-export const previewCatalog: Edit[] = [
+import type {Edit} from "./data/edits";
+import {hostedCatalog} from "./data/hosted-catalog";
+import {discoveryOrder} from "./utils/editOfTheMoment";
+export const youtubeCatalog: Edit[] = [
   {
     "id": 100,
     "title": "Toji Fushiguro — Sorcerer Killer [Blu-Ray AMV]",
@@ -458,38 +460,6 @@ export const previewCatalog: Edit[] = [
     "sourceUrl": "https://www.youtube.com/watch?v=Qx3IrEUvflE"
   },
   {
-    "id": 202,
-    "title": "Valorant — Radiant Clutch [4K Gameplay Edit]",
-    "category": "Gaming",
-    "tags": [
-      "gaming",
-      "valorant",
-      "riot-games",
-      "esports",
-      "montage",
-      "clutch",
-      "4k",
-      "sniper",
-      "shorts",
-      "valorantedit"
-    ],
-    "description": "Crisp 4K tactical gameplay montage highlighting Operator flick shots and ability combos in Riot's competitive shooter Valorant.",
-    "creator": "Daily Palworld",
-    "poster": "https://i.ytimg.com/vi/KY0xrjzfFLA/maxresdefault.jpg",
-    "source": "https://www.youtube.com/watch?v=KY0xrjzfFLA",
-    "duration": "0:34",
-    "trending": false,
-    "format": "short",
-    "fandomIds": [
-      "valorant"
-    ],
-    "sourceType": "youtube_embed",
-    "youtubeVideoId": "KY0xrjzfFLA",
-    "channelTitle": "Daily Palworld",
-    "channelId": "UC2kGjTK-URq9Ppp4QCAOKZQ",
-    "sourceUrl": "https://www.youtube.com/watch?v=KY0xrjzfFLA"
-  },
-  {
     "id": 203,
     "title": "GTA 6 — Vice City Hype [Raya Slowed Edit]",
     "category": "Gaming",
@@ -851,3 +821,4 @@ export const previewCatalog: Edit[] = [
     "sourceUrl": "https://www.youtube.com/watch?v=W4E_UW0r6FA"
   }
 ];
+export const previewCatalog: (Edit & {hashtags?: string[]})[] = [...youtubeCatalog, ...hostedCatalog].sort((a,b)=>discoveryOrder(a.id)-discoveryOrder(b.id));

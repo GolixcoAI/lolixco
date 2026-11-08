@@ -90,7 +90,7 @@ export default function HelpSupport() {
       <p>Your remembered processing choice applies to future analyses in this browser. You can change it below. Changing your choice cannot undo processing that has already happened.</p>
       <a className="help-action" href={`${base}?view=studio&privacy=processing`}>Change analysis privacy choice <ArrowUpRight size={16} aria-hidden="true" /></a>
       <details><summary>How long are uploads and reports kept?</summary>
-        <p>Temporary uploads expire after one hour when they are no longer being analyzed. You can delete a temporary upload from its project controls. Prepared analysis copies are removed after processing or cancellation. Saved reports remain until deleted; export a copy if you want to keep one.</p>
+        <p>On the hosted beta, upload access expires after one hour and report access after 24 hours. Expired stored files are swept every 15 minutes, with a one-day storage lifecycle backup. Prepared analysis copies are removed after processing or cancellation. Export your report to keep it, or delete private copies sooner from their project controls.</p>
         <p>External processing follows the terms for the configured Google service. Creating a temporary copy does not promise zero retention by a third party. Read <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener noreferrer">Google's Gemini API terms</a> and <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google's privacy policy</a>.</p>
       </details>
       <details><summary>What happens when I analyze a public YouTube link?</summary>
@@ -108,10 +108,8 @@ export default function HelpSupport() {
     </section>
 
     <section id="contact" className="help-section help-contact" aria-labelledby="contact-heading">
-      <h2 id="contact-heading">Need more help?</h2>
-      {SUPPORT_CONTACT.active
-        ? <><p>For questions about Lolixco, contact our support team. Avoid attaching private videos unless requested.</p><a className="help-action" href={`mailto:${SUPPORT_CONTACT.email}`}>{SUPPORT_CONTACT.email} <ArrowUpRight size={16} aria-hidden="true" /></a></>
-        : <p>Email support is being prepared. For now, use the troubleshooting guidance above. A contact address will appear here when it is ready to receive messages.</p>}
+      <h2 id="contact-heading">Need help?</h2>
+      <p>Contact our support team. Avoid attaching private videos unless requested.</p><a className="help-action" href={`mailto:${SUPPORT_CONTACT.email}`}>{SUPPORT_CONTACT.email} <ArrowUpRight size={16} aria-hidden="true" /></a>
     </section>
   </section>;
 }

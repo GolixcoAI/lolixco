@@ -489,7 +489,7 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
      <button disabled={sourceLocked || loading} onClick={() => json.current?.click()}>{loading ? 'Reading report…' : 'Import analysis report'}</button>
      {analyzer.staged && !analyzer.busy && <button disabled={analyzer.cleaning} onClick={() => void deleteTemporary()}>Delete temporary media</button>}
      {analyzer.reports && !analyzer.busy && <button disabled={analyzer.cleaning} onClick={() => void analyzer.deleteReport()}>Delete saved report</button>}
-     <p className="studio-note">Temporary uploads are removed after one hour when no analysis is running. Delete them sooner here. Reports remain until you delete them.</p>
+     <p className="studio-note">{analyzer.cloud ? 'Upload access expires after one hour and report access after 24 hours. Expired stored files are swept every 15 minutes, with a one-day storage lifecycle backup. Export a report to keep it, or delete it sooner here.' : 'Temporary uploads are removed after one hour when no analysis is running. Delete them sooner here. Reports remain until you delete them.'}</p>
     </Panel>
    </CompactSection>
   </div>
