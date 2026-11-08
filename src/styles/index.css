@@ -2229,3 +2229,18 @@ dialog .fine-print {
 .youtube-error-fallback .primary { min-height: 44px; }
 .shorts-error-state.product-state { border: 0; border-radius: 0; }
 .shorts-error-state.product-state p { color: #b7c0cc; }
+
+/* Loading and recovery replace the cinematic overlay rather than competing with it. */
+.player:has(.media-loading, .youtube-error-fallback, .media-failure) .hero-info { visibility: hidden; }
+.player:has(.youtube-error-fallback) .youtube-context-controls { display: none; }
+.youtube-error-fallback { overflow-y: auto; }
+.youtube-fallback-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; width: 100%; }
+.youtube-fallback-actions > :is(button,a) { margin: 0 !important; min-height: 44px; }
+@media(max-width:767px) {
+  .youtube-error-fallback { padding: 12px !important; gap: 7px; }
+  .youtube-error-fallback > svg { display: none; }
+  .youtube-error-fallback h3 { font-size: 14px !important; line-height: 1.25; margin: 0 !important; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; flex-shrink: 0; }
+  .youtube-error-fallback p { font-size: 12px !important; line-height: 1.4; margin: 0 !important; flex-shrink: 0; }
+  .youtube-fallback-actions { flex-shrink: 0; }
+  .youtube-fallback-actions > :is(button,a) { padding: 8px 10px !important; font-size: 12px; }
+}

@@ -655,6 +655,7 @@ export const YouTubePlayer = forwardRef<
           >
             {errorMessage}
           </p>
+          <div className="youtube-fallback-actions">
           {![2, 100, 101, 150].includes(failureCode ?? 0) && <button
             type="button"
             className="primary watch"
@@ -679,6 +680,7 @@ export const YouTubePlayer = forwardRef<
           >
             Watch on YouTube <ExternalLink size={16} />
           </a>}
+          </div>
         </div>
       )}
     </div>
