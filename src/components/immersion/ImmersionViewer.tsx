@@ -22,6 +22,8 @@ import {
 import YouTubePlayer, {
   type YouTubePlayerHandle,
 } from "../video/YouTubePlayer";
+import LoadingRing from "../ui/LoadingRing";
+import { useMediaWaitTimeout } from "../../hooks/useMediaWaitTimeout";
 import {
   X,
   Play,
@@ -64,6 +66,8 @@ export default function ImmersionViewer({
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useSessionAudio();
+  const [waiting, setWaiting] = useState(false);
+  const [skippedNotice, setSkippedNotice] = useState("");
 
   const currentEdit = session.currentEdit;
   const state = session.state;
@@ -77,6 +81,7 @@ export default function ImmersionViewer({
       enabled: !!currentEdit && !isYouTubeEmbed(currentEdit) && !isExhausted,
       scope,
       onPlaying: () => {
+        setWaiting(false);
         setIsPlaying(true);
         setAutoplayBlocked(false);
         setConsecutiveSkips(0);
@@ -93,6 +98,7 @@ export default function ImmersionViewer({
     setIsPlaying(false);
     setAutoplayBlocked(false);
     setResumeError(null);
+    setWaiting(false);
     if (
       currentEdit &&
       !isYouTubeEmbed(currentEdit) &&
@@ -206,6 +212,8 @@ export default function ImmersionViewer({
     playback.pause();
     ytPlayerRef.current?.pauseVideo();
     setIsPlaying(false);
+    setWaiting(false);
+    setSkippedNotice("That edit couldn't play. Moving to the next available edit.");
     const { nextEdit, nextState, exhausted } = skipUnavailableImmersionEdit(
       catalog,
       state,
@@ -221,6 +229,7 @@ export default function ImmersionViewer({
       setWantsPlayback(allowsAutoplay());
     }
   }, [catalog, consecutiveSkips, state, playback.pause]);
+  useMediaWaitTimeout(waiting, `${currentEdit?.id}:${currentEdit?.source}`, handlePlaybackError);
 
   // Toggle Fullscreen manually
   const handleToggleFullscreen = useCallback(() => {
@@ -289,10 +298,7 @@ export default function ImmersionViewer({
   ]);
 
   // Determine stage label
-  const stageLabel =
-    state.openingQueue.length > 0 || state.currentIndex < 3
-      ? `Opening (${state.currentIndex + 1}/3)`
-      : `Discovery (${state.currentIndex + 1})`;
+  const stageLabel = `Edit ${state.currentIndex + 1}`;
 
   const isPortrait = currentEdit?.format === "short";
   const isEmbed = currentEdit ? isYouTubeEmbed(currentEdit) : false;
@@ -366,11 +372,10 @@ export default function ImmersionViewer({
           <div className="immersion-prompt-overlay">
             <AlertCircle size={44} color="#f87171" />
             <h2 style={{ color: "#fff", margin: "4px 0" }}>
-              Queue Playback Complete
+              You've reached the end
             </h2>
             <p style={{ color: "rgba(255, 255, 255, 0.7)", maxWidth: 440 }}>
-              No more eligible edits could be loaded. You can restart Immersion
-              Mode or return to normal browsing.
+              There's nothing else to play right now. Restart Immersion or return to browsing.
             </p>
             <div style={{ display: "flex", gap: 12 }}>
               <button
@@ -434,6 +439,12 @@ export default function ImmersionViewer({
                 poster={currentEdit.poster}
                 muted={isMuted}
                 playsInline
+                preload="metadata"
+                onLoadStart={() => setWaiting(true)}
+                onLoadedMetadata={() => setWaiting(false)}
+                onWaiting={() => setWaiting(true)}
+                onCanPlay={() => setWaiting(false)}
+                onPlaying={() => setWaiting(false)}
                 style={{
                   width: "100%",
                   height: "100%",
@@ -444,6 +455,8 @@ export default function ImmersionViewer({
                 onError={handlePlaybackError}
               />
             )}
+
+            {waiting && !isEmbed && <div className="media-loading"><LoadingRing label="Loading video"/></div>}
 
             {autoplayBlocked && (
               <div className="immersion-prompt-overlay" role="status">
@@ -473,6 +486,7 @@ export default function ImmersionViewer({
 
       {/* Bottom Bar Controls & Discovery Tags */}
       <footer className="immersion-bottombar">
+        {skippedNotice && <p className="immersion-playback-notice" role="status">{skippedNotice}</p>}
         <div className="immersion-controls">
           <button
             type="button"
