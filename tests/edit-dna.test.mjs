@@ -1,9 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// CI uses the repository venv. The existing local research venv remains usable.
+const pythonBin = [
+  fileURLToPath(new URL("../.venv/bin/python3", import.meta.url)),
+  resolve(homedir(), ".venvs/lolixco-antigravity/bin/python3"),
+  "/usr/bin/python3",
+].find(existsSync);
 
 import {
   classifySyncDelta,
@@ -278,7 +286,6 @@ test("Lolixco Edit DNA — ASCII summary card generator", () => {
 
 test("Lolixco Edit DNA — Phase 2: Offline analyzer processes real video bytes", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
   const scriptPath = resolve(projectRoot, "scripts/edit-dna/offline_analyzer.py");
   const testVideo = resolve(projectRoot, "test-assets/benchmarks/bench_07_silent_video.mp4");
 
@@ -299,7 +306,6 @@ test("Lolixco Edit DNA — Phase 2: Offline analyzer processes real video bytes"
 
 test("Lolixco Edit DNA — Phase 2: Owner rating lab records and revises ratings", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
   const scriptPath = resolve(projectRoot, "scripts/edit-dna/rating_lab.py");
   const ratingsPath = resolve(projectRoot, "data/edit-dna/synthetic_ratings.json");
 
@@ -362,7 +368,6 @@ test("Lolixco Edit DNA — Phase 2: Owner rating lab records and revises ratings
 
 test("Lolixco Edit DNA — Phase 2: Web Lab API endpoints and anti-bias blind reveal", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const testScript = `
 import sys
@@ -423,7 +428,6 @@ print("WEB_LAB_TEST_PASS")
 
 test("Lolixco Edit DNA — Phase 3: Editorial annotation extracts timestamp intervals & criteria tags", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const testScript = `
 import sys
@@ -455,7 +459,6 @@ print("EDITORIAL_ANNOTATOR_PASS")
 
 test("Lolixco Edit DNA — Phase 3: Personalized preference model trains on 11 real reviews without collapsing", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const testScript = `
 import sys
@@ -510,7 +513,6 @@ print("PREFERENCE_LEARNER_PASS")
 
 test("Lolixco Edit DNA — Phase 4: Privacy audit guarantees zero private ratings or notes are tracked or leaked", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -523,7 +525,6 @@ test("Lolixco Edit DNA — Phase 4: Privacy audit guarantees zero private rating
 
 test("Lolixco Edit DNA — Phase 4: Honest model validation audits weight sensitivity & empirical coverage", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -538,7 +539,6 @@ test("Lolixco Edit DNA — Phase 4: Honest model validation audits weight sensit
 
 test("Lolixco Edit DNA — Phase 4: Permissioned recognition engine identifies source footage, music variants, and abstains on unknowns", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -553,7 +553,6 @@ test("Lolixco Edit DNA — Phase 4: Permissioned recognition engine identifies s
 
 test("Lolixco Edit DNA — Phase 4: Genuine real-world media recognition experiment with ORB keypoint correspondence", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -567,7 +566,6 @@ test("Lolixco Edit DNA — Phase 4: Genuine real-world media recognition experim
 
 test("Lolixco Edit DNA — Phase 4: Multi-source mixed edit analyzer generates segment-level timeline & holistic summary", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -583,7 +581,6 @@ test("Lolixco Edit DNA — Phase 4: Multi-source mixed edit analyzer generates s
 
 test("Lolixco Edit DNA — Phase 5: Gemini video provider abstraction & fallback handling", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -598,7 +595,6 @@ test("Lolixco Edit DNA — Phase 5: Gemini video provider abstraction & fallback
 
 test("Lolixco Edit DNA — Phase 5: Semantic visual representation benchmark evaluates blur, overlays & negatives", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -613,7 +609,6 @@ test("Lolixco Edit DNA — Phase 5: Semantic visual representation benchmark eva
 
 test("Lolixco Edit DNA — Phase 5: Real music identifier evaluates authorized master recordings & abstains on unknowns", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -629,7 +624,6 @@ test("Lolixco Edit DNA — Phase 5: Real music identifier evaluates authorized m
 
 test("Lolixco Edit DNA — Phase 5: Unified 5-part Edit DNA report separates facts, hypotheses, and unknowns", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -666,7 +660,6 @@ print("REPORT_SECTIONS_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 6: Evidence scoring engine withdraws subjective heuristics to NOT_YET_ASSESSED", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -701,7 +694,6 @@ print("PHASE6_EVIDENCE_SCORING_WITHDRAWAL_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 6: Music evidence resolver flags acoustic contradiction as CONFLICT and retracts false matches", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -736,7 +728,6 @@ print("PHASE6_MUSIC_CONFLICT_RESOLUTION_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 6: Cut/beat reconciliation accounts for shots vs transitions and evaluates multi-tempo grids", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -775,7 +766,6 @@ print("PHASE6_CUT_RHYTHM_RECONCILIATION_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 6: Honest evaluation framework computes LOOCV errors without false calibration claims", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -794,7 +784,6 @@ test("Lolixco Edit DNA — Phase 6: Honest evaluation framework computes LOOCV e
 
 test("Lolixco Edit DNA — Phase 6: Production Schema v6.0 validator enforces per-field status and provenance contract", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -807,7 +796,6 @@ test("Lolixco Edit DNA — Phase 6: Production Schema v6.0 validator enforces pe
 
 test("Lolixco Edit DNA — Phase 7: Seven rating dimensions strictly enforce ordering, identifiers, and bounds", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -875,7 +863,6 @@ print("PHASE7_SEVEN_DIMENSIONS_ORDER_AND_BOUNDS_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 7: Overall score eligibility withholding rule prevents fabricated grades", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -924,7 +911,6 @@ print("PHASE7_OVERALL_SCORE_ELIGIBILITY_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 7: Backward-compatible adapter converts v6.0.0 reports without data loss", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -979,7 +965,6 @@ print("PHASE7_V6_ADAPTER_BACKWARD_COMPAT_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 7: All nine safe demo fixtures validate against presentation contract", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1025,7 +1010,6 @@ print("PHASE7_ALL_9_DEMO_FIXTURES_VALIDATED")
 
 test("Lolixco Edit DNA — Phase 7: Presentation report contract integrity and Web Lab API compatibility", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1061,7 +1045,6 @@ print("PHASE7_REPORT_CONTRACT_INTEGRITY_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 8: Local analysis service health and inbox discovery endpoints", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1102,7 +1085,6 @@ print("PHASE8_SERVICE_HEALTH_AND_INBOX_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 8: Security boundaries reject unauthorized paths and directory traversal", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1136,7 +1118,6 @@ print("PHASE8_SECURITY_BOUNDARIES_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 8: Progressive event engine records real timestamps, latencies, and section events", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1185,7 +1166,6 @@ print("PHASE8_PROGRESSIVE_EVENTS_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 8: Job cancellation stops execution cleanly and cleans temporary assets", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1214,7 +1194,6 @@ print("PHASE8_JOB_CANCELLATION_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 8: End-to-end report generation outputs valid v6 and Phase 7 presentations", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1250,7 +1229,6 @@ print("PHASE8_DUAL_REPORT_GENERATION_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 8: Service hardening pass enforces restricted CORS and evidence wording", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1302,7 +1280,6 @@ print("PHASE8_HARDENING_AND_EVIDENCE_WORDING_VERIFIED")
 });
 
 test("Lolixco Edit DNA — Phase 8.1: Multi-grid rhythmic analysis evaluates 16th subdivisions, onsets & flash sync", () => {
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1371,7 +1348,6 @@ print("PHASE8_1_BEAT_SYNC_ENGINE_VERIFIED")
 });
 
 test("Lolixco Edit DNA — Phase 8.1: Host and origin validation middleware blocks unauthorized access", () => {
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1409,7 +1385,6 @@ print("PHASE8_1_HOST_ORIGIN_SECURITY_VERIFIED")
 });
 
 test("Lolixco Edit DNA — Phase 8.1: Thread-safe SSE events with monotonic IDs and resume cursor", () => {
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1455,7 +1430,6 @@ print("PHASE8_1_SSE_MONOTONIC_AND_CANCEL_VERIFIED")
 });
 
 test("Lolixco Edit DNA — Phase 8.1: Rhythm annotation submission and private owner feedback API", () => {
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1516,7 +1490,6 @@ print("PHASE8_1_ANNOTATION_API_VERIFIED")
 });
 
 test("Lolixco Edit DNA — Phase 9: Quality Engine full 7-dimension evaluation and Monte Carlo null model", () => {
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1617,7 +1590,6 @@ print("PHASE9_QUALITY_ENGINE_VERIFIED")
 });
 
 test("Lolixco Edit DNA — Phase 9: Quality discrimination across counterexamples (drift, flat pacing, strobe spam)", () => {
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1674,7 +1646,6 @@ print("PHASE9_DISCRIMINATION_VERIFIED")
 });
 
 test("Lolixco Edit DNA — Phase 9: Local service execution in quality_mode='phase9' delivers 7-dimension scoring", () => {
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1762,7 +1733,6 @@ print("PHASE9_SERVICE_SCORING_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 9: Timing engine rejects silence, zero threshold, and short clips (<= 1.0s)", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1809,7 +1779,6 @@ print("TIMING_SILENCE_AND_SHORT_CLIPS_REJECTED")
 
 test("Lolixco Edit DNA — Phase 9: Service statistical controls match reference null distributions and diagnostic label", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1858,7 +1827,6 @@ print("PHASE9_STATISTICAL_CONTROLS_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 9: Full service short-clip pipeline test with unassessed event stream and report exports", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -1958,7 +1926,6 @@ finally:
 
 test("Lolixco Edit DNA — Phase 9: Full service pipeline handles valid MP4 without audio track (-an), continues video measurements, marks audio unassessed", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
 
   const stdout = execFileSync(
     pythonBin,
@@ -2083,7 +2050,6 @@ finally:
 
 test("Lolixco Edit DNA — Phase 10: Media Inspector stream detection and edge-case classification (A through L)", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
   const stdout = execFileSync(
     pythonBin,
     [
@@ -2192,7 +2158,6 @@ print("MEDIA_INSPECTOR_EDGE_CASES_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 10: Full service pipeline handles audio-only (Case E) and black video (Case D)", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
   const stdout = execFileSync(
     pythonBin,
     [
@@ -2273,7 +2238,6 @@ print("SERVICE_AUDIO_ONLY_AND_BLACK_VID_VERIFIED")
 
 test("Lolixco Edit DNA — Phase 10: Ingestion endpoint, YouTube URL execution & frame detail guard", () => {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-  const pythonBin = "/home/rohan/.venvs/lolixco-antigravity/bin/python3";
   const stdout = execFileSync(
     pythonBin,
     [

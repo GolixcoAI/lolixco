@@ -47,6 +47,13 @@ jobs:
       - name: Install Python API dependencies
         run: pip install -r server/recsys/requirements.txt -r scripts/aws/requirements.txt "jsonschema[format-nongpl]"
 
+      - name: Install offline analyzer dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg libsndfile1
+          python3 -m venv .venv
+          .venv/bin/pip install -r scripts/local-dna/requirements.txt
+
       - name: Test AWS provider migration with synthetic credentials
         run: python3 -m unittest discover -s tests -p test_aws_provider_secrets.py -v
 
