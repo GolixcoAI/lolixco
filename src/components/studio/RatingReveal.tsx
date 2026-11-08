@@ -91,14 +91,14 @@ export default function RatingReveal({
  const motion = useRatingMotion({
   model, identity: demoActive ? 'synthetic' : receivedResultId || inputIdentity || 'studio',
   animate: demoActive || processing || !!receivedResultId, processing, finished, reduced, settled,
-  completionReaction: hasObservations ? 'REVIEW COMPLETE' : hasScores || localResult ? 'TECHNICAL COMPLETE' : 'REVIEW COMPLETE',
+  completionReaction: hasObservations ? 'REVIEW COMPLETE' : hasScores || localResult ? 'ANALYSIS COMPLETE' : 'REVIEW COMPLETE',
  });
  const { view } = motion;
  const reaction = (!processing && comicPreview) || view.reaction;
  const verdict = view.phase === 'complete' && actual !== null;
- const mode = demoActive || synthetic ? 'SYNTHETIC FIXTURE · SAMPLE SCORES'
-  : processing ? 'LIVE ANALYSIS' : experimental ? hasObservations ? 'EXPERIMENTAL SEMANTIC REVIEW' : hasScores ? 'EXPERIMENTAL TECHNICAL SCORES' : 'EXPERIMENTAL OBSERVATIONS'
-  : localResult && finished ? 'ANALYSIS RESULTS' : finished ? 'IMPORTED REPORT' : 'EDIT DNA · READY';
+ const mode = demoActive || synthetic ? 'ILLUSTRATIVE SAMPLE ASSESSMENT'
+  : processing ? 'Reviewing your edit' : experimental ? hasObservations ? 'Experimental AI Assessment' : hasScores ? 'Signal-based feedback' : 'Available observations'
+  : localResult && finished ? 'Your feedback' : finished ? 'Saved assessment' : 'Ready to analyze';
  const headline = verdict ? `${actual.toFixed(2)}/10` : processing ? <ProcessingLabel>Analysing</ProcessingLabel>
   : view.phase === 'checkpoint' || view.phase === 'finish' ? <ProcessingLabel>Presenting findings</ProcessingLabel>
   : finished ? 'Overall score unavailable' : 'Ready for analysis';
@@ -114,12 +114,12 @@ export default function RatingReveal({
    </div>
   </div>
   <div className="rpm-verdict">
-   <small>{verdict ? 'OVERALL EDIT SCORE' : view.index >= 0 && view.index < CATEGORY_LABELS.length ? CATEGORY_LABELS[view.index] : 'EDIT DNA ENGINE'}{view.phase === 'checkpoint' && !view.scored ? ' · EVIDENCE REVIEW' : ''}</small>
+   <small>{verdict ? 'OVERALL EDIT SCORE' : view.index >= 0 && view.index < CATEGORY_LABELS.length ? CATEGORY_LABELS[view.index] : 'Your assessment'}{view.phase === 'checkpoint' && !view.scored ? ' · EVIDENCE REVIEW' : ''}</small>
    <strong>{headline}</strong>
    {(demoActive || synthetic)
-    ? <span>Synthetic scores for visual review.</span>
+    ? <span>Sample scores, not an assessment of your edit.</span>
     : finished && actual === null && view.phase === 'complete'
-    ? <span>{hasScores ? hasObservations ? 'Review the experimental rubrics and evidence below.' : 'Review technical proxies and their evidence below.' : 'Review the available observations and evidence limits below.'}</span>
+    ? <span>{hasScores ? 'Review the available assessments and evidence below.' : 'More usable evidence is needed for a complete assessment.'}</span>
     : verdict && <span>Experimental mean of six supported assessments.</span>}
   </div>
   <p className="rating-accessible" aria-live="polite">
@@ -146,9 +146,6 @@ export default function RatingReveal({
        aria-valuenow={score} aria-valuetext={`${score.toFixed(2)} out of 10`}>
        <div ref={element => { motion.bars.current[i] = element; }}/>
       </div>}
-    {item.status === 'EXPERIMENTAL_SEMANTIC_SCORE' && <p className="rating-explanation">
-     Experimental audiovisual rubric. The evidence details show the reviewed scope and limitations.
-    </p>}
     {score === null && !!item.explanation && <p className="rating-explanation">{item.explanation}</p>}
     <details className="rating-dimension-details">
      <summary>Evidence details<span className="rating-accessible"> for {label}</span></summary>

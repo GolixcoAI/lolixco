@@ -1,6 +1,8 @@
 import {useEffect, useRef, useState} from 'react';
 import type {AnalysisEvent} from './analysisProgress';
 import {phase9Presentation, phase9Section, record} from './presentationV7';
+import {ANALYZER_ENABLED, analyzerApiPath, developerAnalyzerToolsEnabled} from '../../config/analyzerEndpoint';
+import {analysisFailure, connectionFailure} from './analysisMessages';
 
 class LocalRequestError extends Error {
  constructor(message: string, readonly status: number, readonly code?: string) {
@@ -45,11 +47,11 @@ export const DEFAULT_MEDIA_LIMITS = {
 
 const unavailable: Provider = {
  status: 'temporarily_unavailable',
- message: 'Connect to the local analyzer to check Gemini availability.',
+ message: 'AI feedback is temporarily unavailable.',
 };
 const unconfigured: Provider = {
  status: 'not_configured',
- message: 'Set GEMINI_API_KEY and enable public YouTube analysis on the local analyzer, then restart it.',
+ message: 'AI feedback is unavailable right now.',
 };
 const terminalStatuses = ['COMPLETE', 'FAILED', 'CANCELLED'];
 const visibleEvents = ['QUEUED', 'RUNNING', 'SECTION_COMPLETED', 'SECTION_UNASSESSED'];
@@ -63,19 +65,32 @@ function providerFailure(code?: string, message?: string): Provider | undefined 
 }
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
- const response = await fetch('/api/v8/' + path, {
-  ...options,
-  headers: {'Content-Type': 'application/json', ...options?.headers},
-  cache: 'no-store',
- });
- const body = await response.json().catch(() => null);
- if (!response.ok) {
-  const detail = body?.detail;
-  const message = typeof detail === 'string' ? detail : detail?.message;
-  throw new LocalRequestError(message || `Local service returned ${response.status}.`, response.status, body?.error_code ?? detail?.code);
+ const controller = new AbortController();
+ const abort = () => controller.abort();
+ options?.signal?.addEventListener('abort', abort, {once: true});
+ if (options?.signal?.aborted) controller.abort();
+ const timer = setTimeout(abort, path === 'media' ? 150_000 : 20_000);
+ try {
+  const response = await fetch(analyzerApiPath(path), {
+   ...options, signal: controller.signal,
+   headers: {'Content-Type': 'application/json', ...options?.headers}, cache: 'no-store',
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+   const detail = body?.detail;
+   const diagnostic = typeof detail === 'string' ? detail : detail?.message;
+   const code = body?.error_code ?? detail?.code;
+   throw new LocalRequestError(analysisFailure(code, typeof diagnostic === 'string' ? diagnostic : '', response.status, path), response.status, code);
+  }
+  if (body === null) throw new LocalRequestError('Analysis returned an incomplete response. Please try again.', 502);
+  return body;
+ } catch (failure) {
+  if (failure instanceof LocalRequestError || options?.signal?.aborted) throw failure;
+  throw new LocalRequestError(controller.signal.aborted ? analysisFailure('timeout') : connectionFailure(), controller.signal.aborted ? 408 : 0);
+ } finally {
+  clearTimeout(timer);
+  options?.signal?.removeEventListener('abort', abort);
  }
- if (body === null) throw Error('The local analyzer returned an unreadable response.');
- return body;
 }
 
 function setJobLocation(job: string) {
@@ -107,8 +122,11 @@ async function inspectYoutube(videoId: string, signal: AbortSignal) {
 }
 
 export function useLocalAnalyzer() {
- const enabled = import.meta.env.DEV && location.hostname === '127.0.0.1';
+ const enabled = ANALYZER_ENABLED;
  const [ready, setReady] = useState(false);
+ const [checking, setChecking] = useState(enabled);
+ const [connectionLost, setConnectionLost] = useState(false);
+ const [pollRevision, setPollRevision] = useState(0);
  const [provider, setProvider] = useState(unavailable);
  const [mediaLimits, setMediaLimits] = useState(DEFAULT_MEDIA_LIMITS);
  const [files, setFiles] = useState<{filename: string; size_bytes: number}[]>([]);
@@ -134,31 +152,44 @@ export function useLocalAnalyzer() {
  const cancelPending = useRef(false);
  const generation = useRef(0);
  const healthGeneration = useRef(0);
+ const uploadController = useRef<AbortController | null>(null);
+ const mounted = useRef(true);
+ const lifecycle = useRef(0);
 
  async function refresh() {
   if (!enabled) return;
   const token = ++healthGeneration.current;
-  setProvider({status:'connecting',message:'Checking Gemini configuration and model access.'});
+  setChecking(true);
+  setProvider({status:'connecting',message:'Checking analysis availability.'});
   try {
    const health = await api<Health>('health');
-   if (health.version !== '8.0.0') throw Error('Expected local analyzer v8.0.0.');
+   if (health.version !== '8.0.0') throw Error('Analysis is temporarily unavailable.');
    if (healthGeneration.current !== token) return;
    setReady(true);
    setProvider(health.provider ?? unconfigured);
    setMediaLimits(health.media_limits ?? DEFAULT_MEDIA_LIMITS);
-   const samples = await api<{files: typeof files}>('inbox').catch(() => ({files: []}));
+   const samples = developerAnalyzerToolsEnabled() ? await api<{files: typeof files}>('inbox').catch(() => ({files: []})) : {files: []};
    if (healthGeneration.current === token) setFiles(samples.files);
   } catch {
    if (healthGeneration.current !== token) return;
    setReady(false);
    setProvider(unavailable);
    setFiles([]);
+  } finally {
+   if (healthGeneration.current === token) setChecking(false);
   }
  }
 
  useEffect(() => {
+  mounted.current = true;
   void refresh();
-  return () => {healthGeneration.current++;};
+  return () => {
+   mounted.current = false;
+   lifecycle.current++;
+   healthGeneration.current++;
+   if (pending.current) cancelPending.current = true;
+   uploadController.current?.abort();
+  };
  }, [enabled]);
 
  useEffect(() => {
@@ -167,10 +198,11 @@ export function useLocalAnalyzer() {
   let timer: ReturnType<typeof setTimeout>;
   let inflight = false;
   let cursor = 0;
+  let failures = 0;
   const token = generation.current;
   const controller = new AbortController();
   const options = {signal: controller.signal};
-  const stream = new EventSource('/api/v8/jobs/' + job + '/events');
+  const stream = new EventSource(analyzerApiPath('jobs/' + job + '/events'));
   const current = () => alive && generation.current === token;
   const update = async () => {
    if (inflight || !current() || active.current !== job) return;
@@ -178,7 +210,8 @@ export function useLocalAnalyzer() {
    try {
     const result = await api<Snapshot>('jobs/' + job, options);
     if (!current()) return;
-    setSnapshot(result);
+    const safeError = result.error ? analysisFailure(result.error_code, result.error) : undefined;
+    setSnapshot({...result, error: safeError});
     const next: AnalysisEvent[] = [];
     const localPhase9 = result.quality_mode === 'phase9' && !result.youtube_video_id;
     for (const event of result.events.slice(cursor)) {
@@ -191,7 +224,12 @@ export function useLocalAnalyzer() {
     }
     cursor = result.events.length;
     if (next.length) setEvents(old => [...old, ...next]);
-    if (!terminalStatuses.includes(result.status)) return;
+    if (!terminalStatuses.includes(result.status)) {
+     failures = 0;
+     setConnectionLost(false);
+     setError('');
+     return;
+    }
     if (result.status === 'COMPLETE') {
      const [v6, presentation] = await Promise.all([
       api(`jobs/${job}/report/v6`, options),
@@ -215,23 +253,30 @@ export function useLocalAnalyzer() {
      setEvents(old => [...old, {job_id: job, type: 'COMPLETE', report}]);
     } else {
      const type = result.status as 'FAILED' | 'CANCELLED';
-     setEvents(old => [...old, {job_id: job, type, message: result.error || result.current_stage}]);
-     const failure = result.youtube_video_id ? providerFailure(result.error_code, result.error) : undefined;
+     setEvents(old => [...old, {job_id: job, type, message: safeError || (type === 'CANCELLED' ? 'Analysis cancelled. You can analyze this edit again.' : "We couldn't finish this analysis. Please try again.")}]);
+     const failure = result.youtube_video_id ? providerFailure(result.error_code, safeError) : undefined;
      if (failure) setProvider(failure);
     }
     active.current = '';
+    failures = 0;
+    setConnectionLost(false);
     cancelPending.current = false;
     setCancelling(false);
     setError('');
     stream.close();
    } catch (failure) {
     if (!current()) return;
-    setError(failure instanceof Error ? failure.message : 'Could not read analysis status.');
+    failures++;
+    setError(failure instanceof Error ? failure.message : connectionFailure());
+    if (failures >= 3) {setConnectionLost(true); stream.close();}
     if (failure instanceof LocalRequestError && [403, 404, 410].includes(failure.status)) {
      active.current = '';
      cancelPending.current = false;
      setCancelling(false);
      setJob('');
+     setSnapshot(null);
+     setEvents([]);
+     setReports(null);
      setJobLocation('');
      stream.close();
     }
@@ -241,7 +286,7 @@ export function useLocalAnalyzer() {
   };
   const poll = async () => {
    await update();
-   if (current() && active.current === job) timer = setTimeout(poll, 900);
+   if (current() && active.current === job && failures < 3) timer = setTimeout(poll, failures ? 1500 : 900);
   };
   stream.onmessage = () => {void update();};
   stream.onerror = () => stream.close();
@@ -252,7 +297,7 @@ export function useLocalAnalyzer() {
    clearTimeout(timer);
    stream.close();
   };
- }, [job]);
+ }, [job, pollRevision]);
 
  function resetResult() {
   generation.current++;
@@ -263,12 +308,15 @@ export function useLocalAnalyzer() {
   setReports(null);
   setError('');
   setStartCancelled(false);
+  setConnectionLost(false);
   setJobLocation('');
  }
 
  async function start(source: Source, semanticConsent = false) {
   if (!ready || pending.current || active.current || cleanupPending.current || (source.type === 'youtube' || semanticConsent) && provider.status !== 'connected') return;
   pending.current = true;
+  const lifetime = lifecycle.current;
+  const current = () => mounted.current && lifetime === lifecycle.current;
   cancelPending.current = false;
   resetResult();
   setStarting(true);
@@ -277,26 +325,30 @@ export function useLocalAnalyzer() {
   try {
    if (source.type === 'file' && stageFile.current !== source.file) {
     setUploading(true);
+    uploadController.current = new AbortController();
     try {
      const uploaded = await api<{id: string; name: string; video: unknown}>('media', {
       method: 'POST',
       body: source.file,
       headers: {'Content-Type': 'application/octet-stream', 'X-Media-Name': encodeURIComponent(source.file.name)},
+      signal: uploadController.current.signal,
      });
      input = {id: uploaded.id, name: uploaded.name, audio_only: !uploaded.video};
+     if (!current()) {await removeMedia(input.id).catch(() => {}); return;}
      stageFile.current = source.file;
      setStaged(input);
     } finally {
      setUploading(false);
+     uploadController.current = null;
     }
    }
-   if (cancelPending.current) {
+   if (cancelPending.current || !current()) {
     if (source.type === 'file' && input) {
      await removeMedia(input.id);
      setStaged(null);
      stageFile.current = null;
     }
-    setStartCancelled(true);
+    if (current()) setStartCancelled(true);
     return;
    }
 
@@ -313,7 +365,12 @@ export function useLocalAnalyzer() {
     return api<{job_id: string}>('jobs/start', {method: 'POST', body: JSON.stringify(sample)});
    });
    if (!result) {
-    setStartCancelled(true);
+    if (current()) setStartCancelled(true);
+    return;
+   }
+   if (!current()) {
+    // A start accepted after navigation was never acknowledged by this view.
+    await requestCancel(result.job_id).catch(() => {});
     return;
    }
    startedHere.current = true;
@@ -322,10 +379,14 @@ export function useLocalAnalyzer() {
    setJobLocation(result.job_id);
    if (cancelPending.current) await requestCancel(result.job_id);
   } catch (failure) {
-   if (source.type === 'file' && failure instanceof LocalRequestError && failure.status === 404) {
+   if (!current()) return;
+   if (cancelPending.current && !active.current) {
+    setError('');
+    setStartCancelled(true);
+   } else if (source.type === 'file' && failure instanceof LocalRequestError && failure.status === 404) {
     stageFile.current = null;
     setStaged(null);
-    setError('The temporary copy expired. Press Start AI Analysis to stage the selected file again.');
+    setError('This temporary copy expired. Select Analyze Edit to upload the file again.');
    } else {
     setError(failure instanceof Error ? failure.message : 'Unable to start analysis.');
    }
@@ -340,8 +401,8 @@ export function useLocalAnalyzer() {
    }
   } finally {
    pending.current = false;
-   setStarting(false);
-   if (!active.current) {
+   if (current()) setStarting(false);
+   if (!active.current && current()) {
     cancelPending.current = false;
     setCancelling(false);
    }
@@ -373,9 +434,10 @@ export function useLocalAnalyzer() {
   if ((!active.current && !pending.current) || cancelPending.current) return;
   cancelPending.current = true;
   setCancelling(true);
-  if (!active.current) return;
+  if (!active.current) {uploadController.current?.abort(); return;}
   try {
    await requestCancel(active.current);
+   if (connectionLost) {setConnectionLost(false); setPollRevision(value => value + 1);}
   } catch (failure) {
    setError(failure instanceof Error ? failure.message : 'Cancellation failed.');
    cancelPending.current = false;
@@ -419,9 +481,15 @@ export function useLocalAnalyzer() {
  }
 
  const busy = starting || !!active.current;
+ function retryConnection() {
+  setConnectionLost(false);
+  setError('');
+  if (active.current) setPollRevision(value => value + 1);
+  else void refresh();
+ }
  return {
-  busy, cancel, cancelling, cleaning, clear, deleteReport, deleteStaged, dismissResult, enabled, error, events, files,
+  busy, cancel, cancelling, checking, cleaning, clear, connectionLost, deleteReport, deleteStaged, dismissResult, enabled, error, events, files,
   inspectYoutube, liveJobId: startedHere.current ? job : undefined, mediaLimits, provider,
-  ready, refresh, reports, snapshot, staged: staged || snapshot?.staged_media, start, startCancelled, uploading,
+  ready, refresh, reports, retryConnection, snapshot, staged: staged || snapshot?.staged_media, start, startCancelled, uploading,
  };
 }
