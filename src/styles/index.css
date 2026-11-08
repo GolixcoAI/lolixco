@@ -2237,6 +2237,7 @@ dialog .fine-print {
 .youtube-fallback-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; width: 100%; }
 .youtube-fallback-actions > :is(button,a) { margin: 0 !important; min-height: 44px; }
 @media(max-width:767px) {
+  .up-next .compact .card-watch-trigger { grid-template-columns: minmax(0,1fr); gap: 5px; align-items: start; }
   .youtube-error-fallback { padding: 12px !important; gap: 7px; }
   .youtube-error-fallback > svg { display: none; }
   .youtube-error-fallback h3 { font-size: 14px !important; line-height: 1.25; margin: 0 !important; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; flex-shrink: 0; }
