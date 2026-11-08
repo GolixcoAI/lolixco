@@ -110,9 +110,9 @@ export default function Header({
           <button
             type="button"
             className="icon-button"
-            aria-label="Help and shortcuts"
-            title="Help & Shortcuts"
-            onClick={() => open("Help")}
+            aria-label="Help & Support"
+            title="Help & Support"
+            onClick={() => open("Help & Support")}
           >
             <CircleHelp size={20} />
           </button>
