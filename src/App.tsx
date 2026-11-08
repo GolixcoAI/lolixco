@@ -1,3 +1,5 @@
+import {PUBLIC_PAGES, PUBLIC_ORIGIN, pageForView} from "./config/publicPages";
+import PublicInfo from "./components/help/PublicInfo";
 import { discoveryCatalog } from "./utils/discoveryCatalog";
 import { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import Header from "./components/layout/Header";
@@ -40,7 +42,7 @@ const CreatorStudio = lazy(() => import("./components/studio/CreatorStudio"));
 const HelpSupport = lazy(() => import("./components/help/HelpSupport"));
 
 export function resolveAppView(pathname: string, rawView: string, base = "/"): string {
-  const views: Record<string, string> = { home: "Home", studio: "Creator Studio", explore: "Explore", shorts: "Shorts", help: "Help & Support" };
+  const views: Record<string, string> = Object.assign(Object.fromEntries(PUBLIC_PAGES.filter(p=>p.path!=="/").map(p=>[p.path.slice(1).toLowerCase(),p.view])), { home: "Home", studio: "Creator Studio", explore: "Explore", shorts: "Shorts", help: "Help & Support" });
   const basePath = base.endsWith("/") ? base : base + "/";
   const path = pathname || "/";
   if (!path.startsWith(basePath)) return "Not Found";
@@ -164,6 +166,11 @@ export function syncUrl(
     params.set("q", q.trim());
   }
 
+  const basePath = import.meta.env?.BASE_URL ?? "/";
+  const cleanEntry = PUBLIC_PAGES.some(p=>p.path!=="/" && window.location.pathname.replace(/\/$/,"")===p.path);
+  const page=pageForView(view);
+  const targetPath = page && (cleanEntry || ["Immersion","Privacy Policy","Copyright & Rights","Terms of Use","Public Beta"].includes(view)) ? page.path : basePath;
+  if(targetPath!==basePath)params.delete("view");
   const newSearch = params.toString() ? `?${params.toString()}` : "";
   const currentSearch = window.location.search;
 
@@ -185,7 +192,6 @@ export function syncUrl(
     nextState = Object.keys(existingState).length > 0 ? existingState : null;
   }
 
-  const targetPath = import.meta.env?.BASE_URL ?? "/";
   if (newSearch === currentSearch && window.location.pathname === targetPath) {
     if (!usePush && stateUpdate !== undefined && window.history?.replaceState) {
       window.history.replaceState(
@@ -270,7 +276,11 @@ export default function App({
 
   useEffect(() => {
     const title = query && ["Home", "Explore", "Shorts"].includes(active) ? `Search: ${query}` : active === "Not Found" ? "Page not found" : active === "Home" ? "Discover great edits" : active;
-    document.title = `${title} | Lolixco`;
+    const page=pageForView(active);
+    document.title = query ? `${title} | Lolixco` : page?.title ?? `${title} | Lolixco`;
+    const meta=document.querySelector?.('meta[name="description"]'); if(meta&&page)meta.setAttribute('content',page.description);
+    const canonical=document.querySelector?.('link[rel="canonical"]');if(canonical&&page)canonical.setAttribute('href',PUBLIC_ORIGIN+page.path);
+    const robots=document.querySelector?.('meta[name="robots"]');if(robots&&(query||new URLSearchParams(window.location.search).has('analysisJob')||active==='Not Found'))robots.setAttribute('content','noindex,follow');
   }, [active, query]);
 
   useEffect(() => {
@@ -740,7 +750,7 @@ export default function App({
           <span className="page-eyebrow">404</span><h1>We couldn't find that page</h1>
           <p>The link may have changed. Find your next edit on Home.</p>
           <button type="button" className="primary" onClick={() => navigate("Home")}>Explore edits</button>
-        </section> : active === "Help & Support" ? <Suspense fallback={<div className="page-loading"><LoadingRing label="Opening Help & Support" /></div>}><HelpSupport /></Suspense>
+        </section> : ["Immersion","Privacy Policy","Copyright & Rights","Terms of Use","Public Beta"].includes(active) ? <PublicInfo view={active} onImmersion={()=>setImmersionOpen(true)}/> : active === "Help & Support" ? <Suspense fallback={<div className="page-loading"><LoadingRing label="Opening Help & Support" /></div>}><HelpSupport /></Suspense>
           : active === "Creator Studio" ? <Suspense fallback={<div className="page-loading"><LoadingRing label="Opening Creator Studio" /></div>}><CreatorStudio /></Suspense> : active === "Shorts" ? (
           catalogShorts.length === 0 ? (
             <div
@@ -948,7 +958,7 @@ export default function App({
         )}
         <footer>
           <span className="footer-copy">Great edits. Fresh perspectives.</span>
-          <div className="footer-links"><a href={`${import.meta.env?.BASE_URL ?? "/"}?view=help`}>Help & Support</a><a href={`${import.meta.env?.BASE_URL ?? "/"}?view=help#privacy`}>Privacy</a></div>
+          <div className="footer-links"><a href="/shorts">Shorts</a><a href="/creator-studio">Creator Studio</a><a href="/immersion">Immersion</a><a href="/help">Help & Support</a><a href="/rights">Copyright & Rights</a><a href="/terms">Terms of Use</a><a href="/privacy">Privacy Policy</a><a href="/beta">Public Beta</a></div>
         </footer>
       </main>
       {activeShort && !immersionOpen && (

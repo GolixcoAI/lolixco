@@ -20,7 +20,7 @@ export function BrandIcon() {
   return (
     <img
       className="brand-icon"
-      src={assetUrl(mediaAssets.icon, import.meta.env?.BASE_URL ?? "/")}
+      src="/brand/official/icon.svg"
       alt="Lolixco"
     />
   );

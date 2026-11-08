@@ -1,3 +1,4 @@
+import publicPages from "./scripts/public-pages-plugin.mjs";
 import {localDnaBridge,dnaProxy} from "./scripts/local-dna/bridge.mjs";
 import { defineConfig } from "vite";
 import { checkAssets } from "./scripts/check-assets.mjs";
@@ -13,6 +14,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    publicPages(),
     ...(process.env.LOLIXCO_LOCAL_DNA==='1'?[localDnaBridge()]:[]),
     {
       name: "verify-local-assets",
