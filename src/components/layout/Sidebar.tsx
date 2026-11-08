@@ -4,7 +4,6 @@ import {
   Compass,
   ChartNoAxesColumn,
   Monitor,
-  Settings,
   CircleHelp,
 } from "lucide-react";
 
@@ -14,8 +13,7 @@ const items = [
   ["Explore", Compass],
   ["Creator Studio", ChartNoAxesColumn],
   ["Immersion", Monitor],
-  ["Settings", Settings],
-  ["Help", CircleHelp],
+  ["Help & Support", CircleHelp],
 ] as const;
 
 export default function Sidebar({
@@ -34,7 +32,7 @@ export default function Sidebar({
           title={name}
           aria-label={name}
           aria-current={active === name ? "page" : undefined}
-          className={`${active === name ? "selected" : ""} ${i === 2 ? "divider" : ""} ${i === 5 ? "bottom-item" : ""}`}
+          className={`${active === name ? "selected" : ""} ${i === 2 ? "divider" : ""} ${name === "Help & Support" ? "bottom-item" : ""}`}
           onClick={() => onSelect(name)}
         >
           <Icon size={22} />

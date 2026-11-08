@@ -178,16 +178,18 @@ test("STAGE5 featured UTC midnight and equivalent timezone instants", () => {
   );
 });
 
-test("STAGE5 featured: missing demo, empty, all-Shorts and single-item pools", () => {
+test("STAGE5 featured: missing demo and empty pools stay empty; approved Shorts join the public rotation", () => {
   for (const catalog of [
     [],
-    shorts,
     edits.slice(1),
     [{ ...edits[0], format: "short" }],
   ])
     assert.equal(selectEditOfTheMoment(catalog, date), null);
+  assert.ok(shorts.includes(selectEditOfTheMoment(shorts, date)));
   assert.equal(selectEditOfTheMoment([hosted[0]], date, 20), hosted[0]);
-  assert.equal(selectEditOfTheMoment([...shorts, hosted[0]], date), hosted[0]);
+  const publicPool = [...shorts, hosted[0]];
+  const rotation = publicPool.map((_, offset) => selectEditOfTheMoment(publicPool, date, offset));
+  assert.deepEqual(new Set(rotation), new Set(publicPool));
 });
 
 test("STAGE5 public labels use only reviewed channel title, never creator or popularity", () => {
