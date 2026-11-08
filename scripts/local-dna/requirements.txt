@@ -1,0 +1,9 @@
+fastapi==0.115.12
+uvicorn==0.34.0
+httpx==0.28.1
+numpy==2.5.4
+opencv-python-headless==5.0.0.93
+librosa==1.0.0
+scipy==1.18.1
+soundfile==0.14.0
+jsonschema[format-nongpl]==4.26.0
