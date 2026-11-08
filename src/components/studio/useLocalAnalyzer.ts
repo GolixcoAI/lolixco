@@ -110,6 +110,9 @@ async function uploadPrivateFile(file: File, signal: AbortSignal) {
   const result = await fetch(media.upload.url, {method:'POST', body:form, credentials:'omit', signal:controller.signal});
   if (!result.ok) throw new LocalRequestError('The private upload did not finish. Please try again.', result.status);
   return media;
+ } catch (failure) {
+  if (failure instanceof LocalRequestError || signal.aborted) throw failure;
+  throw new LocalRequestError(controller.signal.aborted ? analysisFailure('timeout') : connectionFailure(), controller.signal.aborted ? 408 : 0);
  } finally {clearTimeout(timer); signal.removeEventListener('abort', abort);}
 }
 
