@@ -1,3 +1,6 @@
+import {markUnavailable} from "../../utils/sourceQueue";
+import {useVideoTap} from "../../hooks/useVideoTap";
+import {useShortsSnap} from "../../hooks/useShortsSnap";
 import { useSessionAudio } from "../../hooks/useSessionAudio";
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
@@ -62,14 +65,12 @@ export function ShortsViewer({
   const [duration, setDuration] = useState(0);
   const [hasError, setHasError] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
-  const [touchStartY, setTouchStartY] = useState<number | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const ytPlayerRef = useRef<YouTubePlayerHandle>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const scope = usePlaybackDialog(viewerRef, !!shorts[currentIndex]);
   const [blocked, setBlocked] = useState(false);
-  const lastNavTime = useRef(0);
 
   const currentShort = shorts[currentIndex];
   const isYouTube = currentShort?.sourceType === "youtube_embed";
@@ -253,28 +254,8 @@ export function ShortsViewer({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleNext, handlePrev, onClose, toggleMute, togglePlay]);
 
-  // Touch swipe support with 400ms debounce
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setTouchStartY(e.touches[0].clientY);
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartY === null) return;
-    const touchEndY = e.changedTouches[0].clientY;
-    const diff = touchStartY - touchEndY;
-    const now = Date.now();
-
-    if (now - lastNavTime.current > 400) {
-      if (diff > 50) {
-        lastNavTime.current = now;
-        handleNext();
-      } else if (diff < -50) {
-        lastNavTime.current = now;
-        handlePrev();
-      }
-    }
-    setTouchStartY(null);
-  };
+  const tap = useVideoTap(togglePlay, !isYouTube && !hasError);
+  const snap = useShortsSnap(currentShort?.id, currentIndex > 0, handlePrev, handleNext);
 
   if (!currentShort) {
     return null;
@@ -294,8 +275,6 @@ export function ShortsViewer({
       aria-modal="true"
       aria-label={`Shorts viewer: ${currentShort.title}`}
       tabIndex={-1}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
     >
       <div className="shorts-viewer-backdrop" onClick={onClose} />
       <span className="sr-only" role="status">
@@ -343,10 +322,14 @@ export function ShortsViewer({
           </div>
         </div>
 
+        <div className="shorts-snap-track" {...snap} aria-label="Swipe vertically between Shorts">
+          {currentIndex > 0 && <div className="shorts-snap-page shorts-adjacent" aria-hidden="true"><img src={shorts[currentIndex-1].poster} alt="" draggable={false}/><span>Previous Short</span></div>}
+          <div className="shorts-snap-page">
         {/* Vertical Viewport Frame */}
         <div
           className="shorts-viewer-frame"
-          onClick={isYouTube ? undefined : togglePlay}
+          data-source={isYouTube ? "youtube" : "hosted"}
+          {...tap}
         >
           {isYouTube ? (
             <YouTubePlayer
@@ -371,7 +354,8 @@ export function ShortsViewer({
                 setIsPlaying(false);
                 setBlocked(true);
               }}
-              onError={() => {
+              onError={code => {
+                if([100,101,150].includes(code))markUnavailable(currentShort);
                 setHasError(true);
                 setIsPlaying(false);
                 setIsWaiting(false);
@@ -414,7 +398,7 @@ export function ShortsViewer({
             />
           )}
 
-          {blocked && !hasError && (
+          {blocked && !hasError && !isYouTube && (
             <div className="player-status" role="status">
               Playback needs your permission.{" "}
               <button
@@ -539,6 +523,9 @@ export function ShortsViewer({
           )}
         </div>
 
+          </div>
+          {currentIndex < shorts.length-1 && <div className="shorts-snap-page shorts-adjacent" aria-hidden="true"><img src={shorts[currentIndex+1].poster} alt="" draggable={false}/><span>Next Short</span></div>}
+        </div>
         {/* Vertical Previous / Next Navigation Arrows */}
         <div className="shorts-vertical-nav">
           <button

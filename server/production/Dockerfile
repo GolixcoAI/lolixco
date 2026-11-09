@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r /tmp/analyzer-requirements.txt -r /tmp/aws-req
 COPY scripts/local-dna/ /app/scripts/local-dna/
 COPY scripts/edit-dna/ /app/scripts/edit-dna/
 COPY server/production/ /app/server/production/
+RUN NUMBA_CPU_NAME=generic NUMBA_CACHE_DIR=/opt/numba-cache python /app/server/production/warm_cache.py
 ENV PYTHONPATH=/app/server/production HOME=/tmp NUMBA_CACHE_DIR=/tmp/numba LOLIXCO_DNA_STATE_PARENT=/tmp
 ENTRYPOINT ["/usr/local/bin/python", "-m", "awslambdaric"]
 CMD ["worker.handler"]

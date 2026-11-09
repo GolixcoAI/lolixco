@@ -38,7 +38,8 @@ test('product navigation has beta branding, real support and no Settings placeho
  assert.ok(!nav.includes('Settings'));
  const header=renderToStaticMarkup(React.createElement(Header,{expanded:false,toggle:()=>{},query:'',setQuery:()=>{},onHome:()=>{},open:()=>{}}));
  assert.equal((header.match(/class="brand-beta"/g)||[]).length,1);
- assert.ok(header.includes('aria-label="Help &amp; Support"'));
+ assert.ok(!header.includes('aria-label="Help &amp; Support"'));
+ assert.ok(nav.includes('aria-label="Help &amp; Support"'));
 });
 
 test('Help states exact limits, incomplete-score policy and provider terms with owner-verified support contact', () => {

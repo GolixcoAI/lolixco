@@ -213,10 +213,10 @@ def route(event):
         raise RequestError(400, "Confirm that Gemini may process this public video.")
     if len(parts) >= 2 and parts[0] == "jobs" and JOB_ID.fullmatch(parts[1]):
         row = owned("JOB", parts[1], owner)
-        if row["status"] not in TERMINAL and int(time.time()) - row["created"] > 900:
-            TABLE.update_item(Key={"pk": row["pk"]}, UpdateExpression="SET #s = :failed, #e = :error",
+        if (row["status"] == "QUEUED" and int(time.time()) - row["created"] > 900 or row["status"] == "RUNNING" and int(time.time()) - row.get("worker_started", row["created"]) > 660):
+            TABLE.update_item(Key={"pk": row["pk"]}, UpdateExpression="SET #s = :failed, #e = :error, error_code = :code",
                 ConditionExpression="#s IN (:queued, :running)", ExpressionAttributeNames={"#s": "status", "#e": "error"},
-                ExpressionAttributeValues={":failed": "FAILED", ":error": "Analysis timed out. Please try again.", ":queued": "QUEUED", ":running": "RUNNING"})
+                ExpressionAttributeValues={":failed": "FAILED", ":error": "Analysis timed out. Please try again.", ":code": "queue_timeout" if row["status"] == "QUEUED" else "analysis_timeout", ":queued": "QUEUED", ":running": "RUNNING"})
             row = owned("JOB", parts[1], owner)
         if method == "GET" and len(parts) == 2:
             public = {k: v for k, v in row.items() if k not in {"pk", "owner", "media_key", "report_prefix", "ttl"}}

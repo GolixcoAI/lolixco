@@ -253,7 +253,11 @@ def bounded_engine_command(args, **kwargs):
 
 
 def main(path, job_id, mode, out):
-    resource.setrlimit(resource.RLIMIT_CPU, (145, 150))
+    if os.environ.get('LOLIXCO_PERSISTENT_LOCAL') == '1':
+        used = resource.getrusage(resource.RUSAGE_SELF)
+        resource.setrlimit(resource.RLIMIT_CPU, (min(475, math.ceil(used.ru_utime+used.ru_stime)+145),480))
+    else:
+        resource.setrlimit(resource.RLIMIT_CPU, (145, 150))
     resource.setrlimit(resource.RLIMIT_AS, (4 * 1024**3, 4 * 1024**3))
     resource.setrlimit(resource.RLIMIT_FSIZE, (128 * 1024 * 1024, 128 * 1024 * 1024))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))

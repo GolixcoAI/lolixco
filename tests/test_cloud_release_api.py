@@ -70,6 +70,21 @@ class CloudAuthorizationTests(unittest.TestCase):
             self.assertEqual(caught.exception.status, 409)
             storage.get_object.assert_not_called()
 
+    def test_queue_age_does_not_expire_a_worker_that_only_just_started(self):
+        now=int(time.time())
+        row={"pk":"synthetic","status":"RUNNING","created":now-950,"worker_started":now-10,"owner":"owner-a"}
+        with patch.object(api,"session",return_value=("owner-a",[])), patch.object(api,"owned",return_value=row), patch.object(api,"TABLE") as table:
+            api.route(self.event("jobs/job_123_"+"a"*24))
+            table.update_item.assert_not_called()
+
+    def test_expired_queue_and_worker_have_distinct_timeout_codes(self):
+        now=int(time.time())
+        for status,code,age in [("QUEUED","queue_timeout",901),("RUNNING","analysis_timeout",661)]:
+            row={"pk":"synthetic","status":status,"created":now-age,"worker_started":now-age,"owner":"owner-a"}
+            with patch.object(api,"session",return_value=("owner-a",[])), patch.object(api,"owned",return_value=row), patch.object(api,"TABLE") as table:
+                api.route(self.event("jobs/job_123_"+"a"*24))
+                self.assertEqual(table.update_item.call_args.kwargs['ExpressionAttributeValues'][':code'],code)
+
     def test_operator_pause_prevents_even_upload_allocation(self):
         with patch.dict(os.environ, AI_ENABLED="false"), patch.object(api, "session", return_value=("owner-a", [])), patch.object(api, "counter", return_value=True), patch.object(api, "put") as put:
             with self.assertRaises(common.RequestError) as caught:

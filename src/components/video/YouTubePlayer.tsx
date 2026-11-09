@@ -571,45 +571,7 @@ export const YouTubePlayer = forwardRef<
 
       {(!isReady || isBuffering) && !hasError && <div className={`media-loading${isReady ? " media-loading--buffering" : ""}`}><LoadingRing label={isReady ? "Buffering video" : "Loading video"}/></div>}
 
-      {/* Autoplay Blocked Overlay */}
-      {autoplayBlocked && !hasError && (
-        <div
-          role="status"
-          className="autoplay-blocked-overlay"
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "rgba(0, 0, 0, 0.75)",
-            zIndex: 10,
-          }}
-        >
-          <button
-            type="button"
-            className="primary watch"
-            onClick={() => {
-              if (
-                playerRef.current &&
-                propsRef.current.playbackAllowed &&
-                !document.hidden &&
-                (!leaseRef.current || leaseRef.current.canPlay())
-              ) {
-                try {
-                  commands.current.play();
-                } catch {
-                  // Ignore
-                }
-              }
-              setAutoplayBlocked(false);
-            }}
-          >
-            <Play size={18} /> Resume Playback
-          </button>
-        </div>
-      )}
+      {autoplayBlocked && !hasError && <span className="sr-only" role="status">Autoplay was blocked. Use the official YouTube play control.</span>}
 
       {/* Fallback Error Overlay */}
       {hasError && (

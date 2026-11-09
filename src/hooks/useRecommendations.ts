@@ -22,6 +22,8 @@ export function useRecommendations(
   enabled: boolean = true,
   catalog: Edit[] = compiledEdits,
 ): UseRecommendationsState {
+  const sessionSeed = useRef(Math.floor(Math.random()*0xffffffff));
+  params = {...params, variationSeed:sessionSeed.current};
   const paramsKey = JSON.stringify({
     surface: params.surface,
     currentEditId: params.currentEditId,

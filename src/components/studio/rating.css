@@ -109,3 +109,13 @@
 }
 
 .rating-timestamps a { display: inline-flex; align-items: center; min-height: 36px; color: #ffe36a; padding: 4px 6px; }
+
+@media (max-width: 780px) {
+ .rating-category-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; }
+ .rating-category h4 { min-width: 0; overflow-wrap: anywhere; font-size: 13px; line-height: 1.45; }
+ .rating-category :is(.rating-score-chip,.rating-evidence-chip,.rating-unassessed) { font-size: 12px; padding: 4px 6px; align-self: start; }
+ .rating-diagnostics dd { overflow-wrap: anywhere; min-width: 0; }
+ .rating-controls { flex-wrap: wrap; }
+ .rating-dimension-details summary { min-height: 42px; }
+ .rating-timestamps { gap: 8px; }
+}

@@ -59,6 +59,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_aws_provider_secrets.py -v
           python3 -m unittest discover -s tests -p test_private_source_boundary.py -v
           python3 -m unittest discover -s tests -p test_cloud_release_api.py -v
+          python3 -m unittest discover -s tests -p test_persistent_local.py -v
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

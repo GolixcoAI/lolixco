@@ -1,3 +1,6 @@
+import {markUnavailable} from "../../utils/sourceQueue";
+import {useVideoTap} from "../../hooks/useVideoTap";
+import {alignImmersiveOrientation, enterImmersiveFullscreen, releaseImmersiveOrientation} from "../../utils/immersiveFullscreen";
 import { publicSource } from "../../utils/publicSource";
 import { useSessionAudio } from "../../hooks/useSessionAudio";
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -109,40 +112,15 @@ export default function ImmersionViewer({
     }
   }, [currentEdit, state.currentIndex, isExhausted, playback.play]);
 
-  // Request fullscreen on start if supported
   useEffect(() => {
-    const container = containerRef.current;
-    let disposed = false;
-    try {
-      if (
-        containerRef.current &&
-        document.fullscreenEnabled &&
-        !document.fullscreenElement
-      ) {
-        containerRef.current
-          .requestFullscreen()
-          .then(() => {
-            if (disposed && document.fullscreenElement === container)
-              void document.exitFullscreen?.().catch(() => {});
-          })
-          .catch(() => {
-            // Fullscreen request denied or not allowed by browser policy - graceful fallback
-          });
-      }
-    } catch {
-      // Ignored
-    }
-
-    function handleFullscreenChange() {
-      setIsFullscreen(document.fullscreenElement === container);
-    }
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => {
-      disposed = true;
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    const changed = () => {
+      setIsFullscreen(document.fullscreenElement === containerRef.current);
+      if (!document.fullscreenElement) releaseImmersiveOrientation();
     };
+    document.addEventListener('fullscreenchange', changed);
+    return () => {document.removeEventListener('fullscreenchange', changed); releaseImmersiveOrientation();};
   }, []);
+  useEffect(() => {void alignImmersiveOrientation(currentEdit?.format === 'short');}, [currentEdit?.format]);
 
   // Navigation: Next
   const handleNext = useCallback(() => {
@@ -207,6 +185,7 @@ export default function ImmersionViewer({
 
   // Handle Playback Error with bounded skip retry
   const handlePlaybackError = useCallback(() => {
+    if (currentEdit) markUnavailable(currentEdit);
     if (handledError.current) return;
     handledError.current = true;
     playback.pause();
@@ -234,11 +213,11 @@ export default function ImmersionViewer({
   // Toggle Fullscreen manually
   const handleToggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen?.().catch(() => {});
+      void enterImmersiveFullscreen(containerRef.current, currentEdit?.format === "short");
     } else {
       document.exitFullscreen?.().catch(() => {});
     }
-  }, []);
+  }, [currentEdit?.format]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -298,6 +277,7 @@ export default function ImmersionViewer({
   ]);
 
   // Determine stage label
+  const tap = useVideoTap(() => {nativeVideoRef.current?.paused ? void playback.play() : playback.pause();}, !!currentEdit && !isYouTubeEmbed(currentEdit));
   const stageLabel = `Edit ${state.currentIndex + 1}`;
 
   const isPortrait = currentEdit?.format === "short";
@@ -307,6 +287,7 @@ export default function ImmersionViewer({
     <div
       ref={containerRef}
       className="immersion-overlay"
+      data-orientation={isPortrait ? "portrait" : "landscape"}
       role="dialog"
       aria-label="Immersion Mode Viewer"
       aria-modal="true"
@@ -434,6 +415,7 @@ export default function ImmersionViewer({
             ) : (
               <video
                 ref={nativeVideoRef}
+                {...tap}
                 key={`${state.currentIndex}:${currentEdit.id}`}
                 src={currentEdit.source}
                 poster={currentEdit.poster}
@@ -482,6 +464,7 @@ export default function ImmersionViewer({
             )}
           </div>
         )}
+        <span className="immersion-rotate-hint">Rotate your device for a wider view</span>
       </main>
 
       {/* Bottom Bar Controls & Discovery Tags */}

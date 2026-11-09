@@ -1,9 +1,11 @@
+import {sourceQueue,seededRandom} from "./sourceQueue";
 import type { Edit } from "../data/edits";
 
 export interface ImmersionContext {
   category?: string;
   fandomId?: string;
   currentEditId?: number;
+  restrictToContext?: boolean;
 }
 
 export interface ImmersionQueueState {
@@ -12,6 +14,7 @@ export interface ImmersionQueueState {
   openingQueue: Edit[];
   discoveryPool: Edit[];
   exhaustedPoolsCount: number;
+  eligibleIds?: number[];
 }
 
 /**
@@ -58,8 +61,9 @@ export function getContextMatchingEdits(
 
   // 1. Fandom filter priority
   if (fandom) {
-    const matched = catalog.filter((e) => e.fandomIds?.includes(fandom));
-    if (matched.length > 0) return matched;
+    const matched = catalog.filter((e) => e.fandomIds?.includes(fandom)
+      && (!category || category === 'All' || e.category.toLowerCase() === category.toLowerCase()));
+    return matched;
   }
 
   // 2. Specific category filter
@@ -114,7 +118,7 @@ export function createImmersionSession(
   const matchingCandidates = getContextMatchingEdits(catalog, context);
 
   // If currentEditId is in matching candidates, prioritize it as item 1
-  let orderedCandidates = [...matchingCandidates];
+  let orderedCandidates = sourceQueue(matchingCandidates, typeof seed === "number" ? seededRandom(seed) : Math.random);
   if (typeof context.currentEditId === "number") {
     const current = orderedCandidates.find((e) => e.id === context.currentEditId);
     if (current) {
@@ -138,8 +142,9 @@ export function createImmersionSession(
   }
 
   // 2. Discovery pool candidates (all other eligible items not in opening queue)
-  const remainingCandidates = catalog.filter((e) => !openingSeenIds.has(e.id));
-  const discoveryPool = shuffleArray(remainingCandidates, seed);
+  const eligible = context.restrictToContext && (context.fandomId || context.category && context.category!=='All') ? matchingCandidates : catalog;
+  const remainingCandidates = eligible.filter((e) => !openingSeenIds.has(e.id));
+  const discoveryPool = sourceQueue(remainingCandidates, typeof seed==='number'?seededRandom(seed):Math.random,openingQueue);
 
   // The first item is drawn from opening queue
   const firstEdit = openingQueue[0] || discoveryPool[0] || null;
@@ -153,6 +158,7 @@ export function createImmersionSession(
       openingQueue: remainingOpening,
       discoveryPool,
       exhaustedPoolsCount: 0,
+      eligibleIds: eligible.map(e=>e.id),
     },
   };
 }
@@ -191,11 +197,13 @@ export function advanceImmersionNext(
   if (nextOpening.length > 0) {
     nextEdit = nextOpening.shift()!;
   } else if (nextDiscovery.length > 0) {
+    nextDiscovery = sourceQueue(nextDiscovery, typeof seed=== "number" ? seededRandom(seed+state.history.length):Math.random, state.history);
     nextEdit = nextDiscovery.shift()!;
   } else {
     // Discovery pool exhausted: reshuffle entire eligible catalog
     exhaustedCount++;
-    const reshuffled = shuffleArray(catalog, typeof seed === "number" ? seed + exhaustedCount : undefined);
+    const eligible = state.eligibleIds ? catalog.filter(e=>state.eligibleIds!.includes(e.id)) : catalog;
+    const reshuffled = sourceQueue(eligible,typeof seed=== "number" ? seededRandom(seed+exhaustedCount):Math.random,state.history);
 
     // Avoid immediate repeat of the current edit if catalog has >= 2 items
     const lastEdit = state.history[state.history.length - 1];
