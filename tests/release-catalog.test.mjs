@@ -14,7 +14,7 @@ test('release has exactly 57 unique public records and 30 integrity-bound media 
  for(const edit of hosted)assert.ok(edit.format==='short' ? edit.id>=400&&edit.id<500 : edit.id>=300&&edit.id<400);
  assert.ok(!catalog.some(x=>x.youtubeVideoId==='KY0xrjzfFLA'));
  const manifest=JSON.parse(readFileSync('public/media-manifest.json','utf8'));
- for(const edit of hosted){const item=manifest.items.find(x=>x.id===edit.id);assert.ok(item);assert.equal(edit.title,item.title);assert.equal(new URL(edit.source).pathname,item.video.path);assert.equal(new URL(edit.poster).pathname,item.poster.path);assert.match(item.video.sha256,/^[a-f0-9]{64}$/);assert.ok(edit.tags.length&&edit.description&&edit.duration);}
+ for(const edit of hosted){const item=manifest.items.find(x=>x.id===edit.id);assert.ok(item);assert.equal(edit.title,item.title);assert.equal(edit.source,item.video.path);assert.equal(edit.poster,item.poster.path);assert.match(item.video.sha256,/^[a-f0-9]{64}$/);assert.ok(edit.tags.length&&edit.description&&edit.duration);}
 });
 test('complete mixed rotation visits every edit once and remains stable within its UTC day',()=>{
  const date=new Date('2026-11-09T03:00:00Z');

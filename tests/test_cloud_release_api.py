@@ -47,6 +47,16 @@ class CloudAuthorizationTests(unittest.TestCase):
             api.session({"headers": {"Origin": "https://attacker.example"}}, create=True)
         self.assertEqual(caught.exception.status, 403)
 
+    def test_transition_origins_are_exact_and_keep_host_only_cookies(self):
+        origins=['https://lol.golixco.com','https://d2w2cv3wlh68gg.cloudfront.net']
+        with patch.dict(os.environ,PUBLIC_ORIGIN=origins[0],ALLOWED_ORIGINS=','.join(origins)), patch.object(api,'counter',return_value=True), patch.object(api,'put'):
+            for origin in origins:
+                _,cookies=api.session({'headers':{'Origin':origin}},create=True)
+                self.assertNotIn('Domain=',cookies[0])
+            for origin in ['https://golixco.com','https://lol.golixco.com.attacker.example','null','https://lol.golixco.com/']:
+                with self.assertRaises(common.RequestError):
+                    api.session({'headers':{'Origin':origin}},create=True)
+
     def test_private_cookie_is_secure_and_not_in_json(self):
         with patch.object(api, "counter", return_value=True), patch.object(api, "put"):
             owner, cookies = api.session({}, create=True)

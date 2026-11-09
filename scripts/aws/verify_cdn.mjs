@@ -6,7 +6,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_PATH);
 const origin=process.argv[2];
 const destination=process.argv[3];
 const manifest=JSON.parse(fs.readFileSync('public/media-manifest.json','utf8'));
-const browser=await chromium.launch({headless:true});
+const override=process.env.LOLIXCO_DNS_OVERRIDE;
+if(override&&!/^(?:\d{1,3}\.){3}\d{1,3}$/.test(override))throw Error('Use an explicit IPv4 edge address for pre-DNS verification');
+const browser=await chromium.launch({headless:true,args:override?[`--host-resolver-rules=MAP ${new URL(origin).hostname} ${override}, EXCLUDE localhost`]:[]});
 const context=await browser.newContext();
 const page=await context.newPage();
 await page.goto(origin,{waitUntil:'domcontentloaded'});
@@ -40,6 +42,6 @@ try {
   },{item,origin});}catch(error){result={id:item.id,error:error.message.slice(0,800)};}
   results.push(result);console.log(JSON.stringify(result));
  }
- fs.writeFileSync(destination,JSON.stringify({origin,checked:results.length,results},null,2));
+ fs.writeFileSync(destination,JSON.stringify({origin,dnsOverride:!!override,checked:results.length,results},null,2));
  if(results.some(x=>x.error))process.exitCode=1;
 }finally{await browser.close();}

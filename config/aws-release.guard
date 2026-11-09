@@ -1,0 +1,27 @@
+let buckets = Resources.*[ Type == 'AWS::S3::Bucket' ]
+rule private_encrypted_buckets when %buckets !empty {
+  %buckets.Properties {
+    PublicAccessBlockConfiguration.BlockPublicAcls == true
+    PublicAccessBlockConfiguration.IgnorePublicAcls == true
+    PublicAccessBlockConfiguration.BlockPublicPolicy == true
+    PublicAccessBlockConfiguration.RestrictPublicBuckets == true
+    BucketEncryption.ServerSideEncryptionConfiguration[*].ServerSideEncryptionByDefault.SSEAlgorithm == 'AES256'
+  }
+}
+rule custom_domain_tls when Resources.CDN exists {
+  Resources.CDN.Properties.DistributionConfig {
+    ViewerCertificate.SslSupportMethod == 'sni-only'
+    ViewerCertificate.MinimumProtocolVersion IN ['TLSv1.2_2021', 'TLSv1.2_2025', 'TLSv1.3_2025']
+    ViewerCertificate.AcmCertificateArn exists
+    WebACLId exists
+  }
+}
+rule worker_bounds when Resources.Worker exists {
+  Resources.Worker.Properties {
+    MemorySize == 3008
+    Timeout == 600
+    Environment.Variables.LOLIXCO_PROVIDER_SECRET_ARN exists
+  }
+  Resources.Dispatch.Properties.ScalingConfig.MaximumConcurrency == 2
+  Resources.Api.Properties.Environment.Variables.LOLIXCO_PROVIDER_SECRET_ARN !exists
+}

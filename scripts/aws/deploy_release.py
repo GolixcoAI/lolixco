@@ -1,4 +1,4 @@
-"""Controlled release operations; no custom hostname or DNS writes."""
+"""Controlled release operations with persistent custom-domain settings; no DNS writes."""
 import argparse
 import hashlib
 import io
@@ -14,6 +14,7 @@ import boto3
 from botocore.config import Config
 
 from release_templates import foundation, runtime, firewall
+from release_config import load_release_config
 
 ROOT = Path(__file__).resolve().parents[2]
 ACCOUNT = "247673029886"
@@ -132,8 +133,23 @@ def main():
     identity = client(session, "sts").get_caller_identity()
     if identity["Account"] != ACCOUNT or identity["Arn"].endswith(":root"):
         raise RuntimeError("Use the authorized non-root account")
-    if args.phase == "foundation":
-        result = apply(session, STACK, foundation())
+    release = load_release_config()
+    if release['account'] != ACCOUNT or release['region'] != REGION:
+        raise RuntimeError('Release configuration targets an unexpected account or region')
+    if args.phase in {"foundation", "route"}:
+        cfn = client(session, 'cloudformation')
+        try:
+            stack = cfn.describe_stacks(StackName=STACK)['Stacks'][0]
+            current = {x['ParameterKey']:x['ParameterValue'] for x in stack.get('Parameters',[])}
+        except cfn.exceptions.ClientError as error:
+            if 'does not exist' not in error.response['Error'].get('Message',''): raise
+            current = {}
+        certificate = client(session, 'acm', 'us-east-1').describe_certificate(CertificateArn=release['certificate_arn'])['Certificate']
+        if certificate['Status'] != 'ISSUED' or release['public_origin'].removeprefix('https://') not in certificate['SubjectAlternativeNames']:
+            raise RuntimeError('The configured custom hostname requires an issued covering certificate')
+        result = apply(session, STACK, foundation(), {'AllowedOrigins': ','.join(release['allowed_origins']),
+            'ApiDomain': args.api_domain if args.api_domain is not None else current.get('ApiDomain',''),
+            'WafArn': args.waf_arn if args.waf_arn is not None else current.get('WafArn','')})
     elif args.phase == "firewall":
         result = apply(session, "lolixco-rc-firewall", firewall(), region="us-east-1")
     elif args.phase == "budgets":
@@ -166,13 +182,7 @@ def main():
         client(session, "s3").put_object(Bucket=base["ArtifactBucket"], Key=base["ApiKey"], Body=api_zip, ServerSideEncryption="AES256")
         prepare_role(session)
         secret = client(session, "secretsmanager").describe_secret(SecretId="lolixco/production/ai/providers")["ARN"]
-        result = apply(session, RUNTIME, runtime(base, base["ImageUri"] + "@" + digest, secret, "https://" + base["Domain"], ACCOUNT))
-    elif args.phase == "route":
-        base = outputs(session)
-        current = {x["ParameterKey"]: x["ParameterValue"] for x in client(session, "cloudformation").describe_stacks(StackName=STACK)["Stacks"][0]["Parameters"]}
-        result = apply(session, STACK, foundation(), {"PreviewOrigin": "https://" + base["Domain"],
-            "ApiDomain": args.api_domain if args.api_domain is not None else current["ApiDomain"],
-            "WafArn": args.waf_arn if args.waf_arn is not None else current["WafArn"]})
+        result = apply(session, RUNTIME, runtime(base, base["ImageUri"] + "@" + digest, secret, release['public_origin'], ACCOUNT))
     else:
         result = outputs(session)
     print(json.dumps(result, indent=2), flush=True)

@@ -1,6 +1,8 @@
 """Reproducible CloudFormation templates. Parameters contain identifiers, never values of secrets."""
 import json
 from pathlib import Path
+from urllib.parse import urlsplit
+from release_config import load_release_config
 
 
 def ref(name): return {"Ref": name}
@@ -38,12 +40,14 @@ def bucket(why, versioned=False, temporary=False):
     if temporary:
         props["LifecycleConfiguration"] = {"Rules": [{"Id": "ExpiryBackup", "Status": "Enabled", "ExpirationInDays": 1,
             "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 1}}]}
-        props["CorsConfiguration"] = {"CorsRules": [{"AllowedOrigins": [ref("PreviewOrigin")],
+        props["CorsConfiguration"] = {"CorsRules": [{"AllowedOrigins": ref("AllowedOrigins"),
             "AllowedMethods": ["POST", "GET", "HEAD"], "AllowedHeaders": ["*"], "MaxAge": 60}]}
     return resource("AWS::S3::Bucket", props, why, retain=True)
 
 
 def foundation():
+    config = load_release_config()
+    hostname = urlsplit(config['public_origin']).hostname
     r = {}
     for name, args in {"Site": ("Published frontend and 30 authorized edits", True, False),
                        "Private": ("Private ephemeral uploads and reports; deliberately unversioned to avoid retained deleted media", False, True),
@@ -86,11 +90,16 @@ def foundation():
         "Name": sub("${AWS::StackName}-oac"), "OriginAccessControlOriginType": "s3", "SigningBehavior": "always", "SigningProtocol": "sigv4"}}, "Private origin; public delivery only through this CDN")
     code = Path("config/cloudfront-public-routes.js").read_text()
     code = code.replace("if(/^\\/(assets|brand)\\//", "if(/^\\/(assets|brand|media)\\//")
+    code = code.replace(" var routes=", " if(uri==='/robots.txt' && request.headers.host.value!==" + json.dumps(hostname) + ")return {statusCode:200,headers:{'content-type':{value:'text/plain'},'x-robots-tag':{value:'noindex, nofollow'},'cache-control':{value:'no-store'}},body:'User-agent: *\\nDisallow: /\\n'};\n var routes=")
     r["Routes"] = resource("AWS::CloudFront::Function", {"Name": sub("${AWS::StackName}-routes"), "AutoPublish": True,
         "FunctionConfig": {"Comment": "Release document routing; private queries noindex; preserve APIs", "Runtime": "cloudfront-js-2.0"}, "FunctionCode": code}, "No blanket API/S3 errors rewritten to HTML")
+    indexing = Path('config/cloudfront-indexing.js').read_text().replace('PUBLIC_INDEXING', json.dumps(config['public_indexing'])).replace('PUBLIC_HOST', json.dumps(hostname))
+    r['Indexing'] = resource('AWS::CloudFront::Function', {'Name': sub('${AWS::StackName}-indexing'), 'AutoPublish': True,
+        'FunctionConfig': {'Comment': 'Index only the approved production hostname and public pages', 'Runtime': 'cloudfront-js-2.0'}, 'FunctionCode': indexing},
+        'Host-specific noindex survives shared cached HTML; private URLs and preview always excluded')
     r["Headers"] = resource("AWS::CloudFront::ResponseHeadersPolicy", {"ResponseHeadersPolicyConfig": {
         "Name": sub("${AWS::StackName}-headers"), "CustomHeadersConfig": {"Items": [
-            {"Header": "X-Robots-Tag", "Value": "noindex, nofollow", "Override": True},
+            *([] if config['public_indexing'] else [{"Header": "X-Robots-Tag", "Value": "noindex, nofollow", "Override": True}]),
             {"Header": "Permissions-Policy", "Value": "camera=(), microphone=(), geolocation=()", "Override": True}]},
         "SecurityHeadersConfig": {"ContentTypeOptions": {"Override": True}, "FrameOptions": {"FrameOption": "DENY", "Override": True},
             "StrictTransportSecurity": {"AccessControlMaxAgeSec": 31536000, "Override": True},
@@ -98,17 +107,20 @@ def foundation():
             "ContentSecurityPolicy": {"ContentSecurityPolicy": "default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.ytimg.com; font-src 'self'; media-src 'self' blob:; connect-src 'self' https://*.amazonaws.com https://www.youtube.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests", "Override": True}}}}, "HTTPS preview security and noindex, independent of final domain")
     static = {"TargetOriginId": "site", "ViewerProtocolPolicy": "redirect-to-https", "Compress": True,
         "AllowedMethods": ["GET", "HEAD", "OPTIONS"], "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6", "ResponseHeadersPolicyId": ref("Headers"),
-        "FunctionAssociations": [{"EventType": "viewer-request", "FunctionARN": att("Routes", "FunctionARN")}]}
+        "FunctionAssociations": [{"EventType": "viewer-request", "FunctionARN": att("Routes", "FunctionARN")},
+                                 {"EventType": "viewer-response", "FunctionARN": att("Indexing", "FunctionARN")}]}
     api_behavior = {"PathPattern": "/api/*", "TargetOriginId": "api", "ViewerProtocolPolicy": "https-only", "Compress": True,
         "AllowedMethods": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"], "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
         "OriginRequestPolicyId": "b689b0a8-53d0-40ab-baf2-68738e2966ac", "ResponseHeadersPolicyId": ref("Headers")}
-    r["CDN"] = resource("AWS::CloudFront::Distribution", {"DistributionConfig": {"Enabled": True, "Comment": "Lolixco Stage18B release candidate; no custom hostname",
+    r["CDN"] = resource("AWS::CloudFront::Distribution", {"DistributionConfig": {"Enabled": True, "Comment": "Lolixco public beta; custom hostname prepared; indexing explicitly gated",
+        "Aliases": [hostname],
         "HttpVersion": "http2and3", "DefaultRootObject": "index.html", "PriceClass": "PriceClass_All",
         "WebACLId": {"Fn::If": ["HasWaf", ref("WafArn"), ref("AWS::NoValue")]},
         "Origins": [{"Id": "site", "DomainName": att("Site", "RegionalDomainName"), "OriginAccessControlId": ref("OAC"), "S3OriginConfig": {"OriginAccessIdentity": ""}},
             {"Fn::If": ["HasApi", {"Id": "api", "DomainName": ref("ApiDomain"), "CustomOriginConfig": {"OriginProtocolPolicy": "https-only", "OriginSSLProtocols": ["TLSv1.2"]}}, ref("AWS::NoValue")]}],
         "DefaultCacheBehavior": static, "CacheBehaviors": {"Fn::If": ["HasApi", [api_behavior], ref("AWS::NoValue")]},
-        "ViewerCertificate": {"CloudFrontDefaultCertificate": True}}}, "Independent HTTPS release candidate; preserve the existing restricted preview")
+        "ViewerCertificate": {"AcmCertificateArn": config['certificate_arn'], "SslSupportMethod": "sni-only", "MinimumProtocolVersion": "TLSv1.2_2021"}}},
+        "Existing distribution gains validated custom hostname; preserve origins, OAC, WAF and API behavior")
     r["SiteTLS"]["Properties"]["PolicyDocument"]["Statement"].append({"Effect": "Allow", "Principal": {"Service": "cloudfront.amazonaws.com"},
         "Action": "s3:GetObject", "Resource": sub("${Site.Arn}/*"), "Condition": {"StringEquals": {"AWS:SourceArn": sub("arn:aws:cloudfront::${AWS::AccountId}:distribution/${CDN}")}}})
     outputs = {k: {"Value": v} for k, v in {"SiteBucket": ref("Site"), "PrivateBucket": ref("Private"), "ArtifactBucket": ref("Artifacts"),
@@ -116,14 +128,15 @@ def foundation():
         "ImageUri": att("Images", "RepositoryUri"), "ImageArn": att("Images", "Arn"), "BuildProject": ref("Builder"),
         "DistributionId": ref("CDN"), "Domain": att("CDN", "DomainName")}.items()}
     return {"AWSTemplateFormatVersion": "2010-09-09", "Description": "Lolixco release candidate: private origins, published media, durable jobs and one-off image builds. Generated with AWS guidance.",
-        "Metadata": {"AWS::CloudFormation::Interface": {}, "GeneratedBy": "Lolixco Stage18B release engineering"},
-        "Parameters": {"ApiDomain": {"Type": "String", "Default": ""}, "PreviewOrigin": {"Type": "String", "Default": "https://invalid.example"},
+        "Metadata": {"AWS::CloudFormation::Interface": {}, "GeneratedBy": "Lolixco release engineering", "AWSToolsMetrics": {"AWSAgentToolkit": "aws-cloudformation@3"}},
+        "Parameters": {"ApiDomain": {"Type": "String", "Default": ""}, "AllowedOrigins": {"Type": "CommaDelimitedList", "Default": ','.join(config['allowed_origins'])},
                        "WafArn": {"Type": "String", "Default": ""}},
         "Conditions": {"HasApi": {"Fn::Not": [{"Fn::Equals": [ref("ApiDomain"), ""]}]}, "HasWaf": {"Fn::Not": [{"Fn::Equals": [ref("WafArn"), ""]}]}},
         "Resources": r, "Outputs": outputs}
 
 
 def runtime(base, image, secret, origin, account):
+    config = load_release_config()
     r = {}
     for name in ("ApiLog", "WorkerLog"):
         r[name] = resource("AWS::Logs::LogGroup", {"LogGroupName": "/aws/lambda/lolixco-rc-" + ("api" if name == "ApiLog" else "worker"), "RetentionInDays": 7}, "Only bounded non-sensitive operational logs")
@@ -143,7 +156,8 @@ def runtime(base, image, secret, origin, account):
             allow(["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"], base["QueueArn"]),
             allow(["logs:CreateLogStream", "logs:PutLogEvents"], sub("${WorkerLog.Arn}:*"))])}, "Existing production reader role gains only this release's processing resources")
     environment = {"JOBS_TABLE": base["Table"], "PRIVATE_BUCKET": base["PrivateBucket"], "JOB_QUEUE": base["QueueUrl"],
-                   "PUBLIC_ORIGIN": origin, "AI_ENABLED": "true", "DISTRIBUTION_ID": base["DistributionId"]}
+                   "PUBLIC_ORIGIN": origin, "ALLOWED_ORIGINS": ','.join(config['allowed_origins']),
+                   "AI_ENABLED": "true", "DISTRIBUTION_ID": base["DistributionId"]}
     r["Api"] = resource("AWS::Lambda::Function", {"FunctionName": "lolixco-rc-api", "Runtime": "python3.12", "Handler": "api.handler",
         "Role": att("ApiRole", "Arn"), "MemorySize": 256, "Timeout": 30, "Code": {"S3Bucket": base["ArtifactBucket"], "S3Key": base.get("ApiKey", "source/api.zip")},
         "Environment": {"Variables": environment}}, "Lightweight API; direct uploads never pass 100 MiB through Lambda")
@@ -169,7 +183,7 @@ def runtime(base, image, secret, origin, account):
             "EvaluationPeriods": 1, "Threshold": 1, "ComparisonOperator": "GreaterThanOrEqualToThreshold", "TreatMissingData": "notBreaching",
             "Dimensions": [{"Name": "FunctionName", "Value": ref(kind)}]}, "Console-visible failed invocation alarm")
     return {"AWSTemplateFormatVersion": "2010-09-09", "Description": "Lolixco bounded anonymous AI API and isolated container worker. Generated with AWS guidance.",
-        "Metadata": {"GeneratedBy": "Lolixco Stage18B release engineering"}, "Resources": r,
+        "Metadata": {"GeneratedBy": "Lolixco release engineering", "AWSToolsMetrics": {"AWSAgentToolkit": "aws-cloudformation@3"}}, "Resources": r,
         "Outputs": {"ApiEndpoint": {"Value": att("Http", "ApiEndpoint")}, "ApiFunction": {"Value": ref("Api")}, "WorkerFunction": {"Value": ref("Worker")}}}
 
 

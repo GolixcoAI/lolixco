@@ -119,7 +119,7 @@ export const PUBLIC_PAGES = [
       "Lolixco is a creative-media discovery and editing-feedback product under the Golixco brand. BETA describes the release stage; Experimental AI Assessment describes limitations of the scoring methodology.",
       "The AWS release candidate connects 27 public YouTube edits and 30 owner-authorized hosted edits with search, Shorts, Immersion and Creator Studio. Source availability and YouTube embedding restrictions can change.",
       "Creator Studio uses isolated cloud jobs, private temporary uploads and conservative quotas. Missing evidence remains unassessed. AI scores, including high scores, do not establish validated accuracy.",
-      "This temporary CloudFront release is available for owner inspection. The final custom hostname and public indexing require a separate release decision. Contact hello@golixco.com with general enquiries or support@golixco.com for help."
+      "Lolixco's official destination is lol.golixco.com. Public-beta availability and processing limits may change as the service develops. Contact hello@golixco.com with general enquiries or support@golixco.com for help."
     ]
   }
 ];

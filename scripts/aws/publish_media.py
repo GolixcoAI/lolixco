@@ -74,7 +74,7 @@ def publish(session, inventory):
                 "category": record["category_approved_target"],
                 "tags": sorted(set(record["search_tags"] + [h.lstrip("#").lower() for h in record["hashtags"]])),
                 "hashtags": record["hashtags"], "creator": record["creator_credit"] or "Attribution pending",
-                "poster": "https://" + base["Domain"] + item["poster"]["path"], "source": "https://" + base["Domain"] + item["video"]["path"],
+                "poster": item["poster"]["path"], "source": item["video"]["path"],
                 "duration": f"{seconds // 60}:{seconds % 60:02}", "trending": False,
                 "format": record["recommended_format"], "fandomIds": record["fandom_ids"],
                 "sourceType": "licensed_local_media"}

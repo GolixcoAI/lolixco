@@ -6,9 +6,14 @@ import subprocess
 
 import boto3
 from deploy_release import ACCOUNT, REGION, ROOT, client, outputs
+from release_config import load_release_config
 
 
 def main():
+    release = load_release_config()
+    built_indexing = 'Allow: /' in (ROOT / 'dist/robots.txt').read_text()
+    if built_indexing != release['public_indexing']:
+        raise RuntimeError('Build indexing mode must match config/aws-release.json')
     subprocess.run(["node", "scripts/check-release-build.mjs", "dist"], cwd=ROOT, check=True)
     s = boto3.Session(profile_name="lolixco-codex", region_name=REGION)
     if client(s, "sts").get_caller_identity()["Account"] != ACCOUNT:
@@ -33,7 +38,7 @@ def main():
         count += 1
     client(s, "cloudfront").create_invalidation(DistributionId=base["DistributionId"],
         InvalidationBatch={"Paths": {"Quantity": 1, "Items": ["/*"]}, "CallerReference": hashlib.sha256((ROOT / "dist/index.html").read_bytes()).hexdigest()})
-    print(json.dumps({"published_files": count, "url": "https://" + base["Domain"], "indexing": "noindex"}))
+    print(json.dumps({"published_files": count, "url": release['public_origin'], "preview": 'https://' + base['Domain'], "indexing": built_indexing}))
 
 
 if __name__ == "__main__":

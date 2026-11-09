@@ -40,7 +40,8 @@ def body_json(event):
 def session(event, create=False):
     headers = {k.lower(): v for k, v in event.get("headers", {}).items()}
     origin = headers.get("origin")
-    if origin and origin != os.environ["PUBLIC_ORIGIN"]:
+    allowed_origins = {os.environ["PUBLIC_ORIGIN"], *filter(None, os.environ.get("ALLOWED_ORIGINS", "").split(","))}
+    if origin and origin not in allowed_origins:
         raise RequestError(403, "Use the Lolixco website to access analysis.")
     cookie = ";".join(event.get("cookies", [])) or headers.get("cookie", "")
     match = re.search(r"(?:^|;\s*)lolixco_session=([a-f0-9]{64})(?:;|$)", cookie)

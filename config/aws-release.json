@@ -1,0 +1,10 @@
+{
+  "account": "247673029886",
+  "region": "ap-south-1",
+  "distribution_id": "E1PNFKBQZAM8WJ",
+  "preview_origin": "https://d2w2cv3wlh68gg.cloudfront.net",
+  "public_origin": "https://lol.golixco.com",
+  "certificate_arn": "arn:aws:acm:us-east-1:247673029886:certificate/e72270a3-5d05-43a8-88e9-286ab2d73344",
+  "allowed_origins": ["https://lol.golixco.com", "https://d2w2cv3wlh68gg.cloudfront.net"],
+  "public_indexing": false
+}

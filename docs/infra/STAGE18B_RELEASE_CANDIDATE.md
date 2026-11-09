@@ -1,5 +1,7 @@
 # Stage 18B AWS release candidate
 
+Custom-domain configuration now follows [the domain preparation runbook](CUSTOM_DOMAIN_PREPARATION.md). The historical Stage 18B hostname/certificate instructions below describe the original preview deployment.
+
 Release candidate: https://d2w2cv3wlh68gg.cloudfront.net
 
 This deployment extends the product and secret-management foundation merged in PRs #19 and #20. It is an owner-inspection release, with no custom hostname and no public indexing. It does not complete the worldwide launch. The deployment PR requires owner approval before merging.
