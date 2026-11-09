@@ -1,6 +1,6 @@
 # Custom-domain preparation — 10 November 2026 (IST)
 
-The existing release distribution is prepared for `https://lol.golixco.com`. Traffic DNS and public indexing remain pending owner activation. PR #21 remains unmerged; this is not a worldwide-launch completion claim.
+The owner has activated public DNS and authorized the public beta, production indexing and PR #21 merge. The existing release distribution serves `https://lol.golixco.com`. Historical pre-DNS evidence below remains the accepted baseline; final activation uses a concise public-DNS smoke check.
 
 ## AWS state
 
@@ -11,7 +11,7 @@ The existing release distribution is prepared for `https://lol.golixco.com`. Tra
 
 ## Persistent deployment settings
 
-`config/aws-release.json` contains public deployment identifiers, the certificate, the exact production and preview origin allowlist, and `public_indexing: false`. No credentials are stored there. Deployment scripts load and validate it. Foundation/route updates preserve the existing API and WAF parameters; runtime updates preserve the production origin. Subsequent deployments retain the custom certificate and alias.
+`config/aws-release.json` contains public deployment identifiers, the certificate, the exact production and preview origin allowlist, and the owner-authorized `public_indexing: true`. No credentials are stored there. Deployment scripts load and validate it. Foundation/route updates preserve the existing API and WAF parameters; runtime updates preserve the production origin. Subsequent deployments retain the custom certificate and alias.
 
 The API validates both exact HTTPS origins. Private S3 CORS permits those same two origins, without a wildcard origin. The API remains same-origin `/api/v8/*`, with caching disabled and the viewer Host excluded at the API Gateway origin. Cookies remain host-only, Secure, HttpOnly and SameSite=Strict. A new hostname creates a new private browser session; preview reports do not transfer automatically.
 
@@ -19,11 +19,11 @@ All 30 hosted video/poster pairs use relative `/media/hosted/...` URLs, and the 
 
 ## Indexing activation gate
 
-The homepage title remains `Lolixco | Discover Edits`; branding, favicon, OG image, sitemap and llms.txt are preserved. Canonicals and social URLs already use the official hostname. Public HTML, response headers and robots remain unindexed during preparation.
+The homepage title remains `Lolixco | Discover Edits`; branding, favicon, OG image, sitemap and llms.txt are preserved. Canonicals and social URLs use the official hostname. Public HTML, response headers and robots allow indexing after the owner-authorized activation; the preview and private/API URLs remain excluded.
 
-At the owner-authorized final cutover, after public DNS/TLS verification:
+Production deployment settings:
 
-1. Change `public_indexing` to `true` in `config/aws-release.json`.
+1. Keep `public_indexing` set to `true` in `config/aws-release.json`.
 2. Build with `LOLIXCO_PUBLIC_RELEASE=1 VITE_ANALYSIS_ENABLED=true VITE_RECSYS_ENABLED=false npm run build`.
 3. Deploy the existing foundation/route configuration, publish the scanned frontend, invalidate, and verify public/private indexing behavior.
 
@@ -52,6 +52,6 @@ Keep the existing ACM validation CNAME unchanged. When the owner chooses to swit
 |---|---|---|---|---|
 | CNAME | `lol` | `d2w2cv3wlh68gg.cloudfront.net` | DNS only / grey cloud | Auto |
 
-After owner confirmation, verify public DNS without overrides, TLS, routes, all media, upload/session isolation, job lifecycle and one successful semantic inference when quota/provider availability permit. Enable indexing deliberately through the gate above. Leave PR #21 open until the owner's separate merge authorization.
+The owner confirmed the DNS change and explicitly authorized the merge. Verify public DNS/TLS, indexing, sample routes/media and API protections with one focused smoke pass, then merge after current-head CI is green. The prior media, upload/session and lifecycle checks remain the accepted baseline. Do not repeatedly invoke Gemini to force semantic acceptance; retain the documented provider limitation.
 
 Rollback evidence outside Git includes the prior stack templates, distribution configuration, CORS and site object-version IDs. Revert only this release's stacks/site versions and invalidate if needed; do not reset stored jobs or touch media objects. No Cloudflare DNS, validation record, parent website, email/MX or unrelated AWS workload was modified. No new distribution, bucket, always-on compute or provider plan was created.

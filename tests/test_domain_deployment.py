@@ -22,7 +22,7 @@ class DomainPreparationTests(unittest.TestCase):
         self.assertEqual(t['Parameters']['AllowedOrigins']['Default'],','.join(config['allowed_origins']))
         for name in ['Site','Private','Artifacts','Jobs']:
             self.assertEqual(r[name]['DeletionPolicy'],'Retain')
-        self.assertFalse(config['public_indexing'])
+        self.assertTrue(config['public_indexing'])
 
     def test_public_activation_keeps_preview_and_private_indexing_guard(self):
         config={**load_release_config(),'public_indexing':True}
