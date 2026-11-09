@@ -1,6 +1,6 @@
 {
-  "notice": "Proposed release headers; apply only to the approved dedicated Lolixco distribution after browser and domain verification.",
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.ytimg.com; font-src 'self'; media-src 'self' blob:; connect-src 'self' https://www.youtube.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests",
+  "notice": "Release headers: dedicated Lolixco CloudFront only; custom domain requires owner approval.",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.ytimg.com; font-src 'self'; media-src 'self' blob:; connect-src 'self' https://*.amazonaws.com https://www.youtube.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Content-Type-Options": "nosniff",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",

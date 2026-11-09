@@ -1,3 +1,5 @@
+import {markUnavailable} from "../../utils/sourceQueue";
+import {useVideoTap} from "../../hooks/useVideoTap";
 import { useCinematicInfo } from "../../hooks/useCinematicInfo";
 import { useSessionAudio } from "../../hooks/useSessionAudio";
 import { publicSource } from "../../utils/publicSource";
@@ -134,7 +136,7 @@ function VideoPlayerSession({
       v.removeEventListener("playing", start);
       v.removeEventListener("pause", stop);
     };
-  }, [isYouTube, playback.pause]);
+  }, [edit.id, edit.source, isYouTube, playback.pause]);
 
   async function play() {
     await playback.play();
@@ -164,6 +166,7 @@ function VideoPlayerSession({
       setNotice("Fullscreen is unavailable in this browser.");
     }
   }
+  const tap = useVideoTap(() => {video.current?.paused ? void play() : playback.pause();}, !isYouTube && !isOverlayActive);
   if (isYouTube) {
     return (
       <div
@@ -186,7 +189,7 @@ function VideoPlayerSession({
           onPause={() => setPlaying(false)}
           onEnded={() => setPlaying(false)}
           onAutoplayBlocked={() => setPlaying(false)}
-          onError={() => setPlaying(false)}
+          onError={code => {setPlaying(false);if([100,101,150].includes(code))markUnavailable(edit);}}
           muted={muted}
           controls={true}
         />
@@ -253,6 +256,7 @@ function VideoPlayerSession({
     >
       <video
         ref={video}
+        {...tap}
         src={edit.source}
         poster={edit.poster}
         muted={muted}

@@ -12,7 +12,7 @@ export function getUtcDaySeed(date: Date = new Date()): number {
  * Source type describes playback, not approval. Tests may explicitly inject a
  * synthetic public catalog; that does not authorize publication of those fixtures.
  * A UTC epoch-day cycle guarantees distinct consecutive days for pools > 1,
- * including month/year boundaries. Source-neutral ID ordering stabilizes rotation.
+ * including month/year boundaries. A stable hash avoids runs grouped by source IDs.
  */
 export function selectEditOfTheMoment(
   catalog: Edit[],
@@ -32,7 +32,7 @@ export function selectEditOfTheMoment(
         )
         .map((e) => [e.id, e]),
     ).values(),
-  ].sort((a, b) => a.id - b.id);
+  ].sort((a, b) => discoveryOrder(a.id) - discoveryOrder(b.id) || a.id - b.id);
   // Never substitute an arbitrary demo or a portrait item when Demo 0 is absent.
   if (!pool.length)
     return (
@@ -49,4 +49,11 @@ export function selectEditOfTheMoment(
       pool.length) %
     pool.length;
   return pool[index];
+}
+
+export function discoveryOrder(id: number): number {
+  let value = (id ^ 0x9e3779b9) >>> 0;
+  value = Math.imul(value ^ (value >>> 16), 0x21f0aaad);
+  value = Math.imul(value ^ (value >>> 15), 0x735a2d97);
+  return (value ^ (value >>> 15)) >>> 0;
 }

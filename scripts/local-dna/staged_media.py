@@ -67,13 +67,13 @@ def fraction(value, default=0):
         return default
 
 
-def probe(path):
+def probe(path, timeout=15):
     try:
         raw = subprocess.check_output([
             "ffprobe", "-v", "error", "-max_streams", "16", "-max_alloc", "67108864", "-protocol_whitelist", "file,pipe", "-format_whitelist", FORMATS,
             "-show_entries", "format=duration,format_name,start_time:stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,start_time,duration,sample_rate,channels:stream_disposition=attached_pic",
             "-of", "json", str(path),
-        ], stderr=subprocess.DEVNULL, timeout=15)
+        ], stderr=subprocess.DEVNULL, timeout=timeout)
         data = json.loads(raw)
     except subprocess.TimeoutExpired:
         raise MediaValidationError("media_probe_timeout", "Reading the media streams timed out. Try exporting the file again.") from None

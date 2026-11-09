@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Menu, Search, X, CircleHelp } from "lucide-react";
+import { Menu, Search, X } from "lucide-react";
 import { BrandLogo } from "./BrandLogo";
 
 export interface HeaderProps {
@@ -16,7 +16,6 @@ export default function Header({
   toggle,
   query,
   setQuery,
-  open,
   onHome,
 }: HeaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -105,19 +104,6 @@ export default function Header({
           </button>
         )}
       </form>
-      <div className="header-actions">
-        {open && (
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Help & Support"
-            title="Help & Support"
-            onClick={() => open("Help & Support")}
-          >
-            <CircleHelp size={20} />
-          </button>
-        )}
-      </div>
     </header>
   );
 }

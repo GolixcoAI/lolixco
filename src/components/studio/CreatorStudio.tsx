@@ -147,13 +147,15 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
  }, [analyzer.busy]);
  useEffect(() => {
   if (media || !analyzer.snapshot) return;
-  const {staged_media: staged, media_filename: filename, youtube_video_id: id} = analyzer.snapshot;
+  const {staged_media: staged, media_filename: filename, youtube_video_id: id, media_id: cloudMedia} = analyzer.snapshot;
   if (id) {
    setMode('youtube');
    setUrl(youtubeWatchUrl(id));
    setMedia({url: youtubeWatchUrl(id), title: 'YouTube reference', type: 'youtube', id});
   } else if (staged) {
    setMedia({url: '/api/v8/media/' + staged.id, title: staged.name, type: 'staged', id: staged.id, audioOnly: staged.audio_only});
+  } else if (cloudMedia && analyzer.cloud) {
+   setMedia({url:'',title:filename,type:'staged',id:cloudMedia,audioOnly:false});
   } else if (analyzer.files.some(file => file.filename === filename)) {
    setMedia({url: '/__dna/media?filename=' + encodeURIComponent(filename), title: filename, type: 'sample'});
   }
@@ -203,6 +205,7 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
  }
 
  function selectFile(file: File) {
+  const selectionStarted = performance.now();
   if (!clearInput()) return;
   setMode('local');
   setMedia({
@@ -210,6 +213,9 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
    file, audioOnly: file.type.startsWith('audio/') || audioFile.test(file.name),
   });
   setPreviewOpen(true);
+  requestAnimationFrame(() => {
+   try {performance.measure('lolixco.file_selection',{start:selectionStarted,duration:performance.now()-selectionStarted});}catch{/* Optional browser timing. */}
+  });
  }
 
  function selectSample(filename: string) {
@@ -446,7 +452,7 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
       </div>
       : <RatingReveal experimental={report?.experimental} localResult={analyzer.enabled && progress.status !== 'IDLE'}
       inputIdentity={media?.url} settled={V7_IDS.map(id => !!progress.sections[id])}
-      processing={analyzer.busy && !analyzer.connectionLost} analysisComplete={!analyzer.busy && progress.status === 'COMPLETE'}
+      processing={analyzer.busy} analysisComplete={!analyzer.busy && progress.status === 'COMPLETE'}
       onSeek={canSeek ? seek : undefined} evidenceWatchUrl={media?.type === 'youtube' ? media.url : undefined} receivedResultId={analyzer.liveJobId} ratings={report?.ratings}
       synthetic={report?.synthetic} developmentPreview={developerTools}/>}
      {report && <details className="studio-evidence-details">
@@ -465,6 +471,7 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
        : media.type === 'youtube' ? <YouTubePlayer ref={youtubePlayer} key={media.id} videoId={media.id} title={title} autoPlay={false} controls
         iframeReferrerPolicy="strict-origin-when-cross-origin" onReady={() => setYoutubeReady(true)} onError={code => {setYoutubeReady(false);setEmbedIssue(youtubePlaybackIssue(code));}}
         onPlay={() => setEmbedIssue('')}/>
+       : !media.url ? <p className="studio-preview-error">Your analysis has been restored. Choose the original file again if you want to preview it; the report remains available.</p>
        : preview.error ? <p className="studio-preview-error">{preview.error}</p>
        : audioOnly(media) ? <audio key={media.url} ref={element => {player.current = element;}} src={media.url} controls preload="metadata"
         onLoadedMetadata={event => setPreviewDuration(event.currentTarget)} onTimeUpdate={event => setTime(event.currentTarget.currentTime)}
@@ -489,7 +496,7 @@ export default function CreatorStudio({analysisEvents = EMPTY_EVENTS}: {analysis
      <button disabled={sourceLocked || loading} onClick={() => json.current?.click()}>{loading ? 'Reading report…' : 'Import analysis report'}</button>
      {analyzer.staged && !analyzer.busy && <button disabled={analyzer.cleaning} onClick={() => void deleteTemporary()}>Delete temporary media</button>}
      {analyzer.reports && !analyzer.busy && <button disabled={analyzer.cleaning} onClick={() => void analyzer.deleteReport()}>Delete saved report</button>}
-     <p className="studio-note">Temporary uploads are removed after one hour when no analysis is running. Delete them sooner here. Reports remain until you delete them.</p>
+     <p className="studio-note">{analyzer.cloud ? 'Upload access expires after one hour and report access after 24 hours. Expired stored files are swept every 15 minutes, with a one-day storage lifecycle backup. Export a report to keep it, or delete it sooner here.' : 'Temporary uploads are removed after one hour when no analysis is running. Delete them sooner here. Reports remain until you delete them.'}</p>
     </Panel>
    </CompactSection>
   </div>

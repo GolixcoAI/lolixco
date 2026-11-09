@@ -58,6 +58,9 @@ jobs:
         run: |
           python3 -m unittest discover -s tests -p test_aws_provider_secrets.py -v
           python3 -m unittest discover -s tests -p test_private_source_boundary.py -v
+          python3 -m unittest discover -s tests -p test_cloud_release_api.py -v
+          python3 -m unittest discover -s tests -p test_persistent_local.py -v
+          python3 -m unittest discover -s tests -p test_domain_deployment.py -v
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -105,7 +108,7 @@ jobs:
         run: pnpm check:content
 
       - name: Run production build
-        run: pnpm build
+        run: VITE_ANALYSIS_ENABLED=true VITE_RECSYS_ENABLED=false pnpm build
 
       - name: Inspect public build for private endpoints and credentials
         run: node scripts/check-release-build.mjs dist

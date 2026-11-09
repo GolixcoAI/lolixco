@@ -39,3 +39,13 @@ test("asset checks fail before a build ships missing files", () => {
     rmSync(root, { recursive: true });
   }
 });
+
+test('an unlisted hosted asset cannot bypass local existence checks',()=>{
+ const root=mkdtempSync(join(tmpdir(),'lolixco-hosted-check-'));
+ try {
+  mkdirSync(join(root,'src'));mkdirSync(join(root,'public'));
+  writeFileSync(join(root,'public/media-manifest.json'),JSON.stringify({items:[]}));
+  writeFileSync(join(root,'src/example.ts'),`const source='/media/hosted/999-aaaaaaaaaaaaaaaa.mp4';`);
+  assert.throws(()=>checkAssets(root),/999-aaaaaaaaaaaaaaaa\.mp4/);
+ }finally{rmSync(root,{recursive:true});}
+});

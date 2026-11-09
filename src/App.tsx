@@ -1,3 +1,6 @@
+import {sourceQueue,playbackEligible,seededRandom} from "./utils/sourceQueue";
+import {flushSync} from "react-dom";
+import {enterImmersiveFullscreen} from "./utils/immersiveFullscreen";
 import {PUBLIC_PAGES, PUBLIC_ORIGIN, pageForView} from "./config/publicPages";
 import PublicInfo from "./components/help/PublicInfo";
 import { discoveryCatalog } from "./utils/discoveryCatalog";
@@ -222,6 +225,7 @@ export default function App({
   const [drawer, setDrawer] = useState(false);
 
   // Curated Shorts in the catalog
+  const shortsSeed = useRef(Math.floor(Math.random()*0xffffffff));
   const catalogShorts = useMemo(
     () => initialEdits.filter((e) => isShort(e)),
     [initialEdits]
@@ -230,6 +234,8 @@ export default function App({
   // Production always uses the compiled module. initialEdits is a test-only
   // public-catalog injection point, never an intake/publication API.
   const shuffleOffset = useRef(0);
+  const shuffleQueue = useRef<Edit[]>([]);
+  const shuffleHistory = useRef<Edit[]>([]);
   const [today, setToday] = useState(() => new Date());
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -581,12 +587,21 @@ export default function App({
   }
 
   const handleShuffleFeatured = useCallback(() => {
-    let nextFeatured = selectEditOfTheMoment(initialEdits, new Date(), ++shuffleOffset.current);
-    if (nextFeatured?.id === selected?.id && initialEdits.length > 1) nextFeatured = selectEditOfTheMoment(initialEdits, new Date(), ++shuffleOffset.current);
+    const history = shuffleHistory.current.length ? shuffleHistory.current : selected ? [selected] : [];
+    shuffleQueue.current = shuffleQueue.current.filter(playbackEligible);
+    if (!shuffleQueue.current.length) shuffleQueue.current = sourceQueue(initialEdits.filter(e=>e.id!==selected?.id), Math.random, history);
+    const nextFeatured = shuffleQueue.current.shift();
+    if (nextFeatured) shuffleHistory.current = [...history.slice(-1),nextFeatured];
     if (nextFeatured) {
       setActiveShort(null); setSelection({ catalog: initialEdits, id: nextFeatured.id });
     }
   }, [initialEdits, selected?.id]);
+
+  function openImmersion() {
+    flushSync(() => {setDrawer(false); setImmersionOpen(true);});
+    const container = document.querySelector<HTMLElement>('.immersion-overlay');
+    void enterImmersiveFullscreen(container, container?.dataset.orientation === 'portrait');
+  }
 
   function navigate(name: string) {
     setDrawer(false);
@@ -612,7 +627,8 @@ export default function App({
       setCategory("All");
       setFandom("");
       if (catalogShorts.length > 0) {
-        const firstShort = catalogShorts[0];
+        const firstShort = (catalogShorts.some(e=>e.sourceType==='youtube_embed') && catalogShorts.some(e=>e.sourceType==='licensed_local_media')
+          ? sourceQueue(catalogShorts,seededRandom(shortsSeed.current)) : catalogShorts)[0];
         const newSessionId = `vs-${Date.now()}-${++sessionCounterRef.current}`;
         viewerSessionIdRef.current = newSessionId;
         setActiveShort(firstShort);
@@ -634,7 +650,7 @@ export default function App({
       viewerSessionIdRef.current = null;
       syncUrl("All", "", "", "Help & Support", null, true);
     } else if (name === "Immersion") {
-      setImmersionOpen(true);
+      openImmersion();
     } else {
       navigate("Home");
     }
@@ -700,6 +716,9 @@ export default function App({
         homeShelfShorts.length > 0 ? homeShelfShorts : catalogShorts;
     }
 
+    if (!query.trim() && baseQueue.some(e=>e.sourceType==='youtube_embed') && baseQueue.some(e=>e.sourceType==='licensed_local_media')) {
+      baseQueue = sourceQueue(baseQueue,seededRandom(shortsSeed.current));
+    }
     if (activeShort && !baseQueue.some((s) => s.id === activeShort.id)) {
       return [activeShort, ...baseQueue];
     }
@@ -711,6 +730,7 @@ export default function App({
     catalogShorts,
     homeShelfShorts,
     searchShorts,
+    query,
   ]);
 
   return (
@@ -750,7 +770,7 @@ export default function App({
           <span className="page-eyebrow">404</span><h1>We couldn't find that page</h1>
           <p>The link may have changed. Find your next edit on Home.</p>
           <button type="button" className="primary" onClick={() => navigate("Home")}>Explore edits</button>
-        </section> : ["Immersion","Privacy Policy","Copyright & Rights","Terms of Use","Public Beta"].includes(active) ? <PublicInfo view={active} onImmersion={()=>setImmersionOpen(true)}/> : active === "Help & Support" ? <Suspense fallback={<div className="page-loading"><LoadingRing label="Opening Help & Support" /></div>}><HelpSupport /></Suspense>
+        </section> : ["Immersion","Privacy Policy","Copyright & Rights","Terms of Use","Public Beta"].includes(active) ? <PublicInfo view={active} onImmersion={openImmersion}/> : active === "Help & Support" ? <Suspense fallback={<div className="page-loading"><LoadingRing label="Opening Help & Support" /></div>}><HelpSupport /></Suspense>
           : active === "Creator Studio" ? <Suspense fallback={<div className="page-loading"><LoadingRing label="Opening Creator Studio" /></div>}><CreatorStudio /></Suspense> : active === "Shorts" ? (
           catalogShorts.length === 0 ? (
             <div
@@ -794,7 +814,7 @@ export default function App({
               {searchShorts.length > 0 ? (
                 <ShortsShelf
                   title={category !== "All" ? `${category} Shorts` : "Curated Shorts"}
-                  items={searchShorts}
+                  items={active === "Shorts" ? eligibleShorts : searchShorts}
                   onSelect={handleSelectShort}
                   onTagClick={handleTagClick}
                 />
@@ -840,7 +860,7 @@ export default function App({
               </div>
             )}
 
-            <ImmersionBanner onOpen={() => setImmersionOpen(true)} />
+            <ImmersionBanner onOpen={openImmersion} />
             {homeSections.map((section) => {
               if (section.type === "video_row") {
                 return (
@@ -894,7 +914,7 @@ export default function App({
                 {searchShorts.length > 0 && (
                   <ShortsShelf
                     title={query ? "Matching Shorts" : "Curated Shorts"}
-                    items={searchShorts}
+                    items={active === "Shorts" ? eligibleShorts : searchShorts}
                     onSelect={handleSelectShort}
                     onTagClick={handleTagClick}
                   />
@@ -958,7 +978,7 @@ export default function App({
         )}
         <footer>
           <span className="footer-copy">Great edits. Fresh perspectives.</span>
-          <div className="footer-links"><a href="/shorts">Shorts</a><a href="/creator-studio">Creator Studio</a><a href="/immersion">Immersion</a><a href="/help">Help & Support</a><a href="/rights">Copyright & Rights</a><a href="/terms">Terms of Use</a><a href="/privacy">Privacy Policy</a><a href="/beta">Public Beta</a></div>
+          <div className="footer-links"><a href="/shorts">Shorts</a><a href="/creator-studio">Creator Studio</a><a href="/immersion">Immersion</a><a href="/rights">Copyright & Rights</a><a href="/terms">Terms of Use</a><a href="/privacy">Privacy Policy</a><a href="/beta">Public Beta</a><a href="mailto:hello@golixco.com">Contact</a></div>
         </footer>
       </main>
       {activeShort && !immersionOpen && (
@@ -975,6 +995,7 @@ export default function App({
         <ImmersionViewer
           catalog={initialEdits}
           initialContext={{
+            restrictToContext: !!fandom || !["All","Featured"].includes(category),
             category: category !== "All" ? category : undefined,
             fandomId: fandom || undefined,
             currentEditId: selected?.id,

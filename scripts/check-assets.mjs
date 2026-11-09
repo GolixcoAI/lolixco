@@ -1,4 +1,4 @@
-import { statSync, readdirSync, readFileSync } from "node:fs";
+import { statSync, readdirSync, readFileSync, existsSync } from "node:fs";
 import { resolve, relative, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assetPaths } from "../src/data/media-assets.js";
@@ -14,6 +14,21 @@ function files(directory) {
 
 export function checkAssets(root = projectRoot, publicDirectory = "public") {
   const paths = new Set(assetPaths);
+  // Delivered S3 assets stay out of Git/build bundles. Only exact, integrity-bound
+  // entries in the reviewed public manifest may resolve outside the local tree.
+  const published = new Set();
+  const manifestPath = resolve(root, 'public/media-manifest.json');
+  if (existsSync(manifestPath)) {
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    for (const item of manifest.items) for (const kind of ['video','poster']) {
+      const asset = item[kind];
+      if (!/^\/media\/hosted\/\d+-[a-f0-9]{16}\.(?:mp4|webp)$/.test(asset.path)
+          || !/^[a-f0-9]{64}$/.test(asset.sha256) || !Number.isSafeInteger(asset.bytes) || asset.bytes <= 0) {
+        throw new Error('Invalid published media manifest entry');
+      }
+      published.add(asset.path.slice(1));
+    }
+  }
   // Also cover literal public references in styles and components so adding a
   // background image cannot silently bypass the shared metadata manifest.
   for (const file of files(resolve(root, "src"))) {
@@ -28,6 +43,7 @@ export function checkAssets(root = projectRoot, publicDirectory = "public") {
   const errors = [];
   const results = [];
   for (const asset of paths) {
+    if (published.has(asset)) continue;
     const file = resolve(root, publicDirectory, asset);
     try {
       const info = statSync(file);

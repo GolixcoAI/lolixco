@@ -1,3 +1,4 @@
+import {sourceQueue,seededRandom} from "../utils/sourceQueue";
 import { edits, type Edit } from "../data/edits";
 
 export interface RecommendedItem {
@@ -40,6 +41,7 @@ export interface RecommendationParams {
   excludeEditIds?: number[];
   history?: WatchHistoryContext[];
   timeoutMs?: number;
+  variationSeed?: number;
 }
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
@@ -128,6 +130,17 @@ export function computeLocalFallback(
     });
   }
 
+  const current = catalog.find(e=>e.id===params.currentEditId);
+  const mixed = pool.some(e=>e.sourceType==='youtube_embed') && pool.some(e=>e.sourceType==='licensed_local_media');
+  if (mixed) {
+    pool = pool.filter(e=>e.format!=='short');
+    // Related items compete in a high-relevance band, then source diversity breaks ties.
+    const affinity = (e: Edit) => current ? (e.category===current.category ? 3 : 0) + e.tags.filter(t=>current.tags.includes(t)).length : 0;
+    pool.sort((a,b)=>affinity(b)-affinity(a));
+    const band = current ? pool.filter(e=>affinity(e)>0) : pool;
+    const related = band.length>=limit ? band : pool;
+    pool = sourceQueue(related,seededRandom(params.variationSeed ?? params.currentEditId ?? 41),current?[current]:[]);
+  }
   const selectedEdits = pool.slice(0, limit);
   const items: RecommendedItem[] = selectedEdits.map((edit, idx) => ({
     rank: idx + 1,

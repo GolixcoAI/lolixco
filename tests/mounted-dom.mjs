@@ -130,9 +130,13 @@ export function setupMountedDom(initialUrl = "http://localhost:3000/") {
       _listeners: new Map(),
       _textContent: "",
       scrollLeft: 0,
+      scrollTop: 0,
+      clientHeight: 600,
       scrollWidth: 1000,
       clientWidth: 500,
       scrollBy() {},
+      scrollTo({top = 0, left = 0}) { this.scrollTop = top; this.scrollLeft = left; },
+      querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; },
       paused: true,
       focus() {
         if (this.ownerDocument) this.ownerDocument.activeElement = this;
@@ -281,6 +285,7 @@ export function setupMountedDom(initialUrl = "http://localhost:3000/") {
     ownerDocument: null,
     parentNode: null,
     activeElement: null,
+    querySelector(selector) { return this.body?.querySelector(selector) ?? null; },
     _listeners: new Map(),
     createElement: (tag) => {
       const el = createElement(tag);
@@ -341,6 +346,10 @@ export function setupMountedDom(initialUrl = "http://localhost:3000/") {
   globalThis.IntersectionObserver = class {
     observe() {}
     unobserve() {}
+    disconnect() {}
+  };
+  globalThis.ResizeObserver = class {
+    observe() {}
     disconnect() {}
   };
 

@@ -14,9 +14,10 @@ export type ProviderStatus = 'connected' | 'not_configured' | 'configured_disabl
 type Provider = {status: ProviderStatus; message: string; model?: string};
 type StagedMedia = {id: string; name: string; audio_only: boolean};
 type Source = {type: 'file'; file: File} | {type: 'staged'; id: string} | {type: 'sample'; filename: string} | {type: 'youtube'; id: string};
-type JobEvent = {event_type: string; payload: Record<string, unknown>; section_id?: string};
+type JobEvent = {seq?: number; event_type: string; payload: Record<string, unknown>; section_id?: string};
 type Snapshot = {
  staged_media?: StagedMedia;
+ media_id?: string;
  youtube_video_id?: string;
  quality_mode?: 'phase8' | 'phase9';
  job_id: string;
@@ -31,6 +32,7 @@ type Snapshot = {
 };
 type Health = {
  version: string;
+ direct_upload?: boolean;
  media_limits?: typeof DEFAULT_MEDIA_LIMITS;
  provider?: Provider;
 };
@@ -64,7 +66,10 @@ function providerFailure(code?: string, message?: string): Provider | undefined 
  }
 }
 
+function measure(name: string, start: number) {try {performance.measure('lolixco.'+name,{start,duration:performance.now()-start});}catch{/* Timing support is optional. */}}
+
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
+ const began = performance.now();
  const controller = new AbortController();
  const abort = () => controller.abort();
  options?.signal?.addEventListener('abort', abort, {once: true});
@@ -88,12 +93,39 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
   if (failure instanceof LocalRequestError || options?.signal?.aborted) throw failure;
   throw new LocalRequestError(controller.signal.aborted ? analysisFailure('timeout') : connectionFailure(), controller.signal.aborted ? 408 : 0);
  } finally {
+  measure(path==='media/presign'?'presign':path.endsWith('/start')?'job_creation':path.includes('/report/')?'result_delivery':path.startsWith('jobs/')?'status':'availability',began);
   clearTimeout(timer);
   options?.signal?.removeEventListener('abort', abort);
  }
 }
 
+async function uploadPrivateFile(file: File, signal: AbortSignal) {
+ const media = await api<{id: string; name: string; video: boolean; upload: {url: string; fields: Record<string, string>}}>('media/presign', {
+  method: 'POST', body: JSON.stringify({name: file.name, size: file.size}), signal,
+ });
+ const uploadStart = performance.now();
+ const form = new FormData();
+ for (const [name, value] of Object.entries(media.upload.fields)) form.append(name, value);
+ form.append('file', file);
+ const controller = new AbortController();
+ const abort = () => controller.abort();
+ signal.addEventListener('abort', abort, {once:true});
+ if (signal.aborted) abort();
+ const timer = setTimeout(abort, 150_000);
+ try {
+  const result = await fetch(media.upload.url, {method:'POST', body:form, credentials:'omit', signal:controller.signal});
+  if (!result.ok) throw new LocalRequestError('The private upload did not finish. Please try again.', result.status);
+  return media;
+ } catch (failure) {
+  if (failure instanceof LocalRequestError || signal.aborted) throw failure;
+  throw new LocalRequestError(controller.signal.aborted ? analysisFailure('timeout') : connectionFailure(), controller.signal.aborted ? 408 : 0);
+ } finally {measure('upload',uploadStart);clearTimeout(timer); signal.removeEventListener('abort', abort);}
+}
+
+const ACTIVE_ANALYSIS_KEY = 'lolixco.active-analysis.v1';
+function savedAnalysis() {try {return sessionStorage.getItem(ACTIVE_ANALYSIS_KEY) || '';}catch{return '';}}
 function setJobLocation(job: string) {
+ try {if(job)sessionStorage.setItem(ACTIVE_ANALYSIS_KEY,job);else sessionStorage.removeItem(ACTIVE_ANALYSIS_KEY);}catch{/* Cookie ownership remains authoritative. */}
  const url = new URL(location.href);
  if (job) url.searchParams.set('analysisJob', job);
  else url.searchParams.delete('analysisJob');
@@ -135,8 +167,8 @@ export function useLocalAnalyzer() {
  const [reports, setReports] = useState<Reports | null>(null);
  const [error, setError] = useState('');
  const [job, setJob] = useState(() => {
-  const id = new URLSearchParams(location.search).get('analysisJob') || '';
-  return enabled && /^job_\d+_[a-f0-9]{6}$/.test(id) ? id : '';
+  const id = new URLSearchParams(location.search).get('analysisJob') || savedAnalysis();
+  return enabled && /^job_\d+_[a-f0-9]{6,32}$/.test(id) ? id : '';
  });
  const [starting, setStarting] = useState(false);
  const [uploading, setUploading] = useState(false);
@@ -155,6 +187,7 @@ export function useLocalAnalyzer() {
  const uploadController = useRef<AbortController | null>(null);
  const mounted = useRef(true);
  const lifecycle = useRef(0);
+ const directUpload = useRef(false);
 
  async function refresh() {
   if (!enabled) return;
@@ -165,6 +198,7 @@ export function useLocalAnalyzer() {
    const health = await api<Health>('health');
    if (health.version !== '8.0.0') throw Error('Analysis is temporarily unavailable.');
    if (healthGeneration.current !== token) return;
+   directUpload.current = health.direct_upload === true;
    setReady(true);
    setProvider(health.provider ?? unconfigured);
    setMediaLimits(health.media_limits ?? DEFAULT_MEDIA_LIMITS);
@@ -194,6 +228,7 @@ export function useLocalAnalyzer() {
 
  useEffect(() => {
   if (!job) return;
+  setJobLocation(job);
   let alive = true;
   let timer: ReturnType<typeof setTimeout>;
   let inflight = false;
@@ -202,7 +237,7 @@ export function useLocalAnalyzer() {
   const token = generation.current;
   const controller = new AbortController();
   const options = {signal: controller.signal};
-  const stream = new EventSource(analyzerApiPath('jobs/' + job + '/events'));
+  const stream = directUpload.current ? null : new EventSource(analyzerApiPath('jobs/' + job + '/events'));
   const current = () => alive && generation.current === token;
   const update = async () => {
    if (inflight || !current() || active.current !== job) return;
@@ -214,7 +249,9 @@ export function useLocalAnalyzer() {
     setSnapshot({...result, error: safeError});
     const next: AnalysisEvent[] = [];
     const localPhase9 = result.quality_mode === 'phase9' && !result.youtube_video_id;
-    for (const event of result.events.slice(cursor)) {
+    const sequenced = result.events.some(event=>typeof event.seq==='number');
+    const newEvents = sequenced ? result.events.filter(event=>(event.seq ?? 0)>cursor) : result.events.slice(cursor);
+    for (const event of newEvents) {
      if (!visibleEvents.includes(event.event_type) || event.section_id === 'personalized_owner_fit') continue;
      next.push({
       job_id: job,
@@ -222,7 +259,7 @@ export function useLocalAnalyzer() {
       section: localPhase9 && event.section_id && !('method_version' in event.payload && String(event.payload.method_version).startsWith('gemini_')) ? phase9Section(event.payload) : event.payload,
      });
     }
-    cursor = result.events.length;
+    cursor = sequenced ? Math.max(cursor,...result.events.map(event=>event.seq ?? 0)) : result.events.length;
     if (next.length) setEvents(old => [...old, ...next]);
     if (!terminalStatuses.includes(result.status)) {
      failures = 0;
@@ -263,12 +300,12 @@ export function useLocalAnalyzer() {
     cancelPending.current = false;
     setCancelling(false);
     setError('');
-    stream.close();
+    stream?.close();
    } catch (failure) {
     if (!current()) return;
     failures++;
-    setError(failure instanceof Error ? failure.message : connectionFailure());
-    if (failures >= 3) {setConnectionLost(true); stream.close();}
+    setError('Progress could not refresh. Your analysis may still be running; reconnecting automatically.');
+    if (failures >= 3) {setConnectionLost(true); stream?.close();}
     if (failure instanceof LocalRequestError && [403, 404, 410].includes(failure.status)) {
      active.current = '';
      cancelPending.current = false;
@@ -278,7 +315,7 @@ export function useLocalAnalyzer() {
      setEvents([]);
      setReports(null);
      setJobLocation('');
-     stream.close();
+     stream?.close();
     }
    } finally {
     inflight = false;
@@ -286,16 +323,20 @@ export function useLocalAnalyzer() {
   };
   const poll = async () => {
    await update();
-   if (current() && active.current === job && failures < 3) timer = setTimeout(poll, failures ? 1500 : 900);
+   if (current() && active.current === job) timer = setTimeout(poll, failures ? Math.min(30000, 4000 * 2 ** Math.min(failures-1,3)) : document.hidden ? 15000 : directUpload.current ? 4000 : 900);
   };
-  stream.onmessage = () => {void update();};
-  stream.onerror = () => stream.close();
+  if (stream) {stream.onmessage = () => {void update();}; stream.onerror = () => stream.close();}
+  const reconnect = () => {if (!document.hidden) {failures=0; void update();}};
+  window.addEventListener('online',reconnect);
+  document.addEventListener('visibilitychange',reconnect);
   void poll();
   return () => {
    alive = false;
    controller.abort();
    clearTimeout(timer);
-   stream.close();
+   stream?.close();
+   window.removeEventListener('online',reconnect);
+   document.removeEventListener('visibilitychange',reconnect);
   };
  }, [job, pollRevision]);
 
@@ -327,7 +368,7 @@ export function useLocalAnalyzer() {
     setUploading(true);
     uploadController.current = new AbortController();
     try {
-     const uploaded = await api<{id: string; name: string; video: unknown}>('media', {
+     const uploaded = directUpload.current ? await uploadPrivateFile(source.file, uploadController.current.signal) : await api<{id: string; name: string; video: unknown}>('media', {
       method: 'POST',
       body: source.file,
       headers: {'Content-Type': 'application/octet-stream', 'X-Media-Name': encodeURIComponent(source.file.name)},
@@ -490,6 +531,6 @@ export function useLocalAnalyzer() {
  return {
   busy, cancel, cancelling, checking, cleaning, clear, connectionLost, deleteReport, deleteStaged, dismissResult, enabled, error, events, files,
   inspectYoutube, liveJobId: startedHere.current ? job : undefined, mediaLimits, provider,
-  ready, refresh, reports, retryConnection, snapshot, staged: staged || snapshot?.staged_media, start, startCancelled, uploading,
+  ready, refresh, reports, retryConnection, snapshot, staged: staged || snapshot?.staged_media, start, startCancelled, uploading, cloud: directUpload.current,
  };
 }

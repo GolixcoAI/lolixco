@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type Ref } from 'react';
+import { useEffect, useId, useRef, useState, type Ref } from 'react';
 import { CATEGORY_LABELS, DEMO_RATINGS, EMPTY_RATINGS, REACTION_POOL, type Rating, type Ratings } from './ratingModel';
 import { useRatingMotion } from './useRatingMotion';
 import ProcessingLabel from './ProcessingLabel';
@@ -94,6 +94,15 @@ export default function RatingReveal({
   completionReaction: hasObservations ? 'REVIEW COMPLETE' : hasScores || localResult ? 'ANALYSIS COMPLETE' : 'REVIEW COMPLETE',
  });
  const { view } = motion;
+ const presentationStart = useRef<number | null>(null);
+ useEffect(() => {
+  if (view.phase === 'idle' || view.phase === 'working') presentationStart.current = null;
+  else if (view.phase !== 'complete' && presentationStart.current === null) presentationStart.current = performance.now();
+  if (view.phase === 'complete' && presentationStart.current !== null) {
+   try {performance.measure('lolixco.presentation',{start:presentationStart.current,duration:performance.now()-presentationStart.current});}catch{/* Optional browser timing. */}
+   presentationStart.current = null;
+  }
+ }, [view.phase]);
  const reaction = (!processing && comicPreview) || view.reaction;
  const verdict = view.phase === 'complete' && actual !== null;
  const mode = demoActive || synthetic ? 'ILLUSTRATIVE SAMPLE ASSESSMENT'

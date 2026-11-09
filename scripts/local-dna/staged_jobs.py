@@ -21,7 +21,30 @@ class WorkerError(RuntimeError):
         self.code = code
 
 
+def publish_worker_message(job, message, script):
+    kind = message['kind']
+    if kind == 'error':
+        return WorkerError(message['message'],message.get('code'))
+    if kind in ('stage','event'):
+        with job.lock:
+            if job.cancel_event.is_set(): return None
+            job.current_stage = message['stage']
+            progress = message['progress']
+            if Path(script).name == 'media_worker.py' and getattr(job,'semantic_consent',False):
+                progress = round(progress * .78)
+            job.progress_percent = max(job.progress_percent,min(progress,99))
+            if kind == 'stage':
+                job.add_event('STAGE',payload={'message':job.current_stage,'progress':job.progress_percent})
+            elif message['section_id']:
+                section = message['section_id']
+                job.progressive_sections[section] = message['payload']
+                job.add_event(message['event_type'],section,message['payload'],message['duration_ms'])
+    return None
+
+
 def worker_result(job, work, arguments, environment, timeout):
+    if Path(arguments[0]).name=='media_worker.py' and getattr(job,'local_worker',None):
+        return job.local_worker.run(job,work,arguments,timeout)
     log_path = work / "events.ndjson"
     failure = None
     with log_path.open("wb") as output, log_path.open("rb") as records:
@@ -43,23 +66,8 @@ def worker_result(job, work, arguments, environment, timeout):
                 if line.endswith(b"\n"):
                     message = json.loads(line)
                     kind = message["kind"]
-                    if kind == "error":
-                        failure = WorkerError(message["message"], message.get("code"))
-                    elif kind in ("stage", "event"):
-                        with job.lock:
-                            if job.cancel_event.is_set():
-                                return None
-                            job.current_stage = message["stage"]
-                            progress = message["progress"]
-                            if Path(arguments[0]).name == "media_worker.py" and getattr(job, "semantic_consent", False) is True:
-                                progress = round(progress * .78)
-                            job.progress_percent = max(job.progress_percent, min(progress, 99))
-                            if kind == "stage":
-                                job.add_event("STAGE", payload={"message": job.current_stage, "progress": job.progress_percent})
-                            elif message["section_id"]:
-                                section = message["section_id"]
-                                job.progressive_sections[section] = message["payload"]
-                                job.add_event(message["event_type"], section, message["payload"], message["duration_ms"])
+                    error = publish_worker_message(job, message, arguments[0])
+                    if error: failure = error
                     continue
                 if process.poll() is not None:
                     # Drain records flushed between the first read and the exit check.
@@ -115,6 +123,10 @@ def run_analysis(job, report_root, work_root, staging_root):
                 PYTHONDONTWRITEBYTECODE="1", OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1",
                 NUMBA_NUM_THREADS="2", TMPDIR=workspace, LOLIXCO_DNA_STATE_PARENT=workspace,
             )
+            if os.environ.get('LOLIXCO_CLOUD_RUNTIME') == '1':
+                environment.update(NUMBA_CACHE_DIR='/tmp/numba', NUMBA_CPU_NAME='generic')
+            if "LOLIXCO_GEMINI_MAX_GENERATIONS" in os.environ:
+                environment["LOLIXCO_GEMINI_MAX_GENERATIONS"] = os.environ["LOLIXCO_GEMINI_MAX_GENERATIONS"]
             if is_remote:
                 # The opt-in worker receives only the dedicated server setting and credential.
                 environment.update({

@@ -1,0 +1,786 @@
+{
+  "version": 1,
+  "authorization": "Owner authorized Stage 18B public release candidate",
+  "items": [
+    {
+      "id": 300,
+      "originalSha256": "dbd70a5980452cc58dee54866d24b2512ccbee06614f0567f6370360e2f7e185",
+      "title": "Aaja Raja: Worlds Collide",
+      "description": "A multifandom montage cut to the editor’s Aaja Raja theme.",
+      "hashtags": [
+        "#multifandom",
+        "#edit"
+      ],
+      "video": {
+        "path": "/media/hosted/300-b4bc040b0efc8c6a.mp4",
+        "sha256": "b4bc040b0efc8c6a5a0ec82deefd7a696dbcb197d85e8592cf5e929edff83898",
+        "bytes": 64865085,
+        "preparedSha256": "b4bc040b0efc8c6a5a0ec82deefd7a696dbcb197d85e8592cf5e929edff83898"
+      },
+      "poster": {
+        "path": "/media/hosted/300-1dc88e49256b84d3.webp",
+        "sha256": "1dc88e49256b84d387dcdebad5c55221a470cd65d207b2070c56d3812836dc03",
+        "bytes": 45968,
+        "preparedSha256": "1dc88e49256b84d387dcdebad5c55221a470cd65d207b2070c56d3812836dc03"
+      },
+      "format": "video",
+      "durationSeconds": 93.019138,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 301,
+      "originalSha256": "7150d82e4ff261eb04126a960569c4b98538e6dd5c82a53ff4555df664760be4",
+      "title": "Dhurandhar: In the Shadows",
+      "description": "A tense screen montage based on Dhurandhar.",
+      "hashtags": [
+        "#dhurandhar",
+        "#movies"
+      ],
+      "video": {
+        "path": "/media/hosted/301-c8e2ebd788e6a9ae.mp4",
+        "sha256": "c8e2ebd788e6a9ae1b1c5ec7baebd2ee8f1eb90bee2a5abc8faca5ff574139e3",
+        "bytes": 8231083,
+        "preparedSha256": "c8e2ebd788e6a9ae1b1c5ec7baebd2ee8f1eb90bee2a5abc8faca5ff574139e3"
+      },
+      "poster": {
+        "path": "/media/hosted/301-8674c4f674201763.webp",
+        "sha256": "8674c4f6742017635b0bef7b6ef05097e13a08f1cb9a3652c1d9dd9f795afb1f",
+        "bytes": 26264,
+        "preparedSha256": "8674c4f6742017635b0bef7b6ef05097e13a08f1cb9a3652c1d9dd9f795afb1f"
+      },
+      "format": "video",
+      "durationSeconds": 36.432109,
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "id": 302,
+      "originalSha256": "93c1d37d02ced052411bbde3f1c2462ae49d4d73f122e0560a372b9ff6c70f54",
+      "title": "Bullet Train: Full Speed",
+      "description": "An action montage inspired by Bullet Train.",
+      "hashtags": [
+        "#bullettrain",
+        "#movies"
+      ],
+      "video": {
+        "path": "/media/hosted/302-5327d5f747aad7a6.mp4",
+        "sha256": "5327d5f747aad7a603c277b7f5f4703dd1447cdfda5e4f54f5fed5afdf77f786",
+        "bytes": 21035582,
+        "preparedSha256": "a951b1e15bdbd2c87eb333bcbd92d235f11e97b676e526a3164ae77fa60f49d3"
+      },
+      "poster": {
+        "path": "/media/hosted/302-863b172326df5552.webp",
+        "sha256": "863b172326df55527d6a888e3a3ccc23032300cd331fd4c7f167ec973a9780cc",
+        "bytes": 29442,
+        "preparedSha256": "863b172326df55527d6a888e3a3ccc23032300cd331fd4c7f167ec973a9780cc"
+      },
+      "format": "video",
+      "durationSeconds": 27.422766,
+      "width": 1440,
+      "height": 1080
+    },
+    {
+      "id": 303,
+      "originalSha256": "e181a4e46e602c4b5cf07008a2d330b576876d70c991070ade0326c9f511402b",
+      "title": "David Goggins: Stay Hard",
+      "description": "A motivational portrait of David Goggins built around training and resolve.",
+      "hashtags": [
+        "#davidgoggins",
+        "#motivation"
+      ],
+      "video": {
+        "path": "/media/hosted/303-08b52d32820530f4.mp4",
+        "sha256": "08b52d32820530f4dc137a1a2b3d1dc220adf7116b845ed8a7d1bc014e183d18",
+        "bytes": 45125811,
+        "preparedSha256": "08b52d32820530f4dc137a1a2b3d1dc220adf7116b845ed8a7d1bc014e183d18"
+      },
+      "poster": {
+        "path": "/media/hosted/303-4c31c1bb1981a5da.webp",
+        "sha256": "4c31c1bb1981a5da172d25d56dcdb644e67f1b4cb3cf3e799432e794f433bfe9",
+        "bytes": 18358,
+        "preparedSha256": "4c31c1bb1981a5da172d25d56dcdb644e67f1b4cb3cf3e799432e794f433bfe9"
+      },
+      "format": "video",
+      "durationSeconds": 119.350567,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 304,
+      "originalSha256": "bedf9d356d24592f16ab4cf7dac5822da19fb758b553feaa173fefccbe94c79e",
+      "title": "Gojo: On the Floor",
+      "description": "A fast-paced Jujutsu Kaisen edit credited by its sidecar to the On the Floor theme.",
+      "hashtags": [
+        "#jujutsukaisen",
+        "#gojo"
+      ],
+      "video": {
+        "path": "/media/hosted/304-0c6cfc52f748f092.mp4",
+        "sha256": "0c6cfc52f748f0926b6eef63d2e2afa57e954ece1df010e407416d850ea24fdc",
+        "bytes": 26333432,
+        "preparedSha256": "0c6cfc52f748f0926b6eef63d2e2afa57e954ece1df010e407416d850ea24fdc"
+      },
+      "poster": {
+        "path": "/media/hosted/304-1ab0bb8678892c40.webp",
+        "sha256": "1ab0bb8678892c4053bbbea9fbe0b328e9ccdf40273a6ee013e4130f736c1664",
+        "bytes": 76344,
+        "preparedSha256": "1ab0bb8678892c4053bbbea9fbe0b328e9ccdf40273a6ee013e4130f736c1664"
+      },
+      "format": "video",
+      "durationSeconds": 60.080136,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 305,
+      "originalSha256": "8fb440ab02d71f7c7891681cd44fb1a5db935f7c5bfee0cc474539136479684e",
+      "title": "Jujutsu Kaisen: Sukuna",
+      "description": "A Jujutsu Kaisen montage centered on Sukuna.",
+      "hashtags": [
+        "#jujutsukaisen",
+        "#sukuna"
+      ],
+      "video": {
+        "path": "/media/hosted/305-b847fac954fc7c38.mp4",
+        "sha256": "b847fac954fc7c386e3935f7cdf759e2133cbeccd12e54e4141bb734e8432758",
+        "bytes": 34982529,
+        "preparedSha256": "b847fac954fc7c386e3935f7cdf759e2133cbeccd12e54e4141bb734e8432758"
+      },
+      "poster": {
+        "path": "/media/hosted/305-e862854abc2965c4.webp",
+        "sha256": "e862854abc2965c447f8ab5992974f8e7d11f7398a2e57461552f0ad5431553b",
+        "bytes": 89765,
+        "preparedSha256": "e862854abc2965c447f8ab5992974f8e7d11f7398a2e57461552f0ad5431553b"
+      },
+      "format": "video",
+      "durationSeconds": 57.184218,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 306,
+      "originalSha256": "a531f408ec2521897cfaa905320f7028bf9e78d0b3f75b406c55210399c898d0",
+      "title": "Demon Slayer: Die a King",
+      "description": "An action-led Demon Slayer montage using the supplied Die a King title.",
+      "hashtags": [
+        "#demonslayer",
+        "#anime"
+      ],
+      "video": {
+        "path": "/media/hosted/306-ff533518807c5164.mp4",
+        "sha256": "ff533518807c516416a1e613c44c75c56c6187a8528f1a75a9dcd42c8bdd5540",
+        "bytes": 110452083,
+        "preparedSha256": "ff533518807c516416a1e613c44c75c56c6187a8528f1a75a9dcd42c8bdd5540"
+      },
+      "poster": {
+        "path": "/media/hosted/306-81a247fd065074e5.webp",
+        "sha256": "81a247fd065074e5f93080aba5710b7d69c2cb1e971460ab146195289b337dfa",
+        "bytes": 91144,
+        "preparedSha256": "81a247fd065074e5f93080aba5710b7d69c2cb1e971460ab146195289b337dfa"
+      },
+      "format": "video",
+      "durationSeconds": 170.086168,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 307,
+      "originalSha256": "d65081756ed71126b90a74b3731338aaebda2d89d77dd7a7b0eb50eea461475b",
+      "title": "God of War: The Weight of a God",
+      "description": "A cinematic God of War edit featuring Kratos.",
+      "hashtags": [
+        "#godofwar",
+        "#gaming"
+      ],
+      "video": {
+        "path": "/media/hosted/307-4d6d70134454feca.mp4",
+        "sha256": "4d6d70134454fecaabac465d6a90f9f6666a21c5452c81d00b70a7cad3cdf5f3",
+        "bytes": 61856405,
+        "preparedSha256": "4d6d70134454fecaabac465d6a90f9f6666a21c5452c81d00b70a7cad3cdf5f3"
+      },
+      "poster": {
+        "path": "/media/hosted/307-9d6f3977757bf522.webp",
+        "sha256": "9d6f3977757bf5226345118b7d0c23881f527c6ef49c6b3caf9a480f0ecaa622",
+        "bytes": 35504,
+        "preparedSha256": "9d6f3977757bf5226345118b7d0c23881f527c6ef49c6b3caf9a480f0ecaa622"
+      },
+      "format": "video",
+      "durationSeconds": 60.743401,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 308,
+      "originalSha256": "75f80f356cbeeb51693882ea091b46057b105851bf1be34a53cf8bd4c9b461ee",
+      "title": "Game of Thrones: Jon Snow",
+      "description": "A cinematic montage following Jon Snow in Game of Thrones.",
+      "hashtags": [
+        "#gameofthrones",
+        "#jonsnow"
+      ],
+      "video": {
+        "path": "/media/hosted/308-289f6631d2ecea2e.mp4",
+        "sha256": "289f6631d2ecea2eacc1cd2f613b4ed3102e8fea0b99bdbdc9853e44e244c1c5",
+        "bytes": 20429156,
+        "preparedSha256": "289f6631d2ecea2eacc1cd2f613b4ed3102e8fea0b99bdbdc9853e44e244c1c5"
+      },
+      "poster": {
+        "path": "/media/hosted/308-b56bfd79cdf0f003.webp",
+        "sha256": "b56bfd79cdf0f00384e44acef63b94b433ee21fd37cd455ee17699b2dfbfda96",
+        "bytes": 37898,
+        "preparedSha256": "b56bfd79cdf0f00384e44acef63b94b433ee21fd37cd455ee17699b2dfbfda96"
+      },
+      "format": "video",
+      "durationSeconds": 52.059138,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 309,
+      "originalSha256": "9060eb50851b384cedf50b9799d5da12eb7b692b89f76fa848cea3722509b03d",
+      "title": "GTA VI: Vice City",
+      "description": "A Grand Theft Auto VI montage featuring the world and people of Vice City.",
+      "hashtags": [
+        "#gtavi",
+        "#gaming"
+      ],
+      "video": {
+        "path": "/media/hosted/309-06be15a87bfb448a.mp4",
+        "sha256": "06be15a87bfb448a95e51e6f21539f462e551cbc2e064cdb06a59dff4fefb55c",
+        "bytes": 12603441,
+        "preparedSha256": "06be15a87bfb448a95e51e6f21539f462e551cbc2e064cdb06a59dff4fefb55c"
+      },
+      "poster": {
+        "path": "/media/hosted/309-df8bfa4675a99c00.webp",
+        "sha256": "df8bfa4675a99c0028f39a305688d4b3dcf5fa080bb2a1543d5d958f0b42585c",
+        "bytes": 42514,
+        "preparedSha256": "df8bfa4675a99c0028f39a305688d4b3dcf5fa080bb2a1543d5d958f0b42585c"
+      },
+      "format": "video",
+      "durationSeconds": 17.786485,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 310,
+      "originalSha256": "e4188d171daf31ed4640e15227bcdd15b6b559981ce86b9fc506f8c4f0507189",
+      "title": "John Wick: Blood Code",
+      "description": "A stylized action montage from the world of John Wick.",
+      "hashtags": [
+        "#johnwick",
+        "#movies"
+      ],
+      "video": {
+        "path": "/media/hosted/310-26b2dac354e8550f.mp4",
+        "sha256": "26b2dac354e8550fc7eb89cdfbe5df9ba3155e5884d76dec44d34d8828522bc9",
+        "bytes": 67245315,
+        "preparedSha256": "26b2dac354e8550fc7eb89cdfbe5df9ba3155e5884d76dec44d34d8828522bc9"
+      },
+      "poster": {
+        "path": "/media/hosted/310-27d1ec002cf9aea5.webp",
+        "sha256": "27d1ec002cf9aea517bf0829d2755d6cb31908dc6b455b82df37f8a12f9fe106",
+        "bytes": 28034,
+        "preparedSha256": "27d1ec002cf9aea517bf0829d2755d6cb31908dc6b455b82df37f8a12f9fe106"
+      },
+      "format": "video",
+      "durationSeconds": 177.168254,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 311,
+      "originalSha256": "0f76c8aae5bbebe965d043a65bae464a655473756c2059179f86895423ff025a",
+      "title": "Valorant: Let the World",
+      "description": "A rhythm-cut Valorant gameplay montage.",
+      "hashtags": [
+        "#valorant",
+        "#gaming"
+      ],
+      "video": {
+        "path": "/media/hosted/311-bb61a32a4a7b3588.mp4",
+        "sha256": "bb61a32a4a7b358860141dd4ece67fe313a47fa8edd48cb728fc4d8960cecf40",
+        "bytes": 23621521,
+        "preparedSha256": "bb61a32a4a7b358860141dd4ece67fe313a47fa8edd48cb728fc4d8960cecf40"
+      },
+      "poster": {
+        "path": "/media/hosted/311-5e51468542c81ba9.webp",
+        "sha256": "5e51468542c81ba922ae606cc2d8a5e4b94f29ddc13e2076cbd1c6a45fecb904",
+        "bytes": 36042,
+        "preparedSha256": "5e51468542c81ba922ae606cc2d8a5e4b94f29ddc13e2076cbd1c6a45fecb904"
+      },
+      "format": "video",
+      "durationSeconds": 30.278821,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 312,
+      "originalSha256": "8a28edb41d4fcbc886d67c02396246b9e6abe5e1254734feb09f3f3714408bfa",
+      "title": "Loki: A Glorious Purpose",
+      "description": "A character-focused montage of Loki across live-action and animated scenes.",
+      "hashtags": [
+        "#loki",
+        "#marvel"
+      ],
+      "video": {
+        "path": "/media/hosted/312-a23869d9ded93fc0.mp4",
+        "sha256": "a23869d9ded93fc0118b760bf350d3c3c49a6d5bfe94c9b59beb295d0d8e0e12",
+        "bytes": 17990321,
+        "preparedSha256": "a23869d9ded93fc0118b760bf350d3c3c49a6d5bfe94c9b59beb295d0d8e0e12"
+      },
+      "poster": {
+        "path": "/media/hosted/312-5672306bd729ff7b.webp",
+        "sha256": "5672306bd729ff7b2dbfa5338c2fc41078958ed4da8770272b35aa875ebab0a7",
+        "bytes": 16358,
+        "preparedSha256": "5672306bd729ff7b2dbfa5338c2fc41078958ed4da8770272b35aa875ebab0a7"
+      },
+      "format": "video",
+      "durationSeconds": 39.427483,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 313,
+      "originalSha256": "2d504174c277cf91d85fe3bb841468414a02ebb7b80e9a1e0a8badbdb189f7ab",
+      "title": "Dune: One Name",
+      "description": "A cinematic Dune montage built around the supplied One Name title.",
+      "hashtags": [
+        "#dune",
+        "#movies"
+      ],
+      "video": {
+        "path": "/media/hosted/313-caaada8585334723.mp4",
+        "sha256": "caaada858533472347de34f35b600e6fd834c9e3733755cfca4301b0c7f32074",
+        "bytes": 20516836,
+        "preparedSha256": "caaada858533472347de34f35b600e6fd834c9e3733755cfca4301b0c7f32074"
+      },
+      "poster": {
+        "path": "/media/hosted/313-0ba7d53b0cad4864.webp",
+        "sha256": "0ba7d53b0cad4864791e068fd777b3b4cce15c3b4fd1944b20fcb04d8fbcf426",
+        "bytes": 22366,
+        "preparedSha256": "0ba7d53b0cad4864791e068fd777b3b4cce15c3b4fd1944b20fcb04d8fbcf426"
+      },
+      "format": "video",
+      "durationSeconds": 61.974059,
+      "width": 1920,
+      "height": 960
+    },
+    {
+      "id": 314,
+      "originalSha256": "a613d37d57943c20ccafad0b73aed29b8a9eaac366341940f8f9e63d1f29b490",
+      "title": "Before Doomsday: A Marvel Prelude",
+      "description": "A Marvel montage themed around the approach of Avengers: Doomsday.",
+      "hashtags": [
+        "#marvel",
+        "#doomsday"
+      ],
+      "video": {
+        "path": "/media/hosted/314-773f4f51b9caf701.mp4",
+        "sha256": "773f4f51b9caf701a87f9e8ffba8a2a6c1386f1b616f512de00d281a4ab84206",
+        "bytes": 45257237,
+        "preparedSha256": "773f4f51b9caf701a87f9e8ffba8a2a6c1386f1b616f512de00d281a4ab84206"
+      },
+      "poster": {
+        "path": "/media/hosted/314-847f48b5d9aa7ca9.webp",
+        "sha256": "847f48b5d9aa7ca97620ab65b073c9d7109085c375b2c8a3604bab38f3da6107",
+        "bytes": 8606,
+        "preparedSha256": "847f48b5d9aa7ca97620ab65b073c9d7109085c375b2c8a3604bab38f3da6107"
+      },
+      "format": "video",
+      "durationSeconds": 122.183401,
+      "width": 1920,
+      "height": 820
+    },
+    {
+      "id": 315,
+      "originalSha256": "7abaf569939f872df3d10cc28bb9f1afbe1ea936cf5f6faf3e6742e8c524a352",
+      "title": "Red Sea: Worlds Collide",
+      "description": "A multifandom montage bringing action scenes from different worlds together.",
+      "hashtags": [
+        "#multifandom",
+        "#edit"
+      ],
+      "video": {
+        "path": "/media/hosted/315-692a9c70cb0af8e1.mp4",
+        "sha256": "692a9c70cb0af8e1ba34a9330f045dab12c5e96f987bb2030bb0969908a057f8",
+        "bytes": 34649967,
+        "preparedSha256": "692a9c70cb0af8e1ba34a9330f045dab12c5e96f987bb2030bb0969908a057f8"
+      },
+      "poster": {
+        "path": "/media/hosted/315-4e90c7e807fcf524.webp",
+        "sha256": "4e90c7e807fcf524bb434a9c91ba9284705ed8c40dc05fe6cb7906e66b615c25",
+        "bytes": 22112,
+        "preparedSha256": "4e90c7e807fcf524bb434a9c91ba9284705ed8c40dc05fe6cb7906e66b615c25"
+      },
+      "format": "video",
+      "durationSeconds": 60.325442,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 400,
+      "originalSha256": "496f0413b42bba924be5ca4bebf5fafe240c02358fc90827ec204f594ae805df",
+      "title": "David Goggins: Keep Going",
+      "description": "A short motivational training edit featuring David Goggins.",
+      "hashtags": [
+        "#davidgoggins",
+        "#motivation"
+      ],
+      "video": {
+        "path": "/media/hosted/316-3e6989d9946a477c.mp4",
+        "sha256": "3e6989d9946a477cd470730bd0cc0661779be5678267bd0bbee37a2d34869f7c",
+        "bytes": 28435605,
+        "preparedSha256": "13e8b9dc1d05af13a3db7d09f311387a4171fbf49460ee897d7745342c6ee522"
+      },
+      "poster": {
+        "path": "/media/hosted/316-6abf130a2e4b0e38.webp",
+        "sha256": "6abf130a2e4b0e382b91cbf1676811ce1c8cd240e89394c307a6de0844d97042",
+        "bytes": 30110,
+        "preparedSha256": "6abf130a2e4b0e382b91cbf1676811ce1c8cd240e89394c307a6de0844d97042"
+      },
+      "format": "short",
+      "durationSeconds": 30.67356,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "id": 401,
+      "originalSha256": "32965ec7764e1e43573ef712a1a49596fe45b00353807a3176586f3130b8651a",
+      "title": "Dhurandhar: Phonk",
+      "description": "An action-focused edit supplied under the Dhurandhar phonk title; subject attribution awaits confirmation.",
+      "hashtags": [
+        "#dhurandhar",
+        "#edit"
+      ],
+      "video": {
+        "path": "/media/hosted/317-a08a68e96642418d.mp4",
+        "sha256": "a08a68e96642418d72755057b006df3342ace1489847f0c821df9a20de31624d",
+        "bytes": 23969970,
+        "preparedSha256": "a08a68e96642418d72755057b006df3342ace1489847f0c821df9a20de31624d"
+      },
+      "poster": {
+        "path": "/media/hosted/317-cb25d2670752d04d.webp",
+        "sha256": "cb25d2670752d04d837760d35a98cf1a31876b8834bb287b47d843d5d4e9a9bf",
+        "bytes": 34062,
+        "preparedSha256": "cb25d2670752d04d837760d35a98cf1a31876b8834bb287b47d843d5d4e9a9bf"
+      },
+      "format": "short",
+      "durationSeconds": 23.034195,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "id": 402,
+      "originalSha256": "9e7ab10ace156af0f36f0ededed320cf4df35035b2bf047d0f781f3c6267dab3",
+      "title": "Marvel: Doom Is Here",
+      "description": "A short Marvel montage themed around Doctor Doom and Avengers: Doomsday.",
+      "hashtags": [
+        "#marvel",
+        "#doctordoom"
+      ],
+      "video": {
+        "path": "/media/hosted/318-c977ab064a2d2625.mp4",
+        "sha256": "c977ab064a2d26251962122e412439e863685997877d43dffc008816aa0e6eda",
+        "bytes": 26237322,
+        "preparedSha256": "c977ab064a2d26251962122e412439e863685997877d43dffc008816aa0e6eda"
+      },
+      "poster": {
+        "path": "/media/hosted/318-d447257dd510686b.webp",
+        "sha256": "d447257dd510686b5787faeb6b76a9d6e49d08351687ab928ee12117cb41ed8e",
+        "bytes": 15582,
+        "preparedSha256": "d447257dd510686b5787faeb6b76a9d6e49d08351687ab928ee12117cb41ed8e"
+      },
+      "format": "short",
+      "durationSeconds": 33.668934,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "id": 403,
+      "originalSha256": "e765e1be490fc86e8d4588c61d706616962c11b171e9c5aeeeb6fa334e771c64",
+      "title": "Jujutsu Kaisen: Sukuna Unleashed",
+      "description": "A short Jujutsu Kaisen montage featuring Sukuna.",
+      "hashtags": [
+        "#jujutsukaisen",
+        "#sukuna"
+      ],
+      "video": {
+        "path": "/media/hosted/319-a9d4dfc7aa655305.mp4",
+        "sha256": "a9d4dfc7aa6553051031864c357a2a05ec5eb3fc4dbf12deeb6e390d437187a0",
+        "bytes": 7182080,
+        "preparedSha256": "a9d4dfc7aa6553051031864c357a2a05ec5eb3fc4dbf12deeb6e390d437187a0"
+      },
+      "poster": {
+        "path": "/media/hosted/319-d39f66bb683dfc4a.webp",
+        "sha256": "d39f66bb683dfc4a2c898ee157dcce8598c3f9e905ceb9e188d3add06c7e237f",
+        "bytes": 29012,
+        "preparedSha256": "d39f66bb683dfc4a2c898ee157dcce8598c3f9e905ceb9e188d3add06c7e237f"
+      },
+      "format": "short",
+      "durationSeconds": 11.795737,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "id": 404,
+      "originalSha256": "6d4cb4629afd5fe8e277bfca9e94eb69ded26c733fe037558da547e5c52bc366",
+      "title": "Ghost Rider: Hellfire",
+      "description": "A square-format action montage featuring Ghost Rider.",
+      "hashtags": [
+        "#ghostrider",
+        "#marvel"
+      ],
+      "video": {
+        "path": "/media/hosted/320-c0f5d5f52714e4b0.mp4",
+        "sha256": "c0f5d5f52714e4b08bcc399b534f501e58440d4c203798ba1ca1631bebfe7347",
+        "bytes": 28029995,
+        "preparedSha256": "c0f5d5f52714e4b08bcc399b534f501e58440d4c203798ba1ca1631bebfe7347"
+      },
+      "poster": {
+        "path": "/media/hosted/320-69b2e45adc9a52a8.webp",
+        "sha256": "69b2e45adc9a52a8651e20ccb2870b1479b55e848332643c9267e37475a9b2a7",
+        "bytes": 33756,
+        "preparedSha256": "69b2e45adc9a52a8651e20ccb2870b1479b55e848332643c9267e37475a9b2a7"
+      },
+      "format": "short",
+      "durationSeconds": 30.74322,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "id": 405,
+      "originalSha256": "76ed58a734d682969ab676fbd463aac8c01e92a8bdc04140fe0c4cc568969ca7",
+      "title": "God of War: God Killer",
+      "description": "A short God of War montage built around the supplied God Killer title.",
+      "hashtags": [
+        "#godofwar",
+        "#gaming"
+      ],
+      "video": {
+        "path": "/media/hosted/321-ce830585a40beb61.mp4",
+        "sha256": "ce830585a40beb618296a6ebf5fc89866356828c215edbfeacd414b0ca989b59",
+        "bytes": 28884004,
+        "preparedSha256": "ce830585a40beb618296a6ebf5fc89866356828c215edbfeacd414b0ca989b59"
+      },
+      "poster": {
+        "path": "/media/hosted/321-146844c82b370de7.webp",
+        "sha256": "146844c82b370de749639abc3e27f1afee85eed2b3246356a22ecc2faf5846a3",
+        "bytes": 18106,
+        "preparedSha256": "146844c82b370de749639abc3e27f1afee85eed2b3246356a22ecc2faf5846a3"
+      },
+      "format": "short",
+      "durationSeconds": 35.062132,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "id": 406,
+      "originalSha256": "2152c8fda75f8c424fcf09be7bc0ddcd8a26c82a1e81f38a55d12f646a10283b",
+      "title": "GTA VI: Vice City Scenes",
+      "description": "A short tour through scenes from Grand Theft Auto VI.",
+      "hashtags": [
+        "#gtavi",
+        "#gaming"
+      ],
+      "video": {
+        "path": "/media/hosted/322-2a6d0dc7ed325137.mp4",
+        "sha256": "2a6d0dc7ed325137fa4f0d159480b4ac9bbeaf10917866e32c45ce3a2ebf002f",
+        "bytes": 23590928,
+        "preparedSha256": "2a6d0dc7ed325137fa4f0d159480b4ac9bbeaf10917866e32c45ce3a2ebf002f"
+      },
+      "poster": {
+        "path": "/media/hosted/322-00f06e4b422d4aec.webp",
+        "sha256": "00f06e4b422d4aec3ae4275f703b1cbcb423607fa86cccd8f0aa46b089fc553d",
+        "bytes": 93378,
+        "preparedSha256": "00f06e4b422d4aec3ae4275f703b1cbcb423607fa86cccd8f0aa46b089fc553d"
+      },
+      "format": "short",
+      "durationSeconds": 18.993923,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "id": 407,
+      "originalSha256": "28c5e9a2220166314a962d77aa6c7ad5cb06ab001e10466a447e870106abadf5",
+      "title": "Marvel: Doomsday Awaits",
+      "description": "A short Marvel montage themed around Avengers: Doomsday.",
+      "hashtags": [
+        "#marvel",
+        "#doomsday"
+      ],
+      "video": {
+        "path": "/media/hosted/323-1b439e7c61db79c1.mp4",
+        "sha256": "1b439e7c61db79c15d86209ed569288dbaed0cc25fb1f97d99b7571d2b52bf3f",
+        "bytes": 20309607,
+        "preparedSha256": "1b439e7c61db79c15d86209ed569288dbaed0cc25fb1f97d99b7571d2b52bf3f"
+      },
+      "poster": {
+        "path": "/media/hosted/323-1979ec9ed387dec1.webp",
+        "sha256": "1979ec9ed387dec17e891b6399c606a2b30e1c418ff92da40eea4b558589788e",
+        "bytes": 13862,
+        "preparedSha256": "1979ec9ed387dec17e891b6399c606a2b30e1c418ff92da40eea4b558589788e"
+      },
+      "format": "short",
+      "durationSeconds": 34.667392,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "id": 408,
+      "originalSha256": "ef010a287820bc4b88096d23294134d15a29d56e3590cad62245c021ff764162",
+      "title": "Titanic: An Ocean Apart",
+      "description": "A Titanic montage of the ship and its passengers, with an upright framing proposed for review.",
+      "hashtags": [
+        "#titanic",
+        "#movies"
+      ],
+      "video": {
+        "path": "/media/hosted/324-0d284d4ee5cf698b.mp4",
+        "sha256": "0d284d4ee5cf698be334d6d4293a1767bf53c745c30c2c1979facb3ae5489a73",
+        "bytes": 4605784,
+        "preparedSha256": "0d284d4ee5cf698be334d6d4293a1767bf53c745c30c2c1979facb3ae5489a73"
+      },
+      "poster": {
+        "path": "/media/hosted/324-9a605f2c79c70c8a.webp",
+        "sha256": "9a605f2c79c70c8a2523da8a1952f31f810fd522e2c90d97a0921d3d6f931bd9",
+        "bytes": 24206,
+        "preparedSha256": "9a605f2c79c70c8a2523da8a1952f31f810fd522e2c90d97a0921d3d6f931bd9"
+      },
+      "format": "short",
+      "durationSeconds": 14.558912,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "id": 409,
+      "originalSha256": "964edd0aa3bdb7909b8c4cc76f6a437da28b26b393afa910f131819e5d73cdaa",
+      "title": "Valorant: Omen",
+      "description": "A short Valorant gameplay edit supplied under the Omen title.",
+      "hashtags": [
+        "#valorant",
+        "#gaming"
+      ],
+      "video": {
+        "path": "/media/hosted/325-a739cf71727bb3cc.mp4",
+        "sha256": "a739cf71727bb3cc0f83e45b80f2c5a23358135fd9deb89a5e0261176657a323",
+        "bytes": 26603447,
+        "preparedSha256": "fb7a3c729a152f11e84382e52f97f7ece84e764ebc99b765bae5a33f77ffdfb5"
+      },
+      "poster": {
+        "path": "/media/hosted/325-3b842b6b79ea1cd3.webp",
+        "sha256": "3b842b6b79ea1cd3ce9bcacb92f292fa8ee57bb9c02db518b6806e8bb91e7d60",
+        "bytes": 74548,
+        "preparedSha256": "3b842b6b79ea1cd3ce9bcacb92f292fa8ee57bb9c02db518b6806e8bb91e7d60"
+      },
+      "format": "short",
+      "durationSeconds": 17.856145,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "id": 326,
+      "originalSha256": "8de932d30d391f581cd23d90ac84c2396653faa2d1293bfcc411912a1ebf93a5",
+      "title": "Spider-Man: Beyond the Mask",
+      "description": "A cinematic Spider-Man action montage.",
+      "hashtags": [
+        "#spiderman",
+        "#marvel"
+      ],
+      "video": {
+        "path": "/media/hosted/326-b56569de8ced7535.mp4",
+        "sha256": "b56569de8ced75350435fd43b895e077e0b2e4fc9df42028415efa7ecfc6ccb5",
+        "bytes": 36737116,
+        "preparedSha256": "b56569de8ced75350435fd43b895e077e0b2e4fc9df42028415efa7ecfc6ccb5"
+      },
+      "poster": {
+        "path": "/media/hosted/326-00557bbc5ec73930.webp",
+        "sha256": "00557bbc5ec73930b8b66a130ab72df213facebc41c119386a5729f0e534d4f7",
+        "bytes": 50768,
+        "preparedSha256": "00557bbc5ec73930b8b66a130ab72df213facebc41c119386a5729f0e534d4f7"
+      },
+      "format": "video",
+      "durationSeconds": 49.621043,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 327,
+      "originalSha256": "e3c1b035c2abeea182a7ad3a30b0a989b59c336eb39fbd990b1fc7adfcb27afa",
+      "title": "Stranger Things: Into the Upside Down",
+      "description": "A character-focused Stranger Things montage with a dark turn.",
+      "hashtags": [
+        "#strangerthings",
+        "#series"
+      ],
+      "video": {
+        "path": "/media/hosted/327-b37aad70e1471aeb.mp4",
+        "sha256": "b37aad70e1471aeb14943c95bd4f51360fe7255ce70b7ecde75c319e6c270e7e",
+        "bytes": 19559921,
+        "preparedSha256": "b37aad70e1471aeb14943c95bd4f51360fe7255ce70b7ecde75c319e6c270e7e"
+      },
+      "poster": {
+        "path": "/media/hosted/327-221f00372cdf3db8.webp",
+        "sha256": "221f00372cdf3db8c7a2a61279dc37dc8e2104868a8703c2f1ca48be46acd4f1",
+        "bytes": 24220,
+        "preparedSha256": "221f00372cdf3db8c7a2a61279dc37dc8e2104868a8703c2f1ca48be46acd4f1"
+      },
+      "format": "video",
+      "durationSeconds": 44.396553,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 328,
+      "originalSha256": "30295b4e69d064810e00f3c0d5030f47705c795b6d7b798edb3f0192ba57de96",
+      "title": "Valorant: Untouchable",
+      "description": "A Valorant gameplay montage with the supplied Untouchable title.",
+      "hashtags": [
+        "#valorant",
+        "#gaming"
+      ],
+      "video": {
+        "path": "/media/hosted/328-21ebfdf1896e05e6.mp4",
+        "sha256": "21ebfdf1896e05e633e8472b9cb2c753d4cc56a04bb791f6549df47240038c3a",
+        "bytes": 11643517,
+        "preparedSha256": "21ebfdf1896e05e633e8472b9cb2c753d4cc56a04bb791f6549df47240038c3a"
+      },
+      "poster": {
+        "path": "/media/hosted/328-374aa341d6de4462.webp",
+        "sha256": "374aa341d6de446246679617b6abbf7fbc7dba8341e18850d0b5d2ace070b434",
+        "bytes": 39448,
+        "preparedSha256": "374aa341d6de446246679617b6abbf7fbc7dba8341e18850d0b5d2ace070b434"
+      },
+      "format": "video",
+      "durationSeconds": 17.919252,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": 329,
+      "originalSha256": "080088db9449f3eadb5cafdf8b40c43c1efe601071a98d5b03dc6efa10ed4a9d",
+      "title": "Marvel: We Are Doom",
+      "description": "A Marvel montage centered on Doctor Doom and the Doomsday theme.",
+      "hashtags": [
+        "#marvel",
+        "#doctordoom"
+      ],
+      "video": {
+        "path": "/media/hosted/329-2e7a4ece06a95d8f.mp4",
+        "sha256": "2e7a4ece06a95d8fae25c337761b329f76b1a873509528a872ff74f5489477c0",
+        "bytes": 10126162,
+        "preparedSha256": "2e7a4ece06a95d8fae25c337761b329f76b1a873509528a872ff74f5489477c0"
+      },
+      "poster": {
+        "path": "/media/hosted/329-d8ef3e540e54fd68.webp",
+        "sha256": "d8ef3e540e54fd68264cdec3f6bb667689c3e68e62677dd0f897adda1587b417",
+        "bytes": 20130,
+        "preparedSha256": "d8ef3e540e54fd68264cdec3f6bb667689c3e68e62677dd0f897adda1587b417"
+      },
+      "format": "video",
+      "durationSeconds": 28.142585,
+      "width": 1868,
+      "height": 1080
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
+import {acquirePageLock, restoreOverlayFocus} from '../../utils/pageLock';
 export default function Dialog({
   title,
   children,
@@ -14,12 +15,11 @@ export default function Dialog({
     const previous = document.activeElement as HTMLElement;
     const el = ref.current!;
     el.showModal();
-    const old = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const release = acquirePageLock();
     return () => {
       el.close();
-      document.body.style.overflow = old;
-      previous?.focus();
+      release();
+      restoreOverlayFocus(previous);
     };
   }, []);
   return (
