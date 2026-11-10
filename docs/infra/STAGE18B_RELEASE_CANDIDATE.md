@@ -1,5 +1,7 @@
 # Stage 18B AWS release candidate
 
+> Historical milestone evidence. Current main includes the public beta, custom-domain activation and Lambda runtime. Start with [the current handoff](../../GETTING_STARTED.md#verified-state-and-evidence) and [domain activation](CUSTOM_DOMAIN_PREPARATION.md) before applying older release gates or ECS/preview instructions.
+
 Custom-domain configuration now follows [the domain preparation runbook](CUSTOM_DOMAIN_PREPARATION.md). The historical Stage 18B hostname/certificate instructions below describe the original preview deployment.
 
 Release candidate: https://d2w2cv3wlh68gg.cloudfront.net

@@ -1,5 +1,7 @@
 # Stage 16 — product cleanup and release verdict
 
+> Historical milestone evidence. Current main includes the public beta, custom-domain activation and Lambda runtime. Start with [the current handoff](../../GETTING_STARTED.md#verified-state-and-evidence) and [domain activation](../infra/CUSTOM_DOMAIN_PREPARATION.md) before applying older release gates or ECS/preview instructions.
+
 Locally verified on 8 November 2026. No deployment, DNS, email route, certificate, paid service or AWS resource was changed.
 
 ## Implemented and verified

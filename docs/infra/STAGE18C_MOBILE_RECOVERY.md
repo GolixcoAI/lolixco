@@ -1,5 +1,7 @@
 # Stage 18C mobile recovery and cloud analysis verification
 
+> Historical milestone evidence. Current main includes the public beta, custom-domain activation and Lambda runtime. Start with [the current handoff](../../GETTING_STARTED.md#verified-state-and-evidence) and [domain activation](CUSTOM_DOMAIN_PREPARATION.md) before applying older release gates or ECS/preview instructions.
+
 Release candidate: https://d2w2cv3wlh68gg.cloudfront.net/
 
 PR: https://github.com/GolixcoAI/lolixco/pull/21 — update the existing release branch, leave unmerged. This remains an owner-inspection beta. PRs #19/#20 supplied the approved foundation; Stage 18B supplied the AWS candidate and 57-edit catalog. This change does not complete the worldwide launch or authorize custom-domain cutover.
