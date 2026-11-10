@@ -1,5 +1,7 @@
 # Stage 18 provider secret migration
 
+> Historical milestone evidence. Current main includes the public beta, custom-domain activation and Lambda runtime. Start with [the current handoff](../../GETTING_STARTED.md#verified-state-and-evidence) and [domain activation](CUSTOM_DOMAIN_PREPARATION.md) before applying older release gates or ECS/preview instructions.
+
 Verified on 8 November 2026. This completes the automatic credential migration slice of the owner's Stage 18 release instructions. It does not declare the broader production launch complete.
 
 | Check | Result |

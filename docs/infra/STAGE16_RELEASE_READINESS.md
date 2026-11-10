@@ -1,5 +1,7 @@
 # Stage 16 release readiness — 7 November 2026
 
+> Historical milestone evidence. Current main includes the public beta, custom-domain activation and Lambda runtime. Start with [the current handoff](../../GETTING_STARTED.md#verified-state-and-evidence) and [domain activation](CUSTOM_DOMAIN_PREPARATION.md) before applying older release gates or ECS/preview instructions.
+
 This is a local product release candidate and a deployment review. No new infrastructure, deployment, certificate, DNS record, email route, subscription or paid service was created or changed. Raw account identifiers and configuration receipts remain outside git in `/home/rohan/lolixco-stage16-evidence`.
 
 ## A. Implemented and locally verifiable
